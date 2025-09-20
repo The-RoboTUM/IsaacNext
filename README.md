@@ -114,7 +114,7 @@ There is an example that illustrates the operation steps more vividly:
 - `S23_Assyv18_mirror_1_virtual`: 
   - `Collision`
     - `S23_Assyv18_mirror_1`
-      - `mesh`: Collision Disabled ❌️  ???
+      - `mesh`: Collision Disabled ❌️ 
 
 - `S12_Front_Assyv6_mirror_1`: 
   - `Collision`
