@@ -9,6 +9,10 @@ https://github.com/The-RoboTUM/urdfheim/tree/main/complex/Forrest_URDF_descripti
 
 You `git clone` the whole repo and go the above folder and find the urdf file.
 
+In Isaacsim, we need to USD file, so we need to convert URDF file to USD file.
+
+Nest, let's go through the operation steps in detail:
+
 ## How to prepare Forrest's USD
 
 
