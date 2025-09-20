@@ -75,7 +75,7 @@ After you have set the stiffness and motion range for each joint of the Forrest'
 
 First, go to the Stage panel on the right side, locate the corresponding link, and click the ➕, Then, find `Collision`, open it, and locate the corresponding item. Click the ➕, then select `mesh`. In the Property panel below, go to `Extra Properties`, find `Collision Enabled`, and following the instructions below, choose whether to activate or deactivate it.
 
-There is an example that illustrates the operation steps more vividly:\
+There is an example that illustrates the operation steps more vividly:
 - `base_link`:
   - `Collision`
     - `Base_Assy_V2v18_1`
