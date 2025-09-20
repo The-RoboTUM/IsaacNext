@@ -25,7 +25,8 @@ Nest, let's go through the operation steps in detail:
 - after you finish doing above steps, Isaacsim will generate a folder: `Forrest_URDF`, at the same place of the urdf file.
 - Move only the generated folder `Forrest_URDF` over to the symlinks (In the future a script will do this)
 - In Isaacsim, open `/IsaacNext/symlinks/Forrest_URDF/Forrest_URDF.usd`
-- Go to joints
+- After you open the USD file, then on the right-hand Stage panel in IsaacSim, find the joints folder:
+-![](images/joints%20folder%20in%20the%20IsaacSim.png)
   - For all set stiffness to 100 and damping to 1
   - For anchor joints disable them from articulation
   - For anchor joints set max force to 1000, stiffness to 1000 and damping to 10
