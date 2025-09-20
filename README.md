@@ -5,7 +5,7 @@ Short description of what this project does and who it’s for.
 ---
 ## How to obtain Forrest's URDF
 You can find the Forrest's URDF file from this link:\
-https://github.com/The-RoboTUM/urdfheim/tree/main/complex/Forrest_URDF_description/urdf \
+https://github.com/The-RoboTUM/urdfheim/tree/main/complex/Forrest_URDF_description/urdf 
 
 You `git clone` the whole repo and go the above folder and find the urdf file.
 
@@ -13,7 +13,7 @@ You `git clone` the whole repo and go the above folder and find the urdf file.
 
 
 - Open Isaacsim
-- Import the URDF (change these settings)
+- Import the URDF file (change these settings)
 ![See the screenshot](images/urdf_import_setting.png)
   - Choose `Moveable Base`
   - Create `Collisions From Visuals`
