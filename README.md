@@ -153,6 +153,8 @@ There is an example that illustrates the operation steps more vividly:\
       - `mesh`: Collision Disabled
 
 
+Now, the collision parameters for one leg are set. THe other leg, being fully symmetrical, uses the identical settings.
+
 ## 📦 Installation
 
 ```bash
