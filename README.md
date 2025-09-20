@@ -69,6 +69,90 @@ Nest, let's go through the operation steps in detail:
 
 ---
 
+## Collision Parameter Settings
+
+After you have set the stiffness and motion range for each joint of the Forrest's USD file, the next step is to configure whether collisions are enabled for each joint. This ensures that the USD model more closely resembles the real physical world.
+
+First, go to the Stage panel on the right side, locate the corresponding link, and click the ➕, Then, find `Collision`, open it, and locate the corresponding item. Click the ➕, then select `mesh`. In the Property panel below, go to `Extra Properties`, find `Collision Enabled`, and following the instructions below, choose whether to activate or deactivate it.
+
+There is an example that illustrates the operation steps more vividly:\
+- `base_link`:
+  - `Collision`
+    - `Base_Assy_V2v18_1`
+      - `mesh`: Collision Enabled ✅️
+        ![](images/Collision%20Setting_base_link.png)
+
+
+- `Differential_Cage_Assyv7_mirror_1`: 
+  - `Collision`
+    - `Differential_Cage_Assyv7_mirror_1`
+      - `mesh`: Collision Enabled ✅️
+    - `Pulley_Linkage_10mm_Bearingv1_mirror_10`: 
+      - `mesh`: Collision Disabled
+    - `Pulley_Linkage_10mm_Bearingv1_mirror_3`: 
+      - `mesh`: Collision Disabled
+
+- `Differential_Cube_Assy_V2v4_mirror_1`:
+  - `Collision`
+    - `Differential_Cube_Assy_V2v4_mirror_1`
+      - `mesh`: Collision Disabled
+    - `Outside_Hip_V2_Assyv28_mirror_1`
+      - `mesh`: Collision Disabled
+
+- `Knee_Assyv9_mirror_1`: 
+  - `Collision`
+    - `Knee_Assyv9_mirror_1`
+      - `mesh`: Collision Enabled ✅️
+
+- `S12p_Pantograph_Spring_Assy_Topv2_mirror_1`: 
+  - `Collision`
+    - `S12p_Pantograph_Spring_Assy_Topv2_mirror_1`
+      - `mesh`: Collision Disabled
+    - `S12p_Pantograph_Spring_Assy_Botv1_mirror_1`
+      - `mesh`: Collision Disabled   
+
+- `S23_Assyv18_mirror_1_virtual`: 
+  - `Collision`
+    - `S23_Assyv18_mirror_1`
+      - `mesh`: Collision Disabled  ???
+
+- `S12_Front_Assyv6_mirror_1`: 
+  - `Collision`
+    - `S12_Front_Assyv6_mirror_1`
+      - `mesh`: Collision Disabled 
+
+- `S23_Assyv18_mirror_1`: 
+  - `Collision`
+    - `S23_Assyv18_mirror_1`
+      - `mesh`: Collision Enabled ✅️
+
+- `S34_Foot_Connector_Assy_mirror_1`: 
+  - `Collision`
+    - `S34_Foot_Connector_Assy_mirror_1`
+      - `mesh`: Collision Enabled ✅️
+
+- `S45_Digit_Assyv2_mirror_1`: 
+  - `Collision`
+    - `S45_Digit_Assyv2_mirror_1`
+      - `mesh`: Collision Enabled ✅️
+- `Main_GST_Pully_Assyv4_mirror_1`: 
+  - `Collision`
+    - `Main_GST_Pully_Assyv4_mirror_1`
+      - `mesh`: Collision Disabled
+- `Inner_Gear_Assy_V2v13_mirror_1`: 
+  - `Collision`
+    - `Inner_Gear_Assy_V2v13_mirror_1`
+      - `mesh`: Collision Disabled
+- `Cable_Gear_Motor_V2v8_mirror_1`: 
+  - `Collision`
+    - `Cable_Gear_Motor_V2v8_mirror_1`
+      - `mesh`: Collision Disabled
+- `Cable_Gear_Motor_V2v8_mirror_2`: 
+  - `Collision`
+    - `Cable_Gear_Motor_V2v8_mirror_2`
+      - `mesh`: Collision Disabled
+
+
 ## 📦 Installation
 
 ```bash
