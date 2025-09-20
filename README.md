@@ -88,16 +88,16 @@ There is an example that illustrates the operation steps more vividly:
     - `Differential_Cage_Assyv7_mirror_1`
       - `mesh`: Collision Enabled ✅️
     - `Pulley_Linkage_10mm_Bearingv1_mirror_10`: 
-      - `mesh`: Collision Disabled
+      - `mesh`: Collision Disabled ❌️
     - `Pulley_Linkage_10mm_Bearingv1_mirror_3`: 
-      - `mesh`: Collision Disabled
+      - `mesh`: Collision Disabled ❌️
 
 - `Differential_Cube_Assy_V2v4_mirror_1`:
   - `Collision`
     - `Differential_Cube_Assy_V2v4_mirror_1`
-      - `mesh`: Collision Disabled
+      - `mesh`: Collision Disabled ❌️
     - `Outside_Hip_V2_Assyv28_mirror_1`
-      - `mesh`: Collision Disabled
+      - `mesh`: Collision Disabled ❌️
 
 - `Knee_Assyv9_mirror_1`: 
   - `Collision`
@@ -107,19 +107,19 @@ There is an example that illustrates the operation steps more vividly:
 - `S12p_Pantograph_Spring_Assy_Topv2_mirror_1`: 
   - `Collision`
     - `S12p_Pantograph_Spring_Assy_Topv2_mirror_1`
-      - `mesh`: Collision Disabled
+      - `mesh`: Collision Disabled ❌️
     - `S12p_Pantograph_Spring_Assy_Botv1_mirror_1`
-      - `mesh`: Collision Disabled   
+      - `mesh`: Collision Disabled ❌️
 
 - `S23_Assyv18_mirror_1_virtual`: 
   - `Collision`
     - `S23_Assyv18_mirror_1`
-      - `mesh`: Collision Disabled  ???
+      - `mesh`: Collision Disabled ❌️  ???
 
 - `S12_Front_Assyv6_mirror_1`: 
   - `Collision`
     - `S12_Front_Assyv6_mirror_1`
-      - `mesh`: Collision Disabled 
+      - `mesh`: Collision Disabled ❌️
 
 - `S23_Assyv18_mirror_1`: 
   - `Collision`
@@ -138,19 +138,19 @@ There is an example that illustrates the operation steps more vividly:
 - `Main_GST_Pully_Assyv4_mirror_1`: 
   - `Collision`
     - `Main_GST_Pully_Assyv4_mirror_1`
-      - `mesh`: Collision Disabled
+      - `mesh`: Collision Disabled ❌️
 - `Inner_Gear_Assy_V2v13_mirror_1`: 
   - `Collision`
     - `Inner_Gear_Assy_V2v13_mirror_1`
-      - `mesh`: Collision Disabled
+      - `mesh`: Collision Disabled ❌️
 - `Cable_Gear_Motor_V2v8_mirror_1`: 
   - `Collision`
     - `Cable_Gear_Motor_V2v8_mirror_1`
-      - `mesh`: Collision Disabled
+      - `mesh`: Collision Disabled ❌️
 - `Cable_Gear_Motor_V2v8_mirror_2`: 
   - `Collision`
     - `Cable_Gear_Motor_V2v8_mirror_2`
-      - `mesh`: Collision Disabled
+      - `mesh`: Collision Disabled ❌️
 
 
 Now, the collision parameters for one leg are set. THe other leg, being fully symmetrical, uses the identical settings.
