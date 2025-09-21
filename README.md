@@ -211,6 +211,7 @@ In each iteration, data is collected from multiple environments and used to upda
 
 - `--num_envs=4096` Specifies the number of parallel environments, here 4096 environments (or robots) running simultaneously. 
   - The more environments, the faster the data sampling, but the higher the demand on GPU/CPU resources. 
+  - With our cerrent setup (RTX 5080 GPU AND 64 GB of RAM), 4096 environments is the upper limit. Therefore, please choose an appropriate numer of environments when running training.
   - These 4096 robots are independent. If you enable rendering, you may sometimes see them visually overlapping, but their trajectories and training batches remain unaffected.
 
 - `--resume`
@@ -223,3 +224,25 @@ Continues training from a previously saved checkpoint instead of starting from s
 ```bash
 ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py --task=Isaac-Velocity-Flat-Forrest-Play-v0 --num_envs=10
 ```
+
+#### Argument Explanation:
+- `./isaaclab.sh`
+Launches the Isaac Lab wrapper script, which runs the specified Python program and automatically loads the Isaac Lab environment configuration.
+
+- `-p scripts/reinforcement_learning/rsl_rl/play.py`
+Specifies the Python script to execute. Here we use play.py, which is designed to load a trained policy and run it for testing (letting the robot “play” with what it has learned).
+
+- `--task=Isaac-Velocity-Flat-Forrest-Play-v0`
+Selects the task environment to run.
+
+  - `Flat`: a flat terrain scenario without obstacles, making it easier to observe the learned behavior.
+
+  - `Forrest`: the name of our robot.
+
+  - `Play`: indicates this is a test/demo environment for running an already trained policy rather than training from scratch.
+
+  - `-v0`: the version number of this environment.
+
+- `--num_envs=10`
+Specifies the number of parallel environments, here 10 robots running simultaneously.
+This smaller number is convenient for testing and visualization, allowing you to observe the performance of multiple robots at once.
