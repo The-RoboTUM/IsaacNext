@@ -179,12 +179,47 @@ pip install -r requirements.txt
 
 ```
 
-### Train the Forrest:
+### Train Forrest:
+In Isaac Lab, you can use the following command to start reinforcement learning training for the robot in a selected environment:
 ```bash
  ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py --task=Isaac-Velocity-Rough-Forrest-v0 --headless --max_iterations=10000 --num_envs=4096 --resume
 ```
+#### Argument Explanation:
+- `./isaaclab.sh`
+Launches the Isaac Lab wrapper script, which runs the specified Python program and automatically loads the Isaac Lab environment configuration.
 
-### Play the Forrest:
+- `-p scripts/reinforcement_learning/rsl_rl/train.py`
+Specifies the Python script to execute.
+Here we use the training entry script for RSL-RL, a reinforcement learning framework based on PyTorch.
+
+- `--task=Isaac-Velocity-Rough-Forrest-v0`
+Selects the training task environment.
+
+  - `Rough`: a scenario with complex uneven terrain.
+
+  - `Forrest`: the name of our robot.
+
+  - `-v0`: indicates the version number of this environment. 
+  - Alternatively, you can choose the `Flat` scenario (flat terrain), which is useful for training in obstacle-free environments.
+
+- `--headless`
+Runs in headless mode (no rendering). This is recommended when training on servers or with large-scale parallel environments to save GPU/CPU memory and computation resources.
+
+- `--max_iterations=10000`
+Sets the maximum number of training iterations, here 10,000 iterations.
+In each iteration, data is collected from multiple environments and used to update the policy.
+
+- `--num_envs=4096` Specifies the number of parallel environments, here 4096 environments (or robots) running simultaneously. 
+  - The more environments, the faster the data sampling, but the higher the demand on GPU/CPU resources. 
+  - These 4096 robots are independent. If you enable rendering, you may sometimes see them visually overlapping, but their trajectories and training batches remain unaffected.
+
+- `--resume`
+Continues training from a previously saved checkpoint instead of starting from scratch.
+
+
+
+
+### Play Forrest:
 ```bash
 ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py --task=Isaac-Velocity-Flat-Forrest-Play-v0 --num_envs=10
 ```
