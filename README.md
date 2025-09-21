@@ -157,13 +157,12 @@ Now, the collision parameters for one leg are set. THe other leg, being fully sy
 
 
 
-
+<!-- 
 More to come ... 
 
 
-
-
 The following instructions are still a work in progress.
+
 
 ## 📦 Installation
 
@@ -178,6 +177,7 @@ cd your-repo
 pip install -r requirements.txt
 
 ```
+-->
 
 ## Train Forrest:
 In Isaac Lab, you can use the following command to start reinforcement learning training for the robot in a selected environment:
@@ -246,3 +246,5 @@ Selects the task environment to run.
 - `--num_envs=10`
 Specifies the number of parallel environments, here 10 robots running simultaneously.
 This smaller number is convenient for testing and visualization, allowing you to observe the performance of multiple robots at once.
+
+More to come ... 
