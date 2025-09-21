@@ -182,7 +182,13 @@ pip install -r requirements.txt
 ## Train Forrest:
 In Isaac Lab, you can use the following command to start reinforcement learning training for the robot in a selected environment:
 ```bash
- ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py --task=Isaac-Velocity-Rough-Forrest-v0 --headless --max_iterations=10000 --num_envs=4096 --resume
+ ./isaaclab.sh \
+  -p scripts/reinforcement_learning/rsl_rl/train.py \
+  --task=Isaac-Velocity-Rough-Forrest-v0 \
+  --headless \
+  --max_iterations=10000 \
+  --num_envs=4096 \
+  --resume
 ```
 ### Argument Explanation:
 - `./isaaclab.sh`
@@ -222,7 +228,10 @@ Continues training from a previously saved checkpoint instead of starting from s
 
 ## Play Forrest:
 ```bash
-./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py --task=Isaac-Velocity-Flat-Forrest-Play-v0 --num_envs=10
+./isaaclab.sh \
+ -p scripts/reinforcement_learning/rsl_rl/play.py \
+ --task=Isaac-Velocity-Flat-Forrest-Play-v0 \
+ --num_envs=10
 ```
 
 ### Argument Explanation:
