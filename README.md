@@ -176,3 +176,15 @@ cd your-repo
 
 # Install dependencies (example for Python)
 pip install -r requirements.txt
+
+```
+
+### Train the Forrest:
+```bash
+ ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py --task=Isaac-Velocity-Rough-Forrest-v0 --headless --max_iterations=10000 --num_envs=4096 --resume
+```
+
+### Play the Forrest:
+```bash
+./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py --task=Isaac-Velocity-Flat-Forrest-Play-v0 --num_envs=10
+```
