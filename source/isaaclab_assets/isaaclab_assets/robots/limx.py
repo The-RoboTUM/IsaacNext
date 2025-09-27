@@ -22,7 +22,7 @@ from isaaclab.assets import ArticulationCfg
 TRON_CFG = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
-    usd_path=os.path.join(os.getcwd(), "symlinks/robot.usd") ,
+    usd_path=os.path.join(os.getcwd(), "symlinks/tron/robot.usd") ,
         # usd_path="symlinks/tron/robot.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(

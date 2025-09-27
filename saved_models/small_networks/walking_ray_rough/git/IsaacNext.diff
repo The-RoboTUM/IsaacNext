@@ -1,0 +1,111 @@
+--- git status ---
+On branch Forrest
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	renamed:    README.md -> README_OLD.md
+	new file:   noise_test.py
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   noise_test.py
+	modified:   source/isaaclab_assets/isaaclab_assets/robots/__init__.py
+	modified:   source/isaaclab_assets/isaaclab_assets/robots/limx.py
+	modified:   source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
+	modified:   source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/mdp/rewards.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	README.md
+	saved_models/
+	source/isaaclab_assets/isaaclab_assets/robots/forrest.py
+	source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/config/forrest/
+ 
+
+
+--- git diff ---
+diff --git a/README.md b/README_OLD.md
+similarity index 100%
+rename from README.md
+rename to README_OLD.md
+diff --git a/noise_test.py b/noise_test.py
+new file mode 100644
+index 00000000..5878b074
+--- /dev/null
++++ b/noise_test.py
+@@ -0,0 +1,4 @@
++from isaaclab.utils import noise
++
++print(dir(noise))
++
+diff --git a/source/isaaclab_assets/isaaclab_assets/robots/__init__.py b/source/isaaclab_assets/isaaclab_assets/robots/__init__.py
+index d745772d..3326a8c3 100644
+--- a/source/isaaclab_assets/isaaclab_assets/robots/__init__.py
++++ b/source/isaaclab_assets/isaaclab_assets/robots/__init__.py
+@@ -26,3 +26,4 @@ from .spot import *
+ from .unitree import *
+ from .universal_robots import *
+ from .limx import *
++from .forrest import *
+diff --git a/source/isaaclab_assets/isaaclab_assets/robots/limx.py b/source/isaaclab_assets/isaaclab_assets/robots/limx.py
+index 3e221321..245bf8e0 100644
+--- a/source/isaaclab_assets/isaaclab_assets/robots/limx.py
++++ b/source/isaaclab_assets/isaaclab_assets/robots/limx.py
+@@ -22,7 +22,7 @@ from isaaclab.assets import ArticulationCfg
+ TRON_CFG = ArticulationCfg(
+     prim_path="{ENV_REGEX_NS}/Robot",
+     spawn=sim_utils.UsdFileCfg(
+-    usd_path=os.path.join(os.getcwd(), "symlinks/robot.usd") ,
++    usd_path=os.path.join(os.getcwd(), "symlinks/tron/robot.usd") ,
+         # usd_path="symlinks/tron/robot.usd",
+         activate_contact_sensors=True,
+         rigid_props=sim_utils.RigidBodyPropertiesCfg(
+diff --git a/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py b/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
+index 73ceae04..f2d51056 100644
+--- a/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
++++ b/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
+@@ -7,6 +7,7 @@ import gymnasium as gym
+ import torch
+ from tensordict import TensorDict
+ 
++#from rsl_rl.rsl_rl.env import VecEnv
+ from rsl_rl.env import VecEnv
+ 
+ from isaaclab.envs import DirectRLEnv, ManagerBasedRLEnv
+diff --git a/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/mdp/rewards.py b/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/mdp/rewards.py
+index 7a1fc12a..4f094c08 100644
+--- a/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/mdp/rewards.py
++++ b/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/mdp/rewards.py
+@@ -94,8 +94,32 @@ def track_lin_vel_xy_yaw_frame_exp(
+     lin_vel_error = torch.sum(
+         torch.square(env.command_manager.get_command(command_name)[:, :2] - vel_yaw[:, :2]), dim=1
+     )
++    # print("velocity:")
++    # print(vel_yaw[:, :])
++    # print_base_quat(env)
+     return torch.exp(-lin_vel_error / std**2)
+ 
++# def print_base_quat(env):
++#     import numpy as np
++#     from scipy.spatial.transform import Rotation as R
++#
++#     body_pos = env.scene["robot"].data.body_pos_w  # (num_envs, num_bodies, 3)
++#     body_quat = env.scene["robot"].data.body_quat_w  # (num_envs, num_bodies, 4)
++#
++#     # Get position and quaternion of the first body
++#     pos = body_pos[0, 0].cpu().numpy()
++#     quat_wxyz = body_quat[0, 0].cpu().numpy()  # [w, x, y, z]
++#
++#     # SciPy expects [x, y, z, w], so reorder
++#     quat_xyzw = np.array([quat_wxyz[1], quat_wxyz[2], quat_wxyz[3], quat_wxyz[0]])
++#
++#     # Convert quaternion to Euler angles (roll, pitch, yaw)
++#     euler = R.from_quat(quat_xyzw).as_euler("xyz", degrees=True)  # degrees=True if you prefer degrees
++#
++#     print("Body[0] pos:", pos)
++#     print("Body[0] quat (wxyz):", quat_wxyz)
++#     print("Body[0] euler (rpy, deg):", euler)
++
+ 
+ def track_ang_vel_z_world_exp(
+     env, command_name: str, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")

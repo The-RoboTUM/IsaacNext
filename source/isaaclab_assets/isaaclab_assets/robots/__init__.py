@@ -26,3 +26,4 @@ from .spot import *
 from .unitree import *
 from .universal_robots import *
 from .limx import *
+from .forrest import *

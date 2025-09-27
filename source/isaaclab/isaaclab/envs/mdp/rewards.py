@@ -317,3 +317,8 @@ def track_ang_vel_z_exp(
     # compute the error
     ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_b[:, 2])
     return torch.exp(-ang_vel_error / std**2)
+
+def get_root_pos_w(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Return world-frame root position of the asset. Shape: (num_envs, 3)."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    return asset.data.root_pos_w
