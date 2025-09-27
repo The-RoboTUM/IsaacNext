@@ -108,10 +108,15 @@ def feet_symmetry_penalty(
 @configclass
 class ForrestRewards(RewardsCfg):
  #   Reward terms for the MDP.
-
+ #   positive weight: reward
+ #   negative weight: penalty
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
+
+    # Roll: rotation around the x-axis
+    # Pitch: rotation around the y-axis
+    # Yaw: rotation around the z-axis
     track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_yaw_frame_exp,
+        func=mdp.track_lin_vel_xy_yaw_frame_exp, # Yaw: rotation around the z-axis
         weight=1.0,
         params={"command_name": "base_velocity", "std": 0.5},
     )
@@ -147,12 +152,12 @@ class ForrestRewards(RewardsCfg):
             "asset_cfg": SceneEntityCfg(
                 "robot",
                 joint_names=[
-                    "l1_acetabulofemoral_lateral",
-                    "l5_metatarsophalangeal",
-                    "l6_interphalangeal",
-                    "r1_acetabulofemoral_lateral",
-                    "r5_metatarsophalangeal",
-                    "r6_interphalangeal",
+                    "l1_acetabulofemoral_lateral", # 左髋外展关节 # lateral 表示 “侧向的 / 靠近身体两侧的”。
+                    "l5_metatarsophalangeal", # 左脚趾根关节
+                    "l6_interphalangeal", # 左脚趾中节关节
+                    "r1_acetabulofemoral_lateral", # 右髋外展关节
+                    "r5_metatarsophalangeal", # 右脚趾根关节
+                    "r6_interphalangeal", # 右脚趾中节关节
                 ],
             )
         },
@@ -171,7 +176,11 @@ class ForrestRewards(RewardsCfg):
             )
         },
     )
+ # The robot’s forward direction is the x-axis.
 
+ # Roll: rotation around the x-axis
+ # Pitch: rotation around the y-axis
+ # Yaw: rotation around the z-axis
 
     gait_symetry = RewTerm(
         func=feet_symmetry_penalty,
@@ -197,23 +206,11 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.robot = FORREST_CFG.replace(prim_path="{ENV_REGEX_NS}/Forrest_URDF")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Forrest_URDF/base_link"
 
-        # TEMP (Used only to make flat env model work)
-        # self.scene.height_scanner = None
-        # self.observations.policy.height_scan = None
-        # self.curriculum.terrain_levels = None
 
         # Solve issue with dropping contacts
         self.sim.physx.gpu_collision_stack_size = 160 * 1024 * 1024  # 80 MB
         # self.sim.physx.gpu_max_rigid_patch_count = 400000
 
-        # Sensors
-        # self.scene.base_contact = ContactSensorCfg(
-        #     prim_path="{ENV_REGEX_NS}/Forrest_URDF/Base_Assy_V2v18_1",
-        #     update_period=0.0,
-        #     history_length=1,
-        #     debug_vis=True,
-        #     track_air_time=True,
-        # )
         self.scene.contact_forces = ContactSensorCfg(
             prim_path="{ENV_REGEX_NS}/Forrest_URDF/(S45_Digit_Assyv2_1|S45_Digit_Assyv2_mirror_1|base_link|Differential_Cage_Assyv7_mirror_1|Differential_Cage_Assyv7_1|Knee_Assyv9_mirror_1|Knee_Assyv9_1)",
             update_period=0.0,  # update every sim step
@@ -302,12 +299,6 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                                                                           "Knee_Assyv9_mirror_1",
                                                                           "Knee_Assyv9_1"
                                                                           )
-
-        # # DEBUG
-        # self.observations.policy.enable_corruption = False
-        # # remove random pushing
-        # self.events.base_external_force_torque = None
-        # self.events.push_robot = None
 
 
 @configclass
