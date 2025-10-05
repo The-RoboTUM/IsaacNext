@@ -1,11 +1,14 @@
+from dataclasses import MISSING
 
 
+import isaaclab.utils.string as string_utils
+import isaaclab.envs
 # Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import RewardTermCfg as RewTerm, ActionTerm
 from isaaclab.managers import SceneEntityCfg, TerminationTermCfg
 from isaaclab.utils import configclass
 
@@ -18,7 +21,7 @@ from isaaclab.sensors import ContactSensorCfg
 ##
 from isaaclab_assets import FORREST_CFG  # isort: skip
 
-from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedEnv
 from isaaclab.assets.articulation import Articulation
 
 FEET_CFG = SceneEntityCfg(
@@ -186,9 +189,180 @@ class ForrestRewards(RewardsCfg):
     )
 
 
+
+# class TendonActionTerm(ActionTerm):
+#     """Joint Action term that applies the processed actions to the articulation's joints as position commands.
+#     Incorporates Tendon Math"""
+#
+#     r"""Base class for joint actions.
+#
+#         This action term performs pre-processing of the raw actions using affine transformations (scale and offset).
+#         These transformations can be configured to be applied to a subset of the articulation's joints.
+#
+#         Mathematically, the action term is defined as:
+#
+#         .. math::
+#
+#            \text{action} = \text{offset} + \text{scaling} \times \text{input action}
+#
+#         where :math:`\text{action}` is the action that is sent to the articulation's actuated joints, :math:`\text{offset}`
+#         is the offset applied to the input action, :math:`\text{scaling}` is the scaling applied to the input
+#         action, and :math:`\text{input action}` is the input action from the user.
+#
+#         Based on above, this kind of action transformation ensures that the input and output actions are in the same
+#         units and dimensions. The child classes of this action term can then map the output action to a specific
+#         desired command of the articulation's joints (e.g. position, velocity, etc.).
+#         """
+#
+#
+#     """The configuration of the action term."""
+#     cfg : TendonActionTermCfg
+#     """The configuration of the action term."""
+#     _asset: Articulation
+#     """The articulation asset on which the action term is applied."""
+#     _scale: torch.Tensor | float
+#     """The scaling factor applied to the input action."""
+#     _offset: torch.Tensor | float
+#     """The offset applied to the input action."""
+#     _clip: torch.Tensor
+#     """The clip applied to the input action."""
+#
+#     def __init__(self, cfg: TendonActionTermCfg, env: ManagerBasedEnv):
+#         # initialize the action term
+#         super().__init__(cfg, env)
+#
+#         # resolve the joints over which the action term is applied
+#         self._joint_ids_all, self._joint_names_all = self._asset.find_joints(self.__joint_names_actuated + self.__joint_names_tendon_driven, preserve_order=True)
+#         self._joint_ids_actuated, self._joint_names_actuated = self._asset.find_joints(self.__joint_names_actuated, preserve_order=True)
+#         self._joint_ids_tendon_driven, self._joint_names_tendon_driven = self._asset.find_joints(self.__joint_names_tendon_driven, preserve_order=True)
+#
+#         self._num_joints_all = len(self._joint_ids_all)
+#         self._num_actuated_joints = len(self._joint_ids_actuated)
+#         # log the resolved joint names for debugging
+#         omni.log.info(
+#             f"Resolved joint names for the action term {self.__class__.__name__}:"
+#             f" {self._joint_names_all} [{self._joint_ids_all}]"
+#         )
+#
+#         # create tensors for raw and processed actions
+#         self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
+#         self._processed_direct_actions = torch.zeros_like(self.raw_actions)
+#         self._processed_actions = torch.zeros(self.num_envs, self._num_joints_all, device=self.device)
+#
+#         # parse scale
+#         if isinstance(cfg.scale, (float, int)):
+#             self._scale = float(cfg.scale)
+#         elif isinstance(cfg.scale, dict):
+#             self._scale = torch.ones(self.num_envs, self.action_dim, device=self.device)
+#             # resolve the dictionary config
+#             index_list, _, value_list = string_utils.resolve_matching_names_values(self.cfg.scale, self._joint_names)
+#             self._scale[:, index_list] = torch.tensor(value_list, device=self.device)
+#         else:
+#             raise ValueError(f"Unsupported scale type: {type(cfg.scale)}. Supported types are float and dict.")
+#
+#         # parse clip
+#         if self.cfg.clip is not None:
+#             if isinstance(cfg.clip, dict):
+#                 self._clip = torch.tensor([[-float("inf"), float("inf")]], device=self.device).repeat(
+#                     self.num_envs, self.action_dim, 1
+#                 )
+#                 index_list, _, value_list = string_utils.resolve_matching_names_values(self.cfg.clip, self._joint_names)
+#                 self._clip[:, index_list] = torch.tensor(value_list, device=self.device)
+#             else:
+#                 raise ValueError(f"Unsupported clip type: {type(cfg.clip)}. Supported types are dict.")
+#
+#         # use default joint positions as offset
+#         self._offset = self._asset.data.default_joint_pos[:, self._joint_ids_actuated].clone()
+#
+#     """
+#     Operations.
+#     """
+#     def apply_actions(self):
+#         # set position targets
+#         self._asset.set_joint_position_target(self.processed_actions, joint_ids=self._joint_ids_all)
+#
+#     def process_actions(self, actions: torch.Tensor):
+#         # store the raw actions
+#         self._raw_actions[:] = actions
+#         # apply the affine transformations
+#         self._processed_direct_actions = self._raw_actions * self._scale + self._offset
+#         # clip actions
+#         if self.cfg.clip is not None:
+#             self._processed_direct_actions = torch.clamp(
+#                 self._processed_direct_actions, min=self._clip[:, :, 0], max=self._clip[:, :, 1]
+#             )
+#         # step 1: transfer the directly controlled actions: use index of joint_idx_actuated in joint_idx_all
+#         # step 2: for each tendon name, index of joint_idx in joint_idx_all: compute
+#         # _processed_actions[0] -applied-to> joint_ids_all[0]
+#
+#     def reset(self, env_ids: Sequence[int] | None = None) -> None:
+#         self._raw_actions[env_ids] = 0.0
+#
+#     """
+#     Properties.
+#     """
+#
+#     @property
+#     def action_dim(self) -> int:
+#         return self._num_actuated_joints
+#
+#     @property
+#     def raw_actions(self) -> torch.Tensor:
+#         return self._raw_actions
+#
+#     @property
+#     def processed_actions(self) -> torch.Tensor:
+#         return self._processed_actions
+#
+#     @property
+#     def IO_descriptor(self) -> GenericActionIODescriptor:
+#         """The IO descriptor of the action term.
+#
+#         This descriptor is used to describe the action term of the joint action.
+#         It adds the following information to the base descriptor:
+#         - joint_names: The names of the joints.
+#         - scale: The scale of the action term.
+#         - offset: The offset of the action term.
+#         - clip: The clip of the action term.
+#
+#         Returns:
+#             The IO descriptor of the action term.
+#         """
+#         super().IO_descriptor
+#         self._IO_descriptor.shape = (self.action_dim,)
+#         self._IO_descriptor.dtype = str(self.raw_actions.dtype)
+#         self._IO_descriptor.action_type = "TendonActionTerm"
+#         self._IO_descriptor.joint_names = self._joint_names_actuated
+#         self._IO_descriptor.scale = self._scale
+#         # FIXME: This is not correct. Add list support.
+#         if self.cfg.clip is not None:
+#             if isinstance(self._clip, torch.Tensor):
+#                 self._IO_descriptor.clip = self._clip[0].detach().cpu().numpy().tolist()
+#             else:
+#                 self._IO_descriptor.clip = self._clip
+#         else:
+#             self._IO_descriptor.clip = None
+#         return self._IO_descriptor
+#
+#
+#
+#
+#
+# @configclass
+# class TendonActionTermCfg:
+#     class_type: type[ActionTerm] = TendonActionTerm
+#     asset_name: str = MISSING
+#     scale: float = 1.0
+#
+# @configclass
+# class CustomActionManagerCfg:
+#     joint_pos = TendonActionTermCfg()
+
 @configclass
 class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     rewards: ForrestRewards = ForrestRewards()
+    # TODO: Implement Tendon Math
+    # actions: CustomActionManagerCfg = CustomActionManagerCfg(joint_pos=TendonActionTermCfg(asset_name="robot", scale=0.5, use_default_offset=True))
 
     def __post_init__(self):
         # post init of parent
