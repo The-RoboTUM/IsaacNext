@@ -52,11 +52,14 @@ def _apply_overrides(obj, overrides: dict):
     if isinstance(obj, dict):
         for k, v in overrides.items():
             if isinstance(v, dict):
-                # 如果原来没有该键，或该键不是 dict，则先放一个空 dict 再递归
-                if k not in obj or not isinstance(obj.get(k), dict):
-                    obj[k] = {}
-                _apply_overrides(obj[k], v)
+                if k in obj:
+                    # 这里可能是 dict，也可能是配置对象（如 SceneEntityCfg）
+                    _apply_overrides(obj[k], v)
+                else:
+                    # 没有该键才直接放进去
+                    obj[k] = v
             else:
+                # 标量或列表等，直接覆盖即可
                 obj[k] = v
         return
 
@@ -441,6 +444,13 @@ class ForrestRoughEnvCfg(ForrestLocomotionVelocityEnvCfg):
             if "rewards" in _ov:
                 r = _ov["rewards"]
                 # 保留原有明确映射
+
+                # === 支持 YAML 用 null 禁用某个 reward ===
+                for term_name, term_cfg in list(r.items()):
+                    if term_cfg is None and hasattr(self.rewards, term_name):
+                        setattr(self.rewards, term_name, None)
+                        del r[term_name]  # 从 r 里移除，避免后面再处理这个 term
+
                 if "flat_orientation_l2" in r:
                     self.rewards.flat_orientation_l2.weight = r["flat_orientation_l2"]
                 if "action_rate_l2" in r:
@@ -456,7 +466,7 @@ class ForrestRoughEnvCfg(ForrestLocomotionVelocityEnvCfg):
                 if "gait_symmetry" in r:
                     self.rewards.gait_symetry.weight = r["gait_symmetry"]["weight"]
                     self.rewards.gait_symetry.params["alpha"] = r["gait_symmetry"]["alpha"]
-                # === NEW/UPDATED: 通用奖励兜底覆盖 ===
+                # === 通用奖励兜底覆盖 ===
                 _apply_reward_overrides(self.rewards, r)
 
 @configclass

@@ -446,8 +446,17 @@ class ForrestFlatEnvCfg(ForrestLocomotionVelocityEnvCfg):
                     _apply_overrides(getattr(self, key), _ov[key])
             if "rewards" in _ov:
                 r = _ov["rewards"]
-                if "flat_orientation_l2" in r: self.rewards.flat_orientation_l2.weight = r["flat_orientation_l2"]
-                if "action_rate_l2" in r: self.rewards.action_rate_l2.weight = r["action_rate_l2"]
+
+                # === 支持 YAML 用 null 禁用某个 reward ===
+                for term_name, term_cfg in list(r.items()):
+                    if term_cfg is None and hasattr(self.rewards, term_name):
+                        setattr(self.rewards, term_name, None)
+                        del r[term_name]  # 从 r 里移除，避免后面再处理这个 term
+
+                if "flat_orientation_l2" in r:
+                    self.rewards.flat_orientation_l2.weight = r["flat_orientation_l2"]
+                if "action_rate_l2" in r:
+                    self.rewards.action_rate_l2.weight = r["action_rate_l2"]
                 if "lin_vel_z_l2" in r and hasattr(self.rewards, "lin_vel_z_l2"):
                     self.rewards.lin_vel_z_l2.weight = r["lin_vel_z_l2"]
                 if "dof_acc_l2" in r:
@@ -459,7 +468,8 @@ class ForrestFlatEnvCfg(ForrestLocomotionVelocityEnvCfg):
                 if "gait_symmetry" in r:
                     self.rewards.gait_symetry.weight = r["gait_symmetry"]["weight"]
                     self.rewards.gait_symetry.params["alpha"] = r["gait_symmetry"]["alpha"]
-                # === NEW/UPDATED: 通用奖励兜底覆盖（让 YAML 里更多 reward 键直接生效）===
+
+                # === 通用奖励兜底覆盖（让 YAML 里更多 reward 键直接生效）===
                 _apply_reward_overrides(self.rewards, r)
 
 
