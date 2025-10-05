@@ -682,3 +682,46 @@ class LocomotionVelocityRoughEnvCfg(ManagerBasedRLEnvCfg):
         # 有 terrain_levels → 打开 terrain_generator.curriculum（启用地形课程学习）。
         # 没有 terrain_levels → 关闭 terrain_generator.curriculum（固定难度）。
         # 两个分支都先确认确实有地形生成器，才去改它的 curriculum 开关。
+
+
+# =====================================================================
+# =====================  ⭐⭐ 重要新增部分 ⭐⭐  =========================
+# 复制 LocomotionVelocityRoughEnvCfg 的实现
+# =====================================================================
+
+@configclass
+class ForrestLocomotionVelocityEnvCfg(ManagerBasedRLEnvCfg):
+    """[Forrest] Copied environment config (no inheritance)."""
+
+    # ⚠️ 内容与 LocomotionVelocityRoughEnvCfg 完全一致，仅类名不同
+    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
+    observations: ObservationsCfg = ObservationsCfg()
+    actions: ActionsCfg = ActionsCfg()
+    commands: CommandsCfg = CommandsCfg()
+
+    rewards: RewardsCfg = RewardsCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
+    events: EventCfg = EventCfg()
+    curriculum: CurriculumCfg = CurriculumCfg()
+
+    def __post_init__(self):
+        self.decimation = 4
+        self.episode_length_s = 20.0
+        self.sim.dt = 0.005
+        self.sim.render_interval = self.decimation
+
+        self.sim.physics_material = self.scene.terrain.physics_material
+        self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
+
+        if self.scene.height_scanner is not None:
+            self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+        if self.scene.contact_forces is not None:
+            self.scene.contact_forces.update_period = self.sim.dt
+
+        if getattr(self.curriculum, "terrain_levels", None) is not None:
+            if self.scene.terrain.terrain_generator is not None:
+                self.scene.terrain.terrain_generator.curriculum = True
+        else:
+            if self.scene.terrain.terrain_generator is not None:
+                self.scene.terrain.terrain_generator.curriculum = False
+# =====================================================================

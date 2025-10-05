@@ -10,7 +10,12 @@ from isaaclab.managers import SceneEntityCfg, TerminationTermCfg
 from isaaclab.utils import configclass
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
-from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg, RewardsCfg
+
+# ★★★ 修改点：导入改为 ForrestLocomotionVelocityEnvCfg ★★★
+from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
+    ForrestLocomotionVelocityEnvCfg,
+    RewardsCfg,
+)
 
 from isaaclab.sensors import ContactSensorCfg
 ##
@@ -21,13 +26,134 @@ from isaaclab_assets import FORREST_CFG  # isort: skip
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.assets.articulation import Articulation
 
+
+
+import torch
+# from isaaclab.utils import torch as torch_utils
+
+
+# ===========================================================
+# === 🔹 新增部分：YAML 加载与覆盖工具 (Added)
+# ===========================================================
+from pathlib import Path
+import yaml
+
+# === NEW/UPDATED: 工具函数，识别是否是 base_velocity 的 ranges 扁平键 ===
+def _looks_like_ranges_dict(d: dict) -> bool:
+    if not isinstance(d, dict):
+        return False
+    keys = set(d.keys())
+    range_keys = {"lin_vel_x", "lin_vel_y", "ang_vel_z", "heading"}
+    return len(keys & range_keys) > 0 and "ranges" not in keys
+
+# === NEW/UPDATED ===
+def _apply_overrides(obj, overrides: dict):
+    # 支持 obj 是 dict 的情况
+    if isinstance(obj, dict):
+        for k, v in overrides.items():
+            if isinstance(v, dict):
+                # 如果原来没有该键，或该键不是 dict，则先放一个空 dict 再递归
+                if k not in obj or not isinstance(obj.get(k), dict):
+                    obj[k] = {}
+                _apply_overrides(obj[k], v)
+            else:
+                obj[k] = v
+        return
+
+    for k, v in overrides.items():
+        # === NEW/UPDATED: terminations 容器到具体 term 的路由（例如 base_contact）===
+        if k == "base_contact" and hasattr(obj, "base_contact") and isinstance(v, dict):
+            _apply_overrides(getattr(obj, "base_contact"), v)
+            continue
+
+        # === NEW/UPDATED: commands.base_velocity 扁平 -> .ranges 路由 ===
+        # 适配 YAML:
+        # commands:
+        #   base_velocity:
+        #     lin_vel_x: [-4, 4]
+        if k == "base_velocity" and hasattr(obj, "base_velocity") and isinstance(v, dict):
+            base_vel_obj = getattr(obj, "base_velocity")
+            # 如果传入的是扁平写法（含 lin_vel_x 等，但不含 ranges）
+            if _looks_like_ranges_dict(v) and hasattr(base_vel_obj, "ranges"):
+                _apply_overrides(base_vel_obj.ranges, v)
+                continue
+            # 否则常规递归
+            _apply_overrides(base_vel_obj, v)
+            continue
+
+        if not hasattr(obj, k):
+            # 特殊键映射（scene 层）
+            if k == "robot_prim_path" and hasattr(obj, "robot"):
+                obj.robot = obj.robot.replace(prim_path=v)
+                continue
+            if k == "height_scanner_prim_path" and hasattr(obj, "height_scanner"):
+                obj.height_scanner.prim_path = v
+                continue
+            # 事件/终止项里的快捷键
+            if k == "asset_body_names" and hasattr(obj, "params"):
+                if "asset_cfg" in obj.params:
+                    obj.params["asset_cfg"].body_names = v
+                continue
+            if k == "base_contact_body_names":
+                # 允许从 terminations 层级快捷配置 body_names
+                if hasattr(obj, "base_contact") and hasattr(obj.base_contact, "params"):
+                    bc = obj.base_contact
+                    if "sensor_cfg" in bc.params:
+                        bc.params["sensor_cfg"].body_names = tuple(v)
+                        continue
+            continue
+
+        cur = getattr(obj, k)
+        if isinstance(v, dict) and cur is not None:
+            _apply_overrides(cur, v)
+        else:
+            setattr(obj, k, v)
+
+def _load_yaml_here(file_name: str) -> dict:
+    path = Path(__file__).with_name(file_name)
+    if not path.exists():
+        return {}
+    with open(path, "r") as f:
+        return yaml.safe_load(f) or {}
+
+# === NEW/UPDATED: 通用奖励项覆盖 ===
+def _apply_reward_overrides(rewards_obj, rdict: dict):
+    """
+    通用奖励覆盖：若 term 存在，则设置 weight / 常见 params 字段。
+    支持的 params: std / threshold / alpha / joint_names（落到 asset_cfg.joint_names）
+    """
+    for term_name, term_cfg in rdict.items():
+        if not hasattr(rewards_obj, term_name):
+            continue
+        term = getattr(rewards_obj, term_name)
+        # 标量：直接当作 weight
+        if isinstance(term_cfg, (int, float)):
+            term.weight = term_cfg
+            continue
+        if not isinstance(term_cfg, dict):
+            continue
+        # weight
+        if "weight" in term_cfg:
+            term.weight = term_cfg["weight"]
+        # 常见 params
+        if hasattr(term, "params"):
+            if "std" in term_cfg:
+                term.params["std"] = term_cfg["std"]
+            if "threshold" in term_cfg:
+                term.params["threshold"] = term_cfg["threshold"]
+            if "alpha" in term_cfg:
+                term.params["alpha"] = term_cfg["alpha"]
+            if "joint_names" in term_cfg and "asset_cfg" in term.params:
+                term.params["asset_cfg"].joint_names = term_cfg["joint_names"]
+
+
+# ===========================================================
+# Helper functions
+# ===========================================================
 FEET_CFG = SceneEntityCfg(
     "robot",
     body_names=("S45_Digit_Assyv2_1", "S45_Digit_Assyv2_mirror_1"),
 )
-
-import torch
-# from isaaclab.utils import torch as torch_utils
 
 def quat_to_rot_matrix(q: torch.Tensor) -> torch.Tensor:
     """Convert quaternions (wxyz) to rotation matrices."""
@@ -196,7 +322,7 @@ class ForrestRewards(RewardsCfg):
 
 
 @configclass
-class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+class ForrestRoughEnvCfg(ForrestLocomotionVelocityEnvCfg):
     rewards: ForrestRewards = ForrestRewards()
 
     def __post_init__(self):
@@ -300,6 +426,38 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                                                                           "Knee_Assyv9_1"
                                                                           )
 
+        # ===========================================================
+        # === 🔹 新增部分：从 YAML 文件 rough_env_overrides.yaml 读取并覆盖参数
+        # ===========================================================
+        _ov = _load_yaml_here("rough_env_overrides.yaml")
+        if _ov:
+            if "scene" in _ov: _apply_overrides(self.scene, _ov["scene"])
+            if "sim" in _ov: _apply_overrides(self.sim, _ov["sim"])
+            # === NEW/UPDATED: curriculum 也纳入（若你将来在 rough 里用到）===
+            for key in ("curriculum", "events", "commands", "terminations"):
+                if key in _ov and hasattr(self, key):
+                    _apply_overrides(getattr(self, key), _ov[key])
+
+            if "rewards" in _ov:
+                r = _ov["rewards"]
+                # 保留原有明确映射
+                if "flat_orientation_l2" in r:
+                    self.rewards.flat_orientation_l2.weight = r["flat_orientation_l2"]
+                if "action_rate_l2" in r:
+                    self.rewards.action_rate_l2.weight = r["action_rate_l2"]
+                if "lin_vel_z_l2" in r and hasattr(self.rewards, "lin_vel_z_l2"):
+                    self.rewards.lin_vel_z_l2.weight = r["lin_vel_z_l2"]
+                if "dof_acc_l2" in r:
+                    self.rewards.dof_acc_l2.weight = r["dof_acc_l2"]["weight"]
+                    self.rewards.dof_acc_l2.params["asset_cfg"].joint_names = r["dof_acc_l2"]["joint_names"]
+                if "dof_torques_l2" in r:
+                    self.rewards.dof_torques_l2.weight = r["dof_torques_l2"]["weight"]
+                    self.rewards.dof_torques_l2.params["asset_cfg"].joint_names = r["dof_torques_l2"]["joint_names"]
+                if "gait_symmetry" in r:
+                    self.rewards.gait_symetry.weight = r["gait_symmetry"]["weight"]
+                    self.rewards.gait_symetry.params["alpha"] = r["gait_symmetry"]["alpha"]
+                # === NEW/UPDATED: 通用奖励兜底覆盖 ===
+                _apply_reward_overrides(self.rewards, r)
 
 @configclass
 class ForrestRoughEnvCfg_PLAY(ForrestRoughEnvCfg):
@@ -328,6 +486,26 @@ class ForrestRoughEnvCfg_PLAY(ForrestRoughEnvCfg):
         # remove random pushing
         self.events.base_external_force_torque = None
         self.events.push_robot = None
+
+        # === ✅ 新增：允许 YAML 覆盖 PLAY 模式参数 ===
+        _ov = _load_yaml_here("rough_env_overrides.yaml")
+        if _ov and "play" in _ov:
+            play_cfg = _ov["play"]
+
+            # 支持 randomization_off 显式控制
+            if "randomization_off" in play_cfg:
+                roff = bool(play_cfg["randomization_off"])
+                self.observations.policy.enable_corruption = not roff
+                if roff:
+                    self.events.base_external_force_torque = None
+                    self.events.push_robot = None
+
+            # 支持 episode_length_s
+            if "episode_length_s" in play_cfg:
+                self.episode_length_s = play_cfg["episode_length_s"]
+
+            # 覆盖 commands / terminations / events 等（含无 ranges 的写法）
+            _apply_overrides(self, play_cfg)
 
 
 

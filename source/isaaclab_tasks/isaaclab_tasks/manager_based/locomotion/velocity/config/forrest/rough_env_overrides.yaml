@@ -1,0 +1,121 @@
+# ===========================
+# Forrest Rough Env Overrides
+# 崎岖环境参数覆盖 (Rough terrain environment overrides)
+# ===========================
+
+sim:
+  physx:
+    gpu_collision_stack_size: 167772160   # GPU 碰撞堆栈大小 (GPU collision stack size)
+
+scene:
+  robot_prim_path: "{ENV_REGEX_NS}/Forrest_URDF"   # 机器人 URDF 路径 (robot URDF prim path)
+  height_scanner_prim_path: "{ENV_REGEX_NS}/Forrest_URDF/base_link"  # 高度扫描器基准路径 (height scanner prim path)
+  contact_forces:
+    prim_path: "{ENV_REGEX_NS}/Forrest_URDF/(S45_Digit_Assyv2_1|S45_Digit_Assyv2_mirror_1|base_link|Differential_Cage_Assyv7_mirror_1|Differential_Cage_Assyv7_1|Knee_Assyv9_mirror_1|Knee_Assyv9_1)"
+    update_period: 0.0
+    history_length: 6
+    debug_vis: true
+    track_air_time: true
+
+events:
+  push_robot: null             # 禁用推机器人事件 (disable random push)
+  add_base_mass: null          # 禁用额外质量 (disable mass perturbation)
+  reset_robot_joints:
+    position_range: [1.0, 1.0]    # 机器人关节重置位置范围 (joint reset position range)
+                                  # - 控制关节初始角度的随机化范围
+                                  # - 这里 [1.0, 1.0] 表示固定在 1.0（无随机性）
+  base_external_force_torque:
+    asset_body_names: ["base_link"]  # 施加外力/外力矩的部位 (body names to apply external force/torque)
+                                     # - 通常是 "base_link"（机器人躯干）
+                                     # - 在 reset 或扰动时用于施加推力
+  reset_base:
+    pose_range:                      # 基座初始位姿范围 (base pose reset range)
+      x: [-0.5, 0.5]                 # X 方向位置随机范围 (initial x position range)
+      y: [-0.5, 0.5]                 # Y 方向位置随机范围 (initial y position range)
+      yaw: [-3.14, 3.14]             # 偏航角随机范围 (initial yaw orientation range, in radians)
+    velocity_range:                  # 基座初始速度范围 (base initial velocity range)
+      x: [0.0, 0.0]                  # 初始 x 速度 (initial x velocity)
+      y: [0.0, 0.0]                  # 初始 y 速度 (initial y velocity)
+      z: [0.0, 0.0]                  # 初始 z 速度 (initial z velocity)
+      roll: [0.0, 0.0]               # 初始滚转角速度 (initial roll angular velocity)
+      pitch: [0.0, 0.0]              # 初始俯仰角速度 (initial pitch angular velocity)
+      yaw: [0.0, 0.0]                # 初始偏航角速度 (initial yaw angular velocity)
+  base_com:
+    asset_body_names: ["base_link"]  # 修改重心的目标部位 (body names for center of mass perturbation)
+                                     # - "base_link" 表示扰动机器人主躯干的质心
+                                     # - 常用于 domain randomization（模拟不同质量分布）
+
+rewards:
+  termination_penalty: -200.0   # 终止惩罚 (termination penalty)
+
+  track_lin_vel_xy_exp:         # 线速度奖励 (linear velocity tracking)
+    weight: 1.0
+    std: 0.5
+  track_ang_vel_z_exp:          # 偏航角速度奖励 (angular velocity tracking)
+    weight: 1.0
+    std: 0.5
+
+  feet_air_time:                # 脚离地时间奖励 (reward for foot air time)
+    weight: 0.0
+    threshold: 0.4
+  feet_slide:                   # 脚滑动惩罚 (penalty for sliding feet)
+    weight: 0.0
+
+  joint_deviation_l1:           # 非关键关节偏差惩罚 (penalty for non-essential joint deviation)
+    weight: -0.1
+    joint_names: ["l1_acetabulofemoral_lateral","l5_metatarsophalangeal","l6_interphalangeal",
+                  "r1_acetabulofemoral_lateral","r5_metatarsophalangeal","r6_interphalangeal"]
+
+  hip_deviation_l1:             # 髋关节偏差惩罚 (penalty for hip roll deviation)
+    weight: -0.3
+    joint_names: ["l0_acetabulofemoral_roll","r0_acetabulofemoral_roll"]
+
+  gait_symmetry:                # 步态对称性惩罚 (penalty for gait asymmetry)
+    weight: -1.0
+    alpha: 0.001
+
+  lin_vel_z_l2: 0.0             # 关闭竖直速度惩罚 (disable vertical velocity penalty)
+  flat_orientation_l2: -1.0     # 保持躯干直立 (penalty for orientation deviation)
+  action_rate_l2: -0.0025       # 动作变化过快惩罚 (penalty for rapid action changes)
+
+  dof_acc_l2:                   # 关节加速度惩罚 (penalty for DOF accelerations)
+    weight: -1.25e-7
+    joint_names: ["l0_acetabulofemoral_roll","l1_acetabulofemoral_lateral","l2_pseudo_acetabulofemoral_flexion",
+                  "l3f_femorotibial_front","l5_metatarsophalangeal","l6_interphalangeal",
+                  "r0_acetabulofemoral_roll","r1_acetabulofemoral_lateral","r2_pseudo_acetabulofemoral_flexion",
+                  "r3f_femorotibial_front","r5_metatarsophalangeal","r6_interphalangeal"]
+
+  dof_torques_l2:               # 关节力矩惩罚 (penalty for DOF torques)
+    weight: 0.0
+    joint_names: ["l0_acetabulofemoral_roll","l1_acetabulofemoral_lateral","l2_pseudo_acetabulofemoral_flexion",
+                  "l3f_femorotibial_front","l5_metatarsophalangeal","l6_interphalangeal",
+                  "r0_acetabulofemoral_roll","r1_acetabulofemoral_lateral","r2_pseudo_acetabulofemoral_flexion",
+                  "r3f_femorotibial_front","r5_metatarsophalangeal","r6_interphalangeal"]
+
+commands:
+  base_velocity:                # 指令速度范围 (commanded base velocities)
+    ranges:
+      lin_vel_x: [-4.0, 4.0]      # 前后速度 (forward/backward)
+      lin_vel_y: [-1.0, 1.0]      # 侧向速度 (lateral)
+      ang_vel_z: [-1.0, 1.0]      # 偏航角速度 (yaw angular)
+
+terminations:
+  base_contact:
+    params:
+      sensor_cfg:
+        body_names:
+          - base_link
+          - Differential_Cage_Assyv7_mirror_1
+          - Differential_Cage_Assyv7_1
+          - Knee_Assyv9_mirror_1
+          - Knee_Assyv9_1
+
+play:   # 仅在 ForrestRoughEnvCfg_PLAY 使用 (PLAY variant only)
+  episode_length_s: 40.0        # 每个 episode 长度 (episode length in seconds)
+  commands:
+    base_velocity:
+      ranges:
+        lin_vel_x: [0.0, 1.5]     # 缩小前后速度范围 (smaller forward velocity range for play)
+        lin_vel_y: [-0.5, 0.5]    # 允许少量侧向 (allow limited lateral movement)
+        ang_vel_z: [-1.0, 1.0]    # 偏航角速度 (yaw angular velocity)
+  randomization_off: true       # 关闭随机性 (disable randomization in play mode)

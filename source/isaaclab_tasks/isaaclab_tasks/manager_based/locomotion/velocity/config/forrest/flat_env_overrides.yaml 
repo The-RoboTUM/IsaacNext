@@ -1,0 +1,132 @@
+# ===========================
+# Forrest Flat Env Overrides
+# 平地环境参数覆盖 (Flat terrain environment overrides)
+# ===========================
+
+sim:
+  physx:
+    gpu_collision_stack_size: 167772160   # GPU 碰撞堆栈大小 (GPU collision stack size, bytes)
+
+scene:
+  robot_prim_path: "{ENV_REGEX_NS}/Forrest_URDF"   # 机器人 URDF 路径 (robot URDF prim path)
+  height_scanner_prim_path: "{ENV_REGEX_NS}/Forrest_URDF/base_link"  # 高度扫描器基准路径 (height scanner prim path)
+  terrain:
+    terrain_type: "plane"     # 地形类型 = 平面 (terrain type: flat plane)
+    terrain_generator: null   # 禁用地形生成器 (disable terrain generator)
+  contact_forces:
+    prim_path: "{ENV_REGEX_NS}/Forrest_URDF/(S45_Digit_Assyv2_1|S45_Digit_Assyv2_mirror_1|base_link|Differential_Cage_Assyv7_mirror_1|Differential_Cage_Assyv7_1|Knee_Assyv9_mirror_1|Knee_Assyv9_1)"
+    update_period: 0.0        # 每一步更新接触力 (update contact forces every sim step)
+    history_length: 6         # 保留历史步数 (history buffer length)
+    debug_vis: true           # 开启调试可视化 (enable debug visualization)
+    track_air_time: true      # 追踪脚离地时间 (track foot air time)
+
+curriculum:
+  terrain_levels: null         # 禁用地形课程训练 (disable terrain curriculum)
+
+events:
+  push_robot: null             # 禁用随机推机器人 (disable random pushes)
+  add_base_mass: null          # 禁用随机质量扰动 (disable adding extra mass)
+  reset_robot_joints:
+    position_range: [1.0, 1.0] # 关节重置范围 (joint reset position range)
+  base_external_force_torque:
+    asset_body_names: ["base_link"]  # 外力施加位置 (body name for external force application)
+  reset_base:
+    pose_range:                # 基座重置范围 (base reset pose range)
+      x: [-0.5, 0.5]           # X 方向偏移范围 (range in x axis)
+      y: [-0.5, 0.5]           # Y 方向偏移范围 (range in y axis)
+      yaw: [-3.14, 3.14]       # 偏航角范围 (yaw range in radians)
+    velocity_range:            # 基座初始速度范围 (initial velocity ranges)
+      x: [0.0, 0.0]            # 初始 X 方向线速度 (initial linear velocity along X)
+      y: [0.0, 0.0]            # 初始 Y 方向线速度 (initial linear velocity along Y)
+      z: [0.0, 0.0]            # 初始 Z 方向线速度 (initial linear velocity along Z)
+      roll: [0.0, 0.0]         # 初始滚转角速度 (initial angular velocity around X, roll)
+      pitch: [0.0, 0.0]        # 初始俯仰角速度 (initial angular velocity around Y, pitch)
+      yaw: [0.0, 0.0]          # 初始偏航角速度 (initial angular velocity around Z, yaw)
+  base_com:
+    asset_body_names: ["base_link"]  # 重心扰动目标 (center of mass perturbation target)
+
+rewards:
+  termination_penalty: -200.0       # 任务终止惩罚 (penalty when terminated)
+
+  track_lin_vel_xy_exp:             # 跟踪平面线速度 (track linear velocity XY in yaw frame)
+    weight: 1.0
+    std: 0.5                        # 速度误差标准差 (std dev for error weighting)
+    # 等价于：
+    # term = self.rewards.track_lin_vel_xy_exp
+    # term.weight = 1.0
+    # term.params["std"] = 0.5
+
+  track_ang_vel_z_exp:              # 跟踪偏航角速度 (track angular velocity z in world frame)
+    weight: 1.0
+    std: 0.5
+
+  feet_air_time:                    # 脚在空中时间奖励 (reward for air time of feet)
+    weight: 0.0
+    threshold: 0.4
+  feet_slide:                       # 脚滑动惩罚 (penalty for foot sliding)
+    weight: 0.0
+
+  joint_deviation_l1:               # 非关键关节偏差惩罚 (penalty for deviation of non-locomotion joints)
+    weight: -0.1
+    joint_names: ["l1_acetabulofemoral_lateral","l5_metatarsophalangeal","l6_interphalangeal",
+                  "r1_acetabulofemoral_lateral","r5_metatarsophalangeal","r6_interphalangeal"]
+
+  hip_deviation_l1:                 # 髋关节偏差惩罚 (penalty for hip roll deviation)
+    weight: -0.3
+    joint_names: ["l0_acetabulofemoral_roll","r0_acetabulofemoral_roll"]
+
+  gait_symmetry:                    # 步态对称性惩罚 (penalty for asymmetric gait)
+    weight: -1.0
+    alpha: 0.001                    # EMA 更新率 (EMA update factor)
+  # 等价于：
+  # term = self.rewards.gait_symetry   # 注意代码里属性名是 gait_symetry（一个 m，一个 e）
+  # term.weight = -1.0
+  # term.params["alpha"] = 0.001
+
+  flat_orientation_l2: -1.0         # 保持躯干直立惩罚 (penalty for base orientation deviation)
+  # 等价于： self.rewards.flat_orientation_l2.weight = -1.0
+
+  action_rate_l2: -0.0025           # 动作变化过快惩罚 (penalty for rapid action change)
+
+  dof_acc_l2:                       # 关节加速度惩罚 (penalty for joint accelerations)
+    weight: -1.25e-7
+    joint_names: ["l0_acetabulofemoral_roll","l1_acetabulofemoral_lateral","l2_pseudo_acetabulofemoral_flexion",
+                  "l3f_femorotibial_front","l5_metatarsophalangeal","l6_interphalangeal",
+                  "r0_acetabulofemoral_roll","r1_acetabulofemoral_lateral","r2_pseudo_acetabulofemoral_flexion",
+                  "r3f_femorotibial_front","r5_metatarsophalangeal","r6_interphalangeal"]
+
+  # 等价于：
+  # term = self.rewards.dof_acc_l2
+  #term.weight = -1.25e-7
+  #term.params["asset_cfg"].joint_names = [...]
+
+
+  dof_torques_l2:                   # 关节力矩惩罚 (penalty for joint torques)
+    weight: 0.0
+    joint_names: ["l0_acetabulofemoral_roll","l1_acetabulofemoral_lateral","l2_pseudo_acetabulofemoral_flexion",
+                  "l3f_femorotibial_front","l5_metatarsophalangeal","l6_interphalangeal",
+                  "r0_acetabulofemoral_roll","r1_acetabulofemoral_lateral","r2_pseudo_acetabulofemoral_flexion",
+                  "r3f_femorotibial_front","r5_metatarsophalangeal","r6_interphalangeal"]
+
+commands:
+  base_velocity:                    # 指令速度范围 (commanded velocity ranges)
+    ranges:
+      lin_vel_x: [-4.0, 4.0]          # 前后速度范围 (forward/backward velocity)
+      lin_vel_y: [-1.0, 1.0]          # 侧向速度范围 (lateral velocity)
+      ang_vel_z: [-1.0, 1.0]          # 偏航角速度范围 (yaw angular velocity)
+
+terminations:
+  base_contact:                     # [修改] 调整为原生层级 (match self.terminations.base_contact.params.sensor_cfg)
+    params:
+      sensor_cfg:
+        body_names: ["base_link","Differential_Cage_Assyv7_mirror_1","Differential_Cage_Assyv7_1",
+                     "Knee_Assyv9_mirror_1","Knee_Assyv9_1"]  # 触地终止的部分 (bodies triggering termination)
+
+play:   # 仅在 ForrestFlatEnvCfg_PLAY 使用 (only used in PLAY variant)
+  commands:
+    base_velocity:
+      ranges:
+        lin_vel_x: [-6.0, 6.0]        # 扩大前后速度范围 (wider forward/backward range for play)
+        lin_vel_y: [0.0, 0.0]         # 禁用侧向运动 (disable lateral movement)
+        ang_vel_z: [-1.0, 1.0]
+  randomization_off: true           # 关闭随机扰动 (disable randomization in play mode)

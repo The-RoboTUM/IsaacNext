@@ -13,8 +13,10 @@ from isaaclab.managers import SceneEntityCfg, TerminationTermCfg
 from isaaclab.utils import configclass
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
+
+# ★★★ 修改点：导入改为 ForrestLocomotionVelocityEnvCfg ★★★
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
-    LocomotionVelocityRoughEnvCfg,
+    ForrestLocomotionVelocityEnvCfg,
     RewardsCfg,
 )
 
@@ -26,6 +28,100 @@ from isaaclab_assets import FORREST_CFG  # isort: skip
 
 import torch
 
+# ===========================================================
+# === 🔹 新增部分：YAML 加载与覆盖工具 (Added)
+# ===========================================================
+from pathlib import Path
+import yaml
+
+def _apply_overrides(obj, overrides: dict):
+    """
+    递归地将 YAML 参数写入配置对象 (Recursively apply dict overrides to dataclass/config objects).
+    - 现在支持 obj 为 dict 的情况
+    - 增加了 terminations 的便捷路由
+    """
+    # === NEW/UPDATED: 支持 obj 是 dict 的情况（字典级递归）===
+    if isinstance(obj, dict):
+        for k, v in overrides.items():
+            if isinstance(v, dict):
+                if k not in obj or not isinstance(obj[k], (dict, object)):
+                    obj[k] = v
+                else:
+                    _apply_overrides(obj[k], v)
+            else:
+                obj[k] = v
+        return
+
+    for k, v in overrides.items():
+        # === NEW/UPDATED: terminations 容器到具体 term 的路由（例如 base_contact）===
+        if k == "base_contact" and hasattr(obj, "base_contact") and isinstance(v, dict):
+            _apply_overrides(getattr(obj, "base_contact"), v)
+            continue
+
+        if not hasattr(obj, k):
+            # 特殊键映射
+            if k == "robot_prim_path" and hasattr(obj, "robot"):
+                obj.robot = obj.robot.replace(prim_path=v)
+                continue
+            if k == "height_scanner_prim_path" and hasattr(obj, "height_scanner"):
+                obj.height_scanner.prim_path = v
+                continue
+            if k == "asset_body_names" and hasattr(obj, "params"):
+                if "asset_cfg" in obj.params:
+                    obj.params["asset_cfg"].body_names = v
+                continue
+            if k == "base_contact_body_names":
+                # 允许从 terminations 层级快捷配置 body_names
+                if hasattr(obj, "base_contact") and hasattr(obj.base_contact, "params"):
+                    bc = obj.base_contact
+                    if "sensor_cfg" in bc.params:
+                        bc.params["sensor_cfg"].body_names = tuple(v)
+                        continue
+            continue
+
+        cur = getattr(obj, k)
+        if isinstance(v, dict) and cur is not None:
+            _apply_overrides(cur, v)
+        else:
+            setattr(obj, k, v)
+
+def _load_yaml_here(file_name: str) -> dict:
+# 作用：在当前 Python 文件同目录下找 file_name，读 YAML，返回 dict（文件不存在就返回空 dict）。
+    path = Path(__file__).with_name(file_name)
+    if not path.exists():
+        return {}
+    with open(path, "r") as f:
+        return yaml.safe_load(f) or {}
+
+# === NEW/UPDATED ===
+def _apply_reward_overrides(rewards_obj, rdict: dict):
+    """
+    通用奖励覆盖：若 term 存在，则设置 weight / 常见 params 字段。
+    这样 YAML 中的大多数 reward 键都能直接生效（避免逐项硬编码）。
+    """
+    for term_name, term_cfg in rdict.items():
+        if not hasattr(rewards_obj, term_name):
+            continue
+        term = getattr(rewards_obj, term_name)
+        # 标量：直接当作 weight
+        if isinstance(term_cfg, (int, float)):
+            term.weight = term_cfg
+            continue
+        if not isinstance(term_cfg, dict):
+            continue
+        # weight
+        if "weight" in term_cfg:
+            term.weight = term_cfg["weight"]
+        # 常见 params
+        if hasattr(term, "params"):
+            if "std" in term_cfg:
+                term.params["std"] = term_cfg["std"]
+            if "threshold" in term_cfg:
+                term.params["threshold"] = term_cfg["threshold"]
+            if "alpha" in term_cfg:
+                term.params["alpha"] = term_cfg["alpha"]
+            if "joint_names" in term_cfg and "asset_cfg" in term.params:
+                term.params["asset_cfg"].joint_names = term_cfg["joint_names"]
 
 # =========================
 # Utility / helpers (ported from rough_env_cfg)
@@ -225,7 +321,7 @@ class ForrestFlatRewards(RewardsCfg):
 # Flat Env Config (now independent of rough)
 # =========================
 @configclass
-class ForrestFlatEnvCfg(LocomotionVelocityRoughEnvCfg):
+class ForrestFlatEnvCfg(ForrestLocomotionVelocityEnvCfg):
     # [Modified] 改动：不再继承 ForrestRoughEnvCfg，而是直接继承 LocomotionVelocityRoughEnvCfg
     # [Modified] Change: inherit directly from LocomotionVelocityRoughEnvCfg instead of ForrestRoughEnvCfg
     rewards: ForrestFlatRewards = ForrestFlatRewards()
@@ -338,10 +434,40 @@ class ForrestFlatEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Example of adding custom termination (not enabled by default):
         # self.terminations.base_too_low = TerminationTermCfg(func=terminate_if_base_too_low, params={"minimum_height": 0.8})
 
+        # ===========================================================
+        # === 🔹 新增部分：从 YAML 文件 flat_env_overrides.yaml 读取并覆盖参数
+        # ===========================================================
+        _ov = _load_yaml_here("flat_env_overrides.yaml")
+        if _ov:
+            if "scene" in _ov: _apply_overrides(self.scene, _ov["scene"])
+            if "sim" in _ov: _apply_overrides(self.sim, _ov["sim"])
+            for key in ("curriculum", "events", "commands", "terminations"):
+                if key in _ov and hasattr(self, key):
+                    _apply_overrides(getattr(self, key), _ov[key])
+            if "rewards" in _ov:
+                r = _ov["rewards"]
+                if "flat_orientation_l2" in r: self.rewards.flat_orientation_l2.weight = r["flat_orientation_l2"]
+                if "action_rate_l2" in r: self.rewards.action_rate_l2.weight = r["action_rate_l2"]
+                if "lin_vel_z_l2" in r and hasattr(self.rewards, "lin_vel_z_l2"):
+                    self.rewards.lin_vel_z_l2.weight = r["lin_vel_z_l2"]
+                if "dof_acc_l2" in r:
+                    self.rewards.dof_acc_l2.weight = r["dof_acc_l2"]["weight"]
+                    self.rewards.dof_acc_l2.params["asset_cfg"].joint_names = r["dof_acc_l2"]["joint_names"]
+                if "dof_torques_l2" in r:
+                    self.rewards.dof_torques_l2.weight = r["dof_torques_l2"]["weight"]
+                    self.rewards.dof_torques_l2.params["asset_cfg"].joint_names = r["dof_torques_l2"]["joint_names"]
+                if "gait_symmetry" in r:
+                    self.rewards.gait_symetry.weight = r["gait_symmetry"]["weight"]
+                    self.rewards.gait_symetry.params["alpha"] = r["gait_symmetry"]["alpha"]
+                # === NEW/UPDATED: 通用奖励兜底覆盖（让 YAML 里更多 reward 键直接生效）===
+                _apply_reward_overrides(self.rewards, r)
 
-# =========================
+
+
+# ===========================================================
 # PLAY variant
-# =========================
+# ===========================================================
+
 class ForrestFlatEnvCfg_PLAY(ForrestFlatEnvCfg):
     def __post_init__(self) -> None:
         # post init of parent
@@ -357,6 +483,22 @@ class ForrestFlatEnvCfg_PLAY(ForrestFlatEnvCfg):
         # remove random pushing
         self.events.base_external_force_torque = None
         self.events.push_robot = None
+
+        # === ✅ 新增：允许 YAML 覆盖 PLAY 模式参数 ===
+        _ov = _load_yaml_here("flat_env_overrides.yaml")
+        if _ov and "play" in _ov:
+            play_cfg = _ov["play"]
+
+            # 可选地让 randomization_off 真正“可控”
+            if "randomization_off" in play_cfg:
+                roff = bool(play_cfg["randomization_off"])
+                self.observations.policy.enable_corruption = not roff
+                if roff:
+                    self.events.base_external_force_torque = None
+                    self.events.push_robot = None
+
+            # 允许通过 YAML 覆盖 commands / terminations / events 等
+            _apply_overrides(self, play_cfg)
 
 # [Added] 加在文件最后，确保导入 flat_env_cfg.py 时能打印提示
 # [Added] Added at the very end of the file, ensures message prints when flat_env_cfg.py is imported
