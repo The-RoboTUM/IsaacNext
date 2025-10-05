@@ -38,7 +38,7 @@ import torch
 from pathlib import Path
 import yaml
 
-# === NEW/UPDATED: 工具函数，识别是否是 base_velocity 的 ranges 扁平键 ===
+# === 工具函数，识别是否是 base_velocity 的 ranges 扁平键 ===
 def _looks_like_ranges_dict(d: dict) -> bool:
     if not isinstance(d, dict):
         return False
@@ -59,17 +59,19 @@ def _apply_overrides(obj, overrides: dict):
                     # 没有该键才直接放进去
                     obj[k] = v
             else:
-                # 标量或列表等，直接覆盖即可
+                # 🔹 一致化：body_names / joint_names 统一 list -> tuple
+                if isinstance(v, list) and k in ("body_names", "joint_names"):
+                    v = tuple(v)
                 obj[k] = v
         return
 
     for k, v in overrides.items():
-        # === NEW/UPDATED: terminations 容器到具体 term 的路由（例如 base_contact）===
+        # === terminations 容器到具体 term 的路由（例如 base_contact）===
         if k == "base_contact" and hasattr(obj, "base_contact") and isinstance(v, dict):
             _apply_overrides(getattr(obj, "base_contact"), v)
             continue
 
-        # === NEW/UPDATED: commands.base_velocity 扁平 -> .ranges 路由 ===
+        # === commands.base_velocity 扁平 -> .ranges 路由 ===
         # 适配 YAML:
         # commands:
         #   base_velocity:
@@ -89,14 +91,18 @@ def _apply_overrides(obj, overrides: dict):
             if k == "robot_prim_path" and hasattr(obj, "robot"):
                 obj.robot = obj.robot.replace(prim_path=v)
                 continue
+
             if k == "height_scanner_prim_path" and hasattr(obj, "height_scanner"):
                 obj.height_scanner.prim_path = v
                 continue
+
             # 事件/终止项里的快捷键
             if k == "asset_body_names" and hasattr(obj, "params"):
                 if "asset_cfg" in obj.params:
-                    obj.params["asset_cfg"].body_names = v
+                    # 🔹 一致化：list -> tuple
+                    obj.params["asset_cfg"].body_names = tuple(v) if isinstance(v, list) else v
                 continue
+
             if k == "base_contact_body_names":
                 # 允许从 terminations 层级快捷配置 body_names
                 if hasattr(obj, "base_contact") and hasattr(obj.base_contact, "params"):
@@ -104,12 +110,22 @@ def _apply_overrides(obj, overrides: dict):
                     if "sensor_cfg" in bc.params:
                         bc.params["sensor_cfg"].body_names = tuple(v)
                         continue
+
+            # 🔹 新增：让顶层 pose_range / velocity_range / position_range 直达 obj.params
+            if k in ("pose_range", "velocity_range", "position_range") and hasattr(obj, "params"):
+                val = tuple(v) if isinstance(v, list) else v  # 保持内部 tuple 约定
+                obj.params[k] = val
+                continue
+
             continue
 
         cur = getattr(obj, k)
         if isinstance(v, dict) and cur is not None:
             _apply_overrides(cur, v)
         else:
+            # 🔹 一致化：body_names / joint_names 在设值分支也做 list -> tuple
+            if isinstance(v, list) and k in ("body_names", "joint_names"):
+                v = tuple(v)
             setattr(obj, k, v)
 
 def _load_yaml_here(file_name: str) -> dict:
@@ -129,15 +145,18 @@ def _apply_reward_overrides(rewards_obj, rdict: dict):
         if not hasattr(rewards_obj, term_name):
             continue
         term = getattr(rewards_obj, term_name)
+
         # 标量：直接当作 weight
         if isinstance(term_cfg, (int, float)):
             term.weight = term_cfg
             continue
         if not isinstance(term_cfg, dict):
             continue
+
         # weight
         if "weight" in term_cfg:
             term.weight = term_cfg["weight"]
+
         # 常见 params
         if hasattr(term, "params"):
             if "std" in term_cfg:
@@ -146,8 +165,15 @@ def _apply_reward_overrides(rewards_obj, rdict: dict):
                 term.params["threshold"] = term_cfg["threshold"]
             if "alpha" in term_cfg:
                 term.params["alpha"] = term_cfg["alpha"]
-            if "joint_names" in term_cfg and "asset_cfg" in term.params:
-                term.params["asset_cfg"].joint_names = term_cfg["joint_names"]
+
+            # 统一 list->tuple，避免下游类型假设不一致
+            if "asset_cfg" in term.params:
+                if "joint_names" in term_cfg:
+                    jn = term_cfg["joint_names"]
+                    term.params["asset_cfg"].joint_names = tuple(jn) if isinstance(jn, list) else jn
+                if "body_names" in term_cfg:
+                    bn = term_cfg["body_names"]
+                    term.params["asset_cfg"].body_names = tuple(bn) if isinstance(bn, list) else bn
 
 
 # ===========================================================
