@@ -40,14 +40,15 @@ def _apply_overrides(obj, overrides: dict):
     - 现在支持 obj 为 dict 的情况
     - 增加了 terminations 的便捷路由
     """
-    # === NEW/UPDATED: 支持 obj 是 dict 的情况（字典级递归）===
+    # === 支持 obj 是 dict 的情况（字典级递归）===
     if isinstance(obj, dict):
         for k, v in overrides.items():
             if isinstance(v, dict):
-                if k not in obj or not isinstance(obj[k], (dict, object)):
-                    obj[k] = v
-                else:
+                if k in obj:
+                    # 可能是 dict，也可能是配置对象（如 SceneEntityCfg）
                     _apply_overrides(obj[k], v)
+                else:
+                    obj[k] = v
             else:
                 obj[k] = v
         return
