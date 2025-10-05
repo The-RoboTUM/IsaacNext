@@ -50,6 +50,9 @@ def _apply_overrides(obj, overrides: dict):
                 else:
                     obj[k] = v
             else:
+                # 小抛光：把列表转成 tuple，避免下游类型假设不一致
+                if isinstance(v, list) and k in ("body_names", "joint_names"):
+                    v = tuple(v)
                 obj[k] = v
         return
 
@@ -69,7 +72,8 @@ def _apply_overrides(obj, overrides: dict):
                 continue
             if k == "asset_body_names" and hasattr(obj, "params"):
                 if "asset_cfg" in obj.params:
-                    obj.params["asset_cfg"].body_names = v
+                    # 小抛光：list -> tuple
+                    obj.params["asset_cfg"].body_names = tuple(v) if isinstance(v, list) else v
                 continue
             if k == "base_contact_body_names":
                 # 允许从 terminations 层级快捷配置 body_names
@@ -78,12 +82,24 @@ def _apply_overrides(obj, overrides: dict):
                     if "sensor_cfg" in bc.params:
                         bc.params["sensor_cfg"].body_names = tuple(v)
                         continue
+
+            if k in ("pose_range", "velocity_range", "position_range") and hasattr(obj, "params"):
+                val = v
+                if isinstance(val, list):
+                    val = tuple(val)  # 与内部 tuple 约定保持一致
+                obj.params[k] = val
+                continue
+
+
             continue
 
         cur = getattr(obj, k)
         if isinstance(v, dict) and cur is not None:
             _apply_overrides(cur, v)
         else:
+            # 小抛光：把列表转成 tuple，避免下游类型假设不一致
+            if isinstance(v, list) and k in ("body_names", "joint_names"):
+                v = tuple(v)
             setattr(obj, k, v)
 
 def _load_yaml_here(file_name: str) -> dict:
@@ -122,7 +138,8 @@ def _apply_reward_overrides(rewards_obj, rdict: dict):
             if "alpha" in term_cfg:
                 term.params["alpha"] = term_cfg["alpha"]
             if "joint_names" in term_cfg and "asset_cfg" in term.params:
-                term.params["asset_cfg"].joint_names = term_cfg["joint_names"]
+                jn = term_cfg["joint_names"]
+                term.params["asset_cfg"].joint_names = tuple(jn) if isinstance(jn, list) else jn
 
 # =========================
 # Utility / helpers (ported from rough_env_cfg)
