@@ -49,10 +49,10 @@ rewards:
   termination_penalty: -200.0   # 终止惩罚 (termination penalty)
 
   track_lin_vel_xy_exp:         # 线速度奖励 (linear velocity tracking)
-    weight: 1.0
+    weight: 2.7 # 1.0
     std: 0.5
   track_ang_vel_z_exp:          # 偏航角速度奖励 (angular velocity tracking)
-    weight: 1.0
+    weight: 2.8 # 1.0
     std: 0.5
 
   feet_air_time:                # 脚离地时间奖励 (reward for foot air time)

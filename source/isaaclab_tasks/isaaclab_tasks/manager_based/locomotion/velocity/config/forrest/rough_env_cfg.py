@@ -543,5 +543,7 @@ class ForrestRoughEnvCfg_PLAY(ForrestRoughEnvCfg):
             # 覆盖 commands / terminations / events 等（含无 ranges 的写法）
             _apply_overrides(self, play_cfg)
 
-
+# [Added] 加在文件最后，确保导入 flat_env_cfg.py 时能打印提示
+# [Added] Added at the very end of the file, ensures message prints when flat_env_cfg.py is imported
+print("\n================= 2025.10.5 ForrestRoughEnvCfg 已加载 (Rough Environment Config Loaded) =================\n")
 

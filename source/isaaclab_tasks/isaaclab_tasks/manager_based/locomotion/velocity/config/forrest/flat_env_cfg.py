@@ -32,7 +32,7 @@ import torch
 # === 🔹 新增部分：YAML 加载与覆盖工具 (Added)
 # ===========================================================
 from pathlib import Path
-import yaml
+import os, yaml
 
 def _apply_overrides(obj, overrides: dict):
     """
@@ -102,13 +102,35 @@ def _apply_overrides(obj, overrides: dict):
                 v = tuple(v)
             setattr(obj, k, v)
 
+# def _load_yaml_here(file_name: str) -> dict:
+# # 作用：在当前 Python 文件同目录下找 file_name，读 YAML，返回 dict（文件不存在就返回空 dict）。
+#     path = Path(__file__).with_name(file_name)
+#     if not path.exists():
+#         return {}
+#     with open(path, "r") as f:
+#         return yaml.safe_load(f) or {}
+
 def _load_yaml_here(file_name: str) -> dict:
-# 作用：在当前 Python 文件同目录下找 file_name，读 YAML，返回 dict（文件不存在就返回空 dict）。
-    path = Path(__file__).with_name(file_name)
-    if not path.exists():
-        return {}
-    with open(path, "r") as f:
-        return yaml.safe_load(f) or {}
+    here = Path(__file__).resolve().parent
+    candidates = [
+        here / file_name,  # 运行时同目录（extscache/site-packages）
+        Path(os.getenv("ISAACLAB_OVERRIDES_DIR", "")) / file_name if os.getenv("ISAACLAB_OVERRIDES_DIR") else None,
+        Path.cwd() / file_name,  # 当前工作目录
+    ]
+    candidates = [p for p in candidates if p is not None]
+
+    print(f"[OVERRIDE] __file__ = {Path(__file__).resolve()}")
+    print(f"[OVERRIDE] search: {', '.join(str(p) for p in candidates)}")
+    for p in candidates:
+        if p.exists():
+            print(f"[OVERRIDE] using: {p}")
+            with open(p, "r") as f:
+                data = yaml.safe_load(f) or {}
+            print(f"[OVERRIDE] loaded keys: {list(data.keys())}")
+            return data
+    print("[OVERRIDE] no overrides found.")
+    return {}
+
 
 # === NEW/UPDATED ===
 def _apply_reward_overrides(rewards_obj, rdict: dict):
@@ -250,7 +272,7 @@ class ForrestFlatRewards(RewardsCfg):
     # Yaw: rotation around the z-axis
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,  # Yaw: rotation around the z-axis
-        weight=1.0,
+        weight=3.0, # 1.0
         params={"command_name": "base_velocity", "std": 0.5},
     )
     track_ang_vel_z_exp = RewTerm(
@@ -397,7 +419,7 @@ class ForrestFlatEnvCfg(ForrestLocomotionVelocityEnvCfg):
         self.rewards.action_rate_l2.weight = -0.0025  # penalizes fast changes in actions
 
         # DOF accelerations penalty
-        self.rewards.dof_acc_l2.weight = -1.25e-7
+        self.rewards.dof_acc_l2.weight = -1.3e-7 # -1.25e-7
         self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg(
             "robot",
             joint_names=[
@@ -530,4 +552,4 @@ class ForrestFlatEnvCfg_PLAY(ForrestFlatEnvCfg):
 
 # [Added] 加在文件最后，确保导入 flat_env_cfg.py 时能打印提示
 # [Added] Added at the very end of the file, ensures message prints when flat_env_cfg.py is imported
-print("\n================= ForrestFlatEnvCfg 已加载 (Flat Environment Config Loaded) =================\n")
+print("\n================= 2025.10.5 ForrestFlatEnvCfg 已加载 (Flat Environment Config Loaded) =================\n")

@@ -49,7 +49,7 @@ rewards:
   termination_penalty: -200.0       # 任务终止惩罚 (penalty when terminated)
 
   track_lin_vel_xy_exp:             # 跟踪平面线速度 (track linear velocity XY in yaw frame)
-    weight: 1.0
+    weight: 2.0  # 1.0
     std: 0.5                        # 速度误差标准差 (std dev for error weighting)
     # 等价于：
     # term = self.rewards.track_lin_vel_xy_exp
@@ -57,7 +57,7 @@ rewards:
     # term.params["std"] = 0.5
 
   track_ang_vel_z_exp:              # 跟踪偏航角速度 (track angular velocity z in world frame)
-    weight: 1.0
+    weight: 3.0  # 1.0
     std: 0.5
 
   feet_air_time:                    # 脚在空中时间奖励 (reward for air time of feet)
@@ -67,7 +67,7 @@ rewards:
     weight: 0.0
 
   joint_deviation_l1:               # 非关键关节偏差惩罚 (penalty for deviation of non-locomotion joints)
-    weight: -0.1
+    weight: -0.5  # -0.1
     joint_names: ["l1_acetabulofemoral_lateral","l5_metatarsophalangeal","l6_interphalangeal",
                   "r1_acetabulofemoral_lateral","r5_metatarsophalangeal","r6_interphalangeal"]
 
@@ -126,7 +126,7 @@ play:   # 仅在 ForrestFlatEnvCfg_PLAY 使用 (only used in PLAY variant)
   commands:
     base_velocity:
       ranges:
-        lin_vel_x: [-6.0, 6.0]        # 扩大前后速度范围 (wider forward/backward range for play)
+        lin_vel_x: [-1.0, 1.0]        # 扩大前后速度范围 (wider forward/backward range for play)
         lin_vel_y: [0.0, 0.0]         # 禁用侧向运动 (disable lateral movement)
         ang_vel_z: [-1.0, 1.0]
   randomization_off: true           # 关闭随机扰动 (disable randomization in play mode)
