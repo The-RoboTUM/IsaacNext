@@ -1,45 +1,181 @@
-# Contribution Guidelines
-
-Isaac Lab is a community maintained project. We wholeheartedly welcome contributions to the project to make
-the framework more mature and useful for everyone. These may happen in forms of bug reports, feature requests,
-design proposals and more.
-
-For general information on how to contribute see
-<https://isaac-sim.github.io/IsaacLab/main/source/refs/contributing.html>.
+# 📘 CONTRIBUTING.md  
+**RoboTUM Software Team | Development Collaboration Guidelines**  
 
 ---
 
-Developer Certificate of Origin
-Version 1.1
+## 🧭 Core Principle  
 
-Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
+All our development follows one simple rule:  
 
-Everyone is permitted to copy and distribute verbatim copies of this
-license document, but changing it is not allowed.
+> 💡 **Every new feature = a new branch.**  
+
+The `main` branch must always remain stable, buildable, and ready to demonstrate.  
+Any new feature or modification should start from a new branch created from `main`.
+
+---
+
+## 🚀 1. Branch Naming Rules  
+
+All new feature branches follow this format:
+
+```feature/<short-desc>```
+
+**Example:**
+
+```feature/sim2real```
 
 
-Developer's Certificate of Origin 1.1
+---
 
-By making a contribution to this project, I certify that:
+## 👥 2. Collaborative Development on the Same Feature  
 
-(a) The contribution was created in whole or in part by me and I
-    have the right to submit it under the open source license
-    indicated in the file; or
+When multiple team members are working on the same feature (e.g., algorithm, GUI, testing), please follow this workflow:
 
-(b) The contribution is based upon previous work that, to the best
-    of my knowledge, is covered under an appropriate open source
-    license and I have the right under that license to submit that
-    work with modifications, whether created in whole or in part
-    by me, under the same open source license (unless I am
-    permitted to submit under a different license), as indicated
-    in the file; or
+**【1】The team leader creates the main feature branch:**
 
-(c) The contribution was provided directly to me by some other
-    person who certified (a), (b) or (c) and I have not modified
-    it.
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/sim2real
+git push -u origin feature/sim2real
+```
 
-(d) I understand and agree that this project and the contribution
-    are public and that a record of the contribution (including all
-    personal information I submit with it, including my sign-off) is
-    maintained indefinitely and may be redistributed consistent with
-    this project or the open source license(s) involved.
+ **【2】Each team member creates their own sub-branch from the feature branch:**
+
+#### Alice
+```bash
+git checkout feature/sim2real
+git checkout -b feature/sim2real/alice
+```
+
+#### Bob
+```bash
+git checkout feature/sim2real
+git checkout -b feature/sim2real/bob
+```
+
+Branch naming format:
+```bash
+feature/<short-desc>/<your-name>
+```
+
+
+ **【3】Once development is done, open a Pull Request to the ```feature branch``` (not directly to ```main```).**
+
+## 🧩 3. Pull Request Guidelines
+
+- Title format: \
+Use a short and clear description, for example:
+```bash
+feature(controller): add sim2real calibration module
+```
+
+- Each Pull Request should include:
+
+  - Purpose and key changes 
+  - Whether local testing is completed 
+  - Whether a code review is needed
+
+- If the feature is still in progress, you can open a Draft Pull Request to keep others informed.
+
+## 🧱 4. Merge Rules
+
+- All code must be merged through Pull Requests.
+
+- Each Pull Request must receive at least one approval from a reviewer.
+
+- All automated checks (build, test, lint) must pass before merging.
+
+- Use Squash and Merge to keep the main branch history clean.
+
+- After merging, delete the remote branch.
+
+## 🔍 5. Example: Sim2Real Feature Development
+
+Goal:
+
+> Implement a Sim2Real module that allows the robot to reproduce simulation control behavior on real hardware.
+
+Team members: Alice, Bob, Pedro
+
+Branch Structure
+
+```bash
+main
+ └── feature/sim2real
+      ├── feature/sim2real/alice
+      ├── feature/sim2real/bob
+      └── feature/sim2real/pedro
+```
+
+__Example Workflow__
+
+【1】Pedro creates the main feature branch:
+```bash
+git checkout -b feature/sim2real
+git push -u origin feature/sim2real
+```
+
+【2】Alice creates her sub-branch and starts development:
+```bash
+git checkout feature/sim2real
+git checkout -b feature/sim2real/alice
+```
+
+Example commit message:
+```bash
+feature(controller): implement real-world noise compensation
+```
+
+【3】Bob creates his sub-branch:
+```bash
+git checkout feature/sim2real
+git checkout -b feature/sim2real/bob
+```
+
+Example commit message:
+```bash
+feature(gui): add visualization for sim2real performance
+```
+
+【4】Alice and Bob each open a Pull Request to the main feature branch:
+
+- Pull Request #12 → target branch: ```feature/sim2real```
+
+- Pull Request #13 → target branch: ```feature/sim2real```
+
+
+【5】Pedro reviews and merges their work, then merges the feature branch into main:
+```bash
+feature(sim2real): add simulation-to-reality transfer module
+```
+
+Final project structure remains clean and organized:
+```bash
+controller/
+gui/
+integration/
+tests/
+```
+
+
+## 💬 6. Code Style and Commit Suggestions
+
+- Keep each commit small and meaningful.
+
+- Use clear naming and concise comments.
+
+- Run tests locally (or at least ensure it builds) before committing.
+
+- Regularly run git pull --rebase origin main to stay updated.
+
+- Avoid mixing unrelated changes in a single Pull Request.
+
+
+## ✅ 7. Summary
+
+> 🪄 One feature, one branch.
+If multiple people work on the same feature, each creates their own sub-branch.
+All changes are merged through Pull Requests.
+
+

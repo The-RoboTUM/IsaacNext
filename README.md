@@ -1,6 +1,13 @@
 # IsaacNext
 
-Short description of what this project does and who it’s for.
+## 🤝 Contributing
+
+We welcome contributions from all RoboTUM Humanoid Project members!  
+Before you start working on a new feature, please read our [Contribution Guidelines](./CONTRIBUTING.md).
+
+---
+
+And the below is a detailed description of what this project does and who it’s for.
 
 ---
 ## How to obtain Forrest's URDF
