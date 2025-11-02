@@ -28,6 +28,12 @@ Before you start working on a new feature, please read our [Contribution Guideli
 
 The following section provides a detailed guide on how to quickly get started with the project.
 
+### Install Isaac Sim and Isaac Lab (please make sure to use pip for the installation).
+
+You can download them from the official NVIDIA link below: \
+https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html
+
+It also includes instructions on how to create a conda virtual environment.
 
 
 ### Clone the repositories
