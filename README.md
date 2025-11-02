@@ -15,7 +15,8 @@
   - [Train Forrest](#train-forrest)
   - [Play Forrest](#play-forrest)
 
----
+
+
 ## 🤝 Contributing
 
 We welcome contributions from all RoboTUM Humanoid Project members!  
@@ -27,7 +28,7 @@ Before you start working on a new feature, please read our [Contribution Guideli
 
 The following section provides a detailed guide on how to quickly get started with the project.
 
----
+
 
 ### Clone the repositories
 Step 1: Clone the IsaacNext workspace
@@ -137,7 +138,7 @@ IsaacNext/
 - `r2b_acetabulofemoral_flexion` = [-180, 180]
 - `r2f_acetabulofemoral_flexion` = [-180, 180]
 
----
+
 
 ## Collision Parameter Settings
 
