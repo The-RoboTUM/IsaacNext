@@ -5,6 +5,7 @@
 
 - [🤝 Contributing](#-contributing)
 - [🧠 Project Overview](#-project-overview)
+  - [Install Isaac Sim and Isaac Lab](#install-isaac-sim-and-isaac-lab-please-make-sure-to-use-pip-for-the-installation)
   - [Clone the Repositories](#clone-the-repositories)
   - [Convert URDF to USD in Isaac Sim](#convert-urdf-to-usd-in-isaac-sim)
   - [Create the Symlinks Folder](#first-time-setup-create-the-symlinks-folder)
