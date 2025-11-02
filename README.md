@@ -108,7 +108,8 @@ IsaacNext/
 ![See the joits folder in the screenshot](images/joints%20folder%20in%20the%20IsaacSim.png)
 
   - For all set stiffness to 100 and damping to 1
-![Joint parameter settings example](images/joint_parameter_settings_example.png)
+  ![Set stiffness to 100 and damping to 1](images/set_stiffness_to_100_and_damping_to_1.png)
+
   - For anchor joints exclude them from articulation
 ![Anchor joints exclude them from articulation](images/anchor_joints_exclude_them_from_articulation.png)
   - For anchor joints set max force to 1000, stiffness to 1000 and damping to 10
