@@ -10,28 +10,76 @@ Before you start working on a new feature, please read our [Contribution Guideli
 And the below is a detailed description of what this project does and who it’s for.
 
 ---
-## How to obtain Forrest's URDF
-You can find the Forrest's URDF file from this link:\
-https://github.com/The-RoboTUM/urdfheim/tree/main/complex/Forrest_URDF_description/urdf 
 
-You `git clone` the whole repo and go the above folder and find the urdf file.
+### Clone the repositories
+Step 1: Clone the IsaacNext workspace
+```bash
+git clone https://github.com/The-RoboTUM/IsaacNext.git
+```
+This repository is your main working environment.
+
+Step 2: Clone the URDF source repository
+```bash
+# You can clone it anywhere on your machine
+git clone https://github.com/The-RoboTUM/urdfheim.git
+```
+
+Inside that repo, you will find Forrest’s URDF file at:
+```bash
+urdfheim/complex/Forrest_URDF_description/urdf/
+```
+
+### Convert URDF → USD in Isaac Sim
 
 In Isaacsim, we need to USD file, so we need to convert URDF file to USD file.
 
 Nest, let's go through the operation steps in detail:
 
-## How to prepare Forrest's USD
+### How to prepare Forrest's USD
 
 
-- Open Isaacsim
-- Import the URDF file (change these settings)
+- Launch Isaacsim.
+```bash
+cd path/to/IsaacNext 
+isaacsim
+```
+- Use the URDF Importer to import the Forrest URDF file, **but before importing, please change the following settings**:
 ![See the screenshot](images/urdf_import_setting.png)
   - Choose `Moveable Base`
   - Create `Collisions From Visuals`
   - Choose `Convex Decomposition`
 - after you finish doing above steps, Isaacsim will generate a folder: `Forrest_URDF`, at the same place of the urdf file.
-- Move only the generated folder `Forrest_URDF` over to the symlinks (In the future a script will do this)
-- In Isaacsim, open `/IsaacNext/symlinks/Forrest_URDF/Forrest_URDF.usd` Pay attention to the suffix of this file, this is a `.usd` file.
+
+### (First-Time Setup) Create the symlinks Folder
+Go back to your IsaacNext repo:
+
+```bash
+cd path/to/IsaacNext
+mkdir -p symlinks
+```
+The symlinks folder will store shortcuts (symbolic links) to external robot asset directories —
+this way, you don’t need to move or copy large generated files.
+
+
+Create a Symbolic Link to Forrest’s Generated USD Folder
+Now link the generated Forrest_URDF folder into IsaacNext/symlinks/.
+
+```bash
+cd IsaacNext/symlinks
+ln -s /absolute/path/to/urdfheim/complex/Forrest_URDF_description/urdf/Forrest_URDF Forrest_URDF
+
+```
+
+
+Your structure should now look like:
+```bash
+IsaacNext/
+├── symlinks/
+│   └── Forrest_URDF -> /absolute/path/to/.../Forrest_URDF
+```
+
+
+- In Isaacsim, open `/IsaacNext/symlinks/Forrest_URDF/Forrest_URDF.usd`, *pay attention to the suffix of this file, this is a `.usd` file.*
 - After you open the `Forrest_URDF.usd` file, then on the right-hand Stage panel in IsaacSim, find the joints folder:
 ![See the joits folder in the screenshot](images/joints%20folder%20in%20the%20IsaacSim.png)
   - For all set stiffness to 100 and damping to 1
