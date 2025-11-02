@@ -105,14 +105,11 @@ IsaacNext/
 ## Joints Parameter Settings
 - In Isaacsim, open `/IsaacNext/symlinks/Forrest_URDF/Forrest_URDF.usd`, *pay attention to the suffix of this file, this is a `.usd` file.*
 - After you open the `Forrest_URDF.usd` file, then on the right-hand Stage panel in IsaacSim, find the joints folder:
-
 ![See the joits folder in the screenshot](images/joints%20folder%20in%20the%20IsaacSim.png)
 
-![Joint parameter settings example](images/joint_parameter_settings_example.png)
-
   - For all set stiffness to 100 and damping to 1
+![Joint parameter settings example](images/joint_parameter_settings_example.png)
   - For anchor joints exclude them from articulation
-
 ![Anchor joints exclude them from articulation](images/anchor_joints_exclude_them_from_articulation.png)
   - For anchor joints set max force to 1000, stiffness to 1000 and damping to 10
   - For passive pantograph joints (r3b, r4f, r4b, l3b, l4f, l4b) set the stiffness to 0
