@@ -112,6 +112,7 @@ IsaacNext/
 
   - For all set stiffness to 100 and damping to 1
   - For anchor joints exclude them from articulation
+
 ![Anchor joints exclude them from articulation](images/anchor_joints_exclude_them_from_articulation.png)
   - For anchor joints set max force to 1000, stiffness to 1000 and damping to 10
   - For passive pantograph joints (r3b, r4f, r4b, l3b, l4f, l4b) set the stiffness to 0
