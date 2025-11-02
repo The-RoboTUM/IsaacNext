@@ -40,6 +40,7 @@ It also includes instructions on how to create a conda virtual environment.
 ### Clone the repositories
 Step 1: Clone the IsaacNext workspace
 ```bash
+# You can clone it anywhere on your machine
 git clone https://github.com/The-RoboTUM/IsaacNext.git
 ```
 This repository is your main working environment.
@@ -104,7 +105,11 @@ IsaacNext/
 ## Joints Parameter Settings
 - In Isaacsim, open `/IsaacNext/symlinks/Forrest_URDF/Forrest_URDF.usd`, *pay attention to the suffix of this file, this is a `.usd` file.*
 - After you open the `Forrest_URDF.usd` file, then on the right-hand Stage panel in IsaacSim, find the joints folder:
+
 ![See the joits folder in the screenshot](images/joints%20folder%20in%20the%20IsaacSim.png)
+
+![Joint parameter settings example](images/joint_parameter_settings_example.png)
+
   - For all set stiffness to 100 and damping to 1
   - For anchor joints disable them from articulation
   - For anchor joints set max force to 1000, stiffness to 1000 and damping to 10
