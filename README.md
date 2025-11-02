@@ -1,5 +1,21 @@
 # IsaacNext
 
+
+## 📖 Table of Contents
+
+- [🤝 Contributing](#-contributing)
+- [🧠 Project Overview](#-project-overview)
+  - [Clone the Repositories](#clone-the-repositories)
+  - [Convert URDF to USD in Isaac Sim](#convert-urdf-to-usd-in-isaac-sim)
+  - [Create the Symlinks Folder](#first-time-setup-create-the-symlinks-folder)
+- [⚙️ Joints Parameter Settings](#joints-parameter-settings)
+  - [Joints Limits](#joints-limits)
+- [🧩 Collision Parameter Settings](#collision-parameter-settings)
+- [🚀 Reinforcement Learning Pipeline](#-reinforcement-learning-pipeline)
+  - [Train Forrest](#train-forrest)
+  - [Play Forrest](#play-forrest)
+
+---
 ## 🤝 Contributing
 
 We welcome contributions from all RoboTUM Humanoid Project members!  
@@ -7,7 +23,9 @@ Before you start working on a new feature, please read our [Contribution Guideli
 
 ---
 
-And the below is a detailed description of what this project does and who it’s for.
+## 🧠 Project Overview
+
+The following section provides a detailed guide on how to quickly get started with the project.
 
 ---
 
@@ -29,14 +47,11 @@ Inside that repo, you will find Forrest’s URDF file at:
 urdfheim/complex/Forrest_URDF_description/urdf/
 ```
 
-### Convert URDF → USD in Isaac Sim
+### Convert URDF to USD in Isaac Sim
 
 In Isaacsim, we need to USD file, so we need to convert URDF file to USD file.
 
 Nest, let's go through the operation steps in detail:
-
-### How to prepare Forrest's USD
-
 
 - Launch Isaacsim.
 ```bash
@@ -78,7 +93,7 @@ IsaacNext/
 │   └── Forrest_URDF -> /absolute/path/to/.../Forrest_URDF
 ```
 
-
+## Joints Parameter Settings
 - In Isaacsim, open `/IsaacNext/symlinks/Forrest_URDF/Forrest_URDF.usd`, *pay attention to the suffix of this file, this is a `.usd` file.*
 - After you open the `Forrest_URDF.usd` file, then on the right-hand Stage panel in IsaacSim, find the joints folder:
 ![See the joits folder in the screenshot](images/joints%20folder%20in%20the%20IsaacSim.png)
@@ -234,7 +249,10 @@ pip install -r requirements.txt
 ```
 -->
 
-## Train Forrest:
+
+## 🧩 Reinforcement Learning Pipeline
+
+### Train Forrest:
 In Isaac Lab, you can use the following command to start reinforcement learning training for the robot in a selected environment:
 ```bash
  ./isaaclab.sh \
@@ -245,7 +263,7 @@ In Isaac Lab, you can use the following command to start reinforcement learning 
   --num_envs=4096 \
   --resume
 ```
-### Argument Explanation:
+#### Argument Explanation:
 - `./isaaclab.sh`
 Launches the Isaac Lab wrapper script, which runs the specified Python program and automatically loads the Isaac Lab environment configuration.
 
@@ -281,7 +299,7 @@ Continues training from a previously saved checkpoint instead of starting from s
 
 
 
-## Play Forrest:
+### Play Forrest:
 ```bash
 ./isaaclab.sh \
  -p scripts/reinforcement_learning/rsl_rl/play.py \
@@ -289,7 +307,7 @@ Continues training from a previously saved checkpoint instead of starting from s
  --num_envs=10
 ```
 
-### Argument Explanation:
+#### Argument Explanation:
 - `./isaaclab.sh`
 Launches the Isaac Lab wrapper script, which runs the specified Python program and automatically loads the Isaac Lab environment configuration.
 
@@ -312,3 +330,9 @@ Specifies the number of parallel environments, here 10 robots running simultaneo
 This smaller number is convenient for testing and visualization, allowing you to observe the performance of multiple robots at once.
 
 More to come ... 
+
+
+---
+
+📫 Maintained by **RoboTUM Humanoid Project Team**  
+If you have any questions, feel free to open an [issue](https://github.com/The-RoboTUM/IsaacNext/issues) or contact the maintainers on our Slack channel.
