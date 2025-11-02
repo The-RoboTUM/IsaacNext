@@ -31,8 +31,8 @@ Nest, let's go through the operation steps in detail:
   - Choose `Convex Decomposition`
 - after you finish doing above steps, Isaacsim will generate a folder: `Forrest_URDF`, at the same place of the urdf file.
 - Move only the generated folder `Forrest_URDF` over to the symlinks (In the future a script will do this)
-- In Isaacsim, open `/IsaacNext/symlinks/Forrest_URDF/Forrest_URDF.usd`
-- After you open the USD file, then on the right-hand Stage panel in IsaacSim, find the joints folder:
+- In Isaacsim, open `/IsaacNext/symlinks/Forrest_URDF/Forrest_URDF.usd` Pay attention to the suffix of this file, this is a `.usd` file.
+- After you open the `Forrest_URDF.usd` file, then on the right-hand Stage panel in IsaacSim, find the joints folder:
 ![See the joits folder in the screenshot](images/joints%20folder%20in%20the%20IsaacSim.png)
   - For all set stiffness to 100 and damping to 1
   - For anchor joints disable them from articulation
