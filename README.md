@@ -263,7 +263,7 @@ pip install -r requirements.txt
 -->
 
 
-## 🧩 Reinforcement Learning Pipeline
+## 🚀 Reinforcement Learning Pipeline
 
 ### Train Forrest:
 In Isaac Lab, you can use the following command to start reinforcement learning training for the robot in a selected environment:
