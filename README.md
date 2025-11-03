@@ -9,12 +9,12 @@
   - [Clone the Repositories](#clone-the-repositories)
   - [Convert URDF to USD in Isaac Sim](#convert-urdf-to-usd-in-isaac-sim)
   - [Create the Symlinks Folder](#first-time-setup-create-the-symlinks-folder)
-- [⚙️ Joints Parameter Settings](#joints-parameter-settings)
+  - [Joints Parameter Settings](#joints-parameter-settings)
   - [Joints Limits](#joints-limits)
-- [🧩 Collision Parameter Settings](#collision-parameter-settings)
-- [🚀 Reinforcement Learning Pipeline](#-reinforcement-learning-pipeline)
-  - [Train Forrest](#train-forrest)
-  - [Play Forrest](#play-forrest)
+  - [Collision Parameter Settings](#collision-parameter-settings)
+  - [🚀 Reinforcement Learning Pipeline](#-reinforcement-learning-pipeline)
+    - [Train Forrest](#train-forrest)
+    - [Play Forrest](#play-forrest)
 
 
 
