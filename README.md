@@ -71,11 +71,6 @@ Before installing Isaac Sim and Isaac Lab, please make sure your system meets th
 | **OS** | Ubuntu 24.04 LTS |
 | **Status** | ✅ Fully compatible and tested for both Isaac Sim and Isaac Lab RL training |
 
-#### 💡 Tips
-- To verify CUDA and driver compatibility, run:  
-  ```bash
-  nvidia-smi
-  nvcc --version
 
 ### Install Isaac Sim and Isaac Lab (please make sure to use pip for the installation).
 
