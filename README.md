@@ -5,6 +5,7 @@
 
 - [🤝 Contributing](#-contributing)
 - [🧠 Project Overview](#-project-overview)
+  - [System Requirements](#-system-requirements)
   - [Install Isaac Sim and Isaac Lab](#install-isaac-sim-and-isaac-lab-please-make-sure-to-use-pip-for-the-installation)
   - [Clone the Repositories](#clone-the-repositories)
   - [Convert URDF to USD in Isaac Sim](#convert-urdf-to-usd-in-isaac-sim)
@@ -28,6 +29,53 @@ Before you start working on a new feature, please read our [Contribution Guideli
 ## 🧠 Project Overview
 
 The following section provides a detailed guide on how to quickly get started with the project.
+
+
+### 💻 System Requirements
+
+Before installing Isaac Sim and Isaac Lab, please make sure your system meets the following requirements.
+
+#### 🧩 Hardware Requirements
+| Component | Minimum | Recommended                                   |
+|------------|----------|-----------------------------------------------|
+| **CPU** | 8-core (Intel i7 / AMD Ryzen 7) | 16-core or higher (Intel i9 / Ryzen 9)        |
+| **RAM** | 16 GB | 64 GB or more                                 |
+| **GPU** | NVIDIA RTX 3060 (12 GB VRAM) | NVIDIA RTX 4090 / 5080 (16–24 GB+ VRAM)       |
+| **Storage** | 50 GB free space | 100 GB+ SSD/NVMe                              |
+| **OS** | Ubuntu 24.04 LTS| Ubuntu 24.04 LTS|
+
+> ⚠️ **Notes:**  
+> - Isaac Sim officially supports **Linux + NVIDIA GPU + proprietary driver**.  
+> - Running large-scale RL (`--num_envs > 2048`) requires a high-end GPU and sufficient RAM.  
+> - If you encounter `Exit Code 137 (SIGKILL)`, it usually indicates **insufficient memory**.  
+> - Windows and AMD GPUs are **not recommended** for full Isaac Lab compatibility.
+
+#### ⚙️ Software Requirements
+| Software | Version | Check Command |
+|-----------|----------|----------------|
+| **Python** | 3.10–3.11 | `python --version` |
+| **CUDA Toolkit** | ≥ 12.0 | `nvcc --version` |
+| **NVIDIA Driver** | ≥ 535.xx | `nvidia-smi` |
+| **Conda / Mamba** | Latest | `conda --version` |
+| **Git** | ≥ 2.30 | `git --version` |
+
+#### ✅ Example (Our Verified Workstation at RoboTUM Oly office)
+| Component | Specification |
+|------------|---------------|
+| **CPU** | AMD Ryzen (16 cores) |
+| **RAM** | 64 GB |
+| **GPU** | NVIDIA GeForce RTX 5080 (16 GB VRAM) |
+| **CUDA Toolkit** | 12.0 |
+| **NVIDIA Driver** | 570.195.03 |
+| **Python** | 3.11.13 |
+| **OS** | Ubuntu 24.04 LTS |
+| **Status** | ✅ Fully compatible and tested for both Isaac Sim and Isaac Lab RL training |
+
+#### 💡 Tips
+- To verify CUDA and driver compatibility, run:  
+  ```bash
+  nvidia-smi
+  nvcc --version
 
 ### Install Isaac Sim and Isaac Lab (please make sure to use pip for the installation).
 
