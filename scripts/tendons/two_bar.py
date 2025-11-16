@@ -11,7 +11,7 @@ parser = argparse.ArgumentParser(
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
-app_launcher = AppLauncher(args_cli)
+app_launcher = AppLauncher()
 simulation_app = app_launcher.app
 
 import torch
@@ -19,6 +19,7 @@ import numpy as np
 import carb
 import time
 import isaaclab.sim as sim_utils
+from isaaclab.actuators.actuator_cfg import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg, Articulation
 from isaaclab.sim import SimulationContext
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
@@ -51,6 +52,42 @@ def get_two_bar_cfg(usd_path: str) -> ArticulationCfg:
             joint_pos={"lower_joint": 1.0, "upper_joint": 2.0},
         ),
         actuators={},
+    )
+
+
+def get_two_bar_act_cfg(usd_path: str) -> ArticulationCfg:
+    """Returns an ArticulationCfg for the two-bar robot."""
+    return ArticulationCfg(
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=usd_path,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                rigid_body_enabled=True,
+                max_linear_velocity=1000.0,
+                max_angular_velocity=1000.0,
+                max_depenetration_velocity=100.0,
+                enable_gyroscopic_forces=True,
+            ),
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+                enabled_self_collisions=False,
+                solver_position_iteration_count=4,
+                solver_velocity_iteration_count=0,
+                sleep_threshold=0.005,
+                stabilization_threshold=0.001,
+            ),
+        ),
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=(0.0, 0.0, 1.0),
+            joint_pos={"lower_joint": 1.0, "upper_joint": 2.0},
+        ),
+        actuators={
+            "body": ImplicitActuatorCfg(
+                joint_names_expr=["lower_joint", "upper_joint"],
+                effort_limit_sim=100000.0,
+                velocity_limit_sim=100.0,
+                stiffness=100000000.0,
+                damping=0.0,
+            ),
+        },
     )
 
 
@@ -214,9 +251,10 @@ class TendonManager:
             self.joint_angle_to_winding_sign = motor_winding_alignments[i]
 
         self.last_length = self.compute_length()
-        assert (
-            tendon_length > self.last_length
-        ), f"tendon_length {tendon_length} must be greater than initial length {self.last_length}"
+        print(f"Initial tendon length: {self.last_length.item():.4f}")
+        # assert (
+        #     tendon_length > self.last_length
+        # ), f"tendon_length {tendon_length} must be greater than initial length {self.last_length}"
 
     def compute_length(self):
         return (
@@ -290,11 +328,63 @@ class TendonManager:
         self.last_length = current_length
 
 
+class TendonManagerV2:
+    def __init__(
+        self,
+        robot: Articulation,
+        joint_names: list[str],
+        stiffness: float,
+        joint_signs: torch.Tensor,
+        radii: torch.Tensor,
+    ):
+        N_JOINTS = len(joint_names)
+        self.robot = robot
+        self.device = robot.device
+        self.joint_indices, _ = self.robot.find_joints(joint_names, preserve_order=True)
+        self.initial_joint_angles = torch.zeros(N_JOINTS, device=self.device)
+        self.stiffness = stiffness
+        self.joint_signs = joint_signs
+        self.radii = radii
+        for i in range(N_JOINTS):
+            self.initial_joint_angles[i] = self.robot.data.joint_pos[
+                0, self.joint_indices[i]
+            ]
+        self.K_matrix = torch.zeros((N_JOINTS, N_JOINTS), device=self.device)
+        for i in range(N_JOINTS):
+            for j in range(N_JOINTS):
+                self.K_matrix[i, j] = self.stiffness * self.radii[i] * self.radii[j]
+
+    def apply(self, dt: float):
+        current_joint_angles = self.robot.data.joint_pos[0, self.joint_indices]
+        angle_deltas = (
+            current_joint_angles - self.initial_joint_angles
+        ) * self.joint_signs
+        delta_length = torch.dot(self.radii, angle_deltas)
+        if delta_length > 0:
+            print(
+                f"[Tense V2] Delta length: {delta_length.item():.4f}, applying tension."
+            )
+            torques = torch.matmul(self.K_matrix, angle_deltas)
+            self.robot.set_joint_effort_target(
+                target=torques.unsqueeze(0),
+                joint_ids=self.joint_indices,
+            )
+        else:
+            print(
+                f"[Slack V2] Delta length: {delta_length.item():.4f}, no tension applied."
+            )
+            self.robot.set_joint_effort_target(
+                target=torch.zeros_like(angle_deltas).unsqueeze(0),
+                joint_ids=self.joint_indices,
+            )
+
+
 def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # IsaacLab simulation setup
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
-    sim_cfg.dt = 0.0016
+    sim_cfg.dt = 0.00032
+    t_total = 2.0
     sim = SimulationContext(sim_cfg)
     #  sim.set_camera_view([5.0, 0.0, 1.5], [0.0, 0.0, 1.0])  # type: ignore
 
@@ -311,21 +401,47 @@ def main():
     two_bar_cfg = get_two_bar_cfg(asset_path)
     two_bar_cfg.prim_path = "/World/Bot"
     robot = Articulation(cfg=two_bar_cfg)
+
     sim.reset()
     robot.write_joint_state_to_sim(
-        position=robot.data.default_joint_pos, velocity=robot.data.default_joint_vel
+        position=robot.data.default_joint_pos,
+        velocity=robot.data.default_joint_vel,
     )
     robot.write_data_to_sim()
     sim.step()  # step once to load the robot
     robot.update(sim.get_physics_dt())
+    time.sleep(1)
 
-    carb.log_error("[INFO]: Setup complete 1...")
-    time.sleep(3)
-    carb.log_error("[INFO]: Continuing...")
+    # Tendon manager setup
+    tendon_manager = TendonManager(
+        robot=robot,
+        tendon_length=3.4908,
+        stiffness=20000000.0,  # 20000.0,
+        damping=0.0,
+        axis_global=torch.tensor([0.0, 1.0, 0.0], device=robot.device),
+        link_names=["base_link", "center_link", "top_link"],
+        joint_names=["lower_joint", "upper_joint"],
+        radii=torch.tensor([0.0, 0.05, 0.05, 0.05], device=robot.device),
+        pulley_positions_i=torch.tensor(
+            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], device=robot.device
+        ),
+        pulley_positions_iplus1=torch.tensor(
+            [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]], device=robot.device
+        ),
+        configurations=["down-down", "down-up", "up-up"],
+        motor_winding_alignments=torch.tensor([-1.0, -1.0], device=robot.device),
+    )
+    tendon_manager_v2 = TendonManagerV2(
+        robot=robot,
+        joint_names=["lower_joint", "upper_joint"],
+        stiffness=20000000.0,
+        joint_signs=torch.tensor([-1.0, -1.0], device=robot.device),
+        radii=torch.tensor([0.05, 0.05], device=robot.device),
+    )
 
     # Link names to apply forces to
-    link_names = ["center_link", "top_link"]
-    link_indices, _ = robot.find_bodies(link_names, preserve_order=True)
+    # link_names = ["center_link", "top_link"]
+    # link_indices, _ = robot.find_bodies(link_names, preserve_order=True)
 
     # Markers for force visualization
     # force_markers = define_force_markers(link_names)
@@ -338,31 +454,20 @@ def main():
     #     joint_ids=[0, 1],
     # )
 
-    # Tendon manager setup
-    tendon_manager = TendonManager(
-        robot=robot,
-        tendon_length=3.5,
-        stiffness=100000.0,
-        damping=10000.0,
-        axis_global=torch.tensor([0.0, 1.0, 0.0], device=robot.device),
-        link_names=["base_link", "center_link", "top_link"],
-        joint_names=["lower_joint", "upper_joint"],
-        radii=torch.tensor([0.0, 0.05, 0.05, 0.0], device=robot.device),
-        pulley_positions_i=torch.tensor(
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], device=robot.device
-        ),
-        pulley_positions_iplus1=torch.tensor(
-            [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]], device=robot.device
-        ),
-        configurations=["down-down", "down-up", "up-up"],
-        motor_winding_alignments=torch.tensor([-1.0, -1.0], device=robot.device),
-    )
-
-    while simulation_app.is_running():
+    for _ in range(int(t_total / sim.get_physics_dt())):
         tendon_manager.apply(sim.get_physics_dt())
         robot.write_data_to_sim()
         sim.step()
         robot.update(sim.get_physics_dt())
+    sim.reset()
+    robot.write_joint_state_to_sim(
+        position=robot.data.default_joint_pos,
+        velocity=robot.data.default_joint_vel,
+    )
+    robot.write_data_to_sim()
+    sim.step()  # step once to load the robot
+    robot.update(sim.get_physics_dt())
+    time.sleep(1)
 
     simulation_app.close()
 
