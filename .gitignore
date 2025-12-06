@@ -70,3 +70,7 @@ tests/
 # Docker history
 .isaac-lab-docker-history
 /symlinks/
+
+
+saved_models/
+assets/
