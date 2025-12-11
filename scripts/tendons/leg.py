@@ -28,7 +28,8 @@ from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.math import quat_inv, quat_apply
 
-usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"
+# usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"
+usd_path = "/home/linus/IsaacNext/assets/Leg_free/leg.usd"
 
 
 def get_leg_cfg() -> ArticulationCfg:
@@ -352,14 +353,17 @@ class GSTTendonManager:
         energy = 0.5 * self.stiffness * delta_L_s[not_slack] ** 2
         # 3) differentiate w.r.t. joint angles
         tendon_torques = torch.autograd.grad(
-            outputs=energy.sum(), inputs=joint_angles[not_slack], create_graph=False
+            outputs=energy.sum(),
+            inputs=joint_angles,
+            create_graph=False,
+            allow_unused=True,
         )[0]
         # 4) apply torques: with axis [0 1 0], to each link
         tendon_torques_full = torch.zeros(
             (joint_angles.shape[0], self.N_LINKS, 3), device=self.device
         )
-        tendon_torques_full[:, :4, 1] = tendon_torques
-        tendon_torques_full[:, 1:, 1] -= tendon_torques
+        tendon_torques_full[:, :4, 2] = tendon_torques
+        tendon_torques_full[:, 1:, 2] -= tendon_torques
 
         self.robot.set_external_force_and_torque(
             forces=torch.zeros(
@@ -418,8 +422,8 @@ def main():
         robot,
         stiffness=torch.tensor([128e3], device=device),
         spring_rest_lengths=torch.tensor([0.06], device=device),
-        upper_tendon_lengths=torch.tensor([0.5], device=device),
-        lower_tendon_lengths=torch.tensor([0.5], device=device),
+        upper_tendon_lengths=torch.tensor([0.5], device=device),  # TODO: ask HW people
+        lower_tendon_lengths=torch.tensor([0.5], device=device),  # TODO: ask HW people
         joint_offsets_q=torch.tensor(
             [[0.0, 0.0, 0.0, 0.0]], device=device
         ),  # TODO: fill in => can be computed: theta = qleft + q + qright
@@ -436,9 +440,7 @@ def main():
                 device=device,
             )
         ),
-        joint_directions=torch.tensor(
-            [[-1.0, -1.0, -1.0, 1.0]], device=device
-        ),  # TODO: fill in (look at isaacsim model)
+        joint_directions=torch.tensor([[-1.0, -1.0, -1.0, 1.0]], device=device),
         pulley_radii=torch.tensor(
             [[0.0075, 0.1, 0.05, 0.04, 0.01]], device=device
         ),  # NOTE: assumes tendon thickness 0, maybe correct with small offset
@@ -469,12 +471,12 @@ def main():
     while True:
         joint_pos = []
         for _ in range(int(t_total / sim.get_physics_dt())):
-            # gst_tendon_manager.apply(sim.get_physics_dt())
+            gst_tendon_manager.apply()
             robot.write_data_to_sim()
             sim.step()
             robot.update(sim.get_physics_dt())
             joint_pos.append(robot.data.joint_pos[0].clone())
-        with open("outputs/joint_pos_v2_no_act_j2_inv.json", "w") as f:
+        with open("outputs/joint_pos_gst.json", "w") as f:
             json.dump([pos.tolist() for pos in joint_pos], f)
 
         sim.reset()
