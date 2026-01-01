@@ -184,7 +184,6 @@ class GSTTendonManager:
             ** 2
         )
         l_4prime6 = torch.sqrt(l_4prime6_squared)
-
         phi_4prime_a_unsigned = torch.acos(
             (self.link_lengths_squared[:, self.LINK_LENGTHS_4prime5]
             + x_4prime6_squared
@@ -206,9 +205,11 @@ class GSTTendonManager:
             / (2 * self.pulley_radii[:, self.RADII_4prime] * x_4prime6)
         )
         phi_4prime_B = phi_4prime_a + phi_4prime_b
-        h5_B = self.pulley_radii[:, self.RADII_4prime] - \
-            self.link_lengths[:, self.LINK_LENGTHS_4prime5] * \
-            torch.cos(phi_4prime_B) # NOTE: changed this computation
+        h5_B = (
+            self.pulley_radii[:, self.RADII_4prime]
+            - self.link_lengths[:, self.LINK_LENGTHS_4prime5] 
+            * torch.cos(phi_4prime_B)
+         ) # NOTE: changed this computation
 
         # 1b) compute h5^C and h6^C
         theta_6_a = torch.pi - thetas[:, self.JOINT_ANGLES_5] - phi_4prime_a
@@ -222,16 +223,24 @@ class GSTTendonManager:
             * torch.cos(theta_6_b)
         )
         x_4prime7 = torch.sqrt(x_4prime7_squared)
-        phi_4prime_d = torch.asin(
-            self.link_lengths[:, self.LINK_LENGTHS_67]
-            * torch.sin(theta_6_b)
-            / x_4prime7
+        phi_4prime_d_unsigned = torch.acos(
+            (x_4prime7_squared
+            + x_4prime6_squared
+            - self.link_lengths_squared[:, self.LINK_LENGTHS_67])
+            / (2 * x_4prime6 * x_4prime7)
+        )
+        phi_4prime_d = torch.where( # NOTE: finished this computation, check if now correct
+            theta_6_b <= torch.pi,
+            phi_4prime_d_unsigned,
+            -phi_4prime_d_unsigned
         )
         phi_4prime_c = torch.acos(self.pulley_radii[:, self.RADII_4prime] / x_4prime7)
         phi_4prime_C = phi_4prime_a + phi_4prime_c + phi_4prime_d
-        h5_C = self.pulley_radii[:, self.RADII_4prime] - l_4prime6 * torch.cos(
-            phi_4prime_C
-        )
+        h5_C = (
+            self.pulley_radii[:, self.RADII_4prime]
+            - self.link_lengths[:, self.LINK_LENGTHS_4prime5] 
+            * torch.cos(phi_4prime_C)
+         ) # NOTE: changed this computation
         h6_C = self.pulley_radii[:, self.RADII_4prime] - x_4prime6 * torch.cos(
             phi_4prime_c + phi_4prime_d
         )
