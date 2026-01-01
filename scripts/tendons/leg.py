@@ -94,9 +94,9 @@ class GSTTendonManager:
         self,
         robot: Articulation,
         stiffness: torch.Tensor,  # K spring
-        spring_rest_lengths: torch.Tensor,  # L_R^S
-        upper_tendon_lengths: torch.Tensor,  # L^UT
-        lower_tendon_lengths: torch.Tensor,  # L^LT -> be sure to include the offset such that UT and LT
+        spring_rest_length: torch.Tensor,  # L_R^S
+        upper_tendon_length: torch.Tensor,  # L^UT
+        lower_tendon_length: torch.Tensor,  # L^LT -> be sure to include the offset such that UT and LT
         #                                      are connected at the same angle at the pulley
         joint_offsets_q: torch.Tensor,  # q for joint_angle=0
         joint_offsets_theta: torch.Tensor,  # theta for joint_angle=0
@@ -118,6 +118,7 @@ class GSTTendonManager:
         self.joint_indices, _ = self.robot.find_joints(
             self.joint_names, preserve_order=True
         )
+        # TODO: add explanation in params to discuss these indices definitions
         self.LINK_LENGTHS_23 = 0
         self.LINK_LENGTHS_34 = 1
         self.LINK_LENGTHS_4prime5 = 2
@@ -139,9 +140,9 @@ class GSTTendonManager:
         self.TENDON_TANGENGY_ANGLES_67_j6 = 3
 
         self.stiffness = stiffness
-        self.spring_rest_lengths = spring_rest_lengths
-        self.upper_tendon_lengths = upper_tendon_lengths
-        self.lower_tendon_lengths = lower_tendon_lengths
+        self.spring_rest_length = spring_rest_length
+        self.upper_tendon_length = upper_tendon_length
+        self.lower_tendon_length = lower_tendon_length
         self.joint_offsets_q = joint_offsets_q
         self.joint_offsets_theta = joint_offsets_theta
         self.joint_directions = joint_directions
@@ -183,24 +184,31 @@ class GSTTendonManager:
             ** 2
         )
         l_4prime6 = torch.sqrt(l_4prime6_squared)
-        phi_4prime_a = torch.asin(
-            self.link_lengths[:, self.LINK_LENGTHS_56]
-            * torch.sin(thetas[:, self.JOINT_ANGLES_5])
-            / x_4prime6
+
+        phi_4prime_a_unsigned = torch.acos(
+            (self.link_lengths_squared[:, self.LINK_LENGTHS_4prime5]
+            + x_4prime6_squared
+            - self.link_lengths_squared[:, self.LINK_LENGTHS_56])
+            / (2 * self.link_lengths_squared[:, self.LINK_LENGTHS_4prime5] * x_4prime6)
+        )
+        phi_4prime_a = torch.where( # NOTE: finished this computation, check if now correct
+            thetas[:, self.JOINT_ANGLES_5] <= torch.pi,
+            phi_4prime_a_unsigned,
+            -phi_4prime_a_unsigned
         )
         phi_4prime_b = torch.acos(
-            (
-                l_4prime6_squared
-                + self.pulley_radii_squared[:, self.RADII_6]
-                - self.pulley_radii_squared[:, self.RADII_4prime]
-                - x_4prime6_squared
+            (   # NOTE: changed signs in this computation
+                self.pulley_radii_squared[:, self.RADII_4prime]
+                + x_4prime6_squared
+                - self.pulley_radii_squared[:, self.RADII_6]
+                - l_4prime6_squared
             )
             / (2 * self.pulley_radii[:, self.RADII_4prime] * x_4prime6)
         )
         phi_4prime_B = phi_4prime_a + phi_4prime_b
-        h5_B = self.pulley_radii[:, self.RADII_4prime] - l_4prime6 * torch.cos(
-            phi_4prime_B
-        )
+        h5_B = self.pulley_radii[:, self.RADII_4prime] - \
+            self.link_lengths[:, self.LINK_LENGTHS_4prime5] * \
+            torch.cos(phi_4prime_B) # NOTE: changed this computation
 
         # 1b) compute h5^C and h6^C
         theta_6_a = torch.pi - thetas[:, self.JOINT_ANGLES_5] - phi_4prime_a
@@ -329,7 +337,7 @@ class GSTTendonManager:
         )
 
         q4prime = (
-            self.lower_tendon_lengths - lower_tendon_state_length_after_4prime
+            self.lower_tendon_length - lower_tendon_state_length_after_4prime
         ) / self.pulley_radii[:, self.RADII_4prime]
 
         q4 = (
@@ -340,8 +348,8 @@ class GSTTendonManager:
         )
 
         delta_L_s = (
-            self.upper_tendon_lengths
-            - self.spring_rest_lengths
+            self.upper_tendon_length
+            - self.spring_rest_length
             - self.tendon_section_lengths[:, self.LINK_LENGTHS_23]
             - qs[:, self.JOINT_ANGLES_3] * self.pulley_radii[:, self.RADII_3]
             - self.tendon_section_lengths[:, self.LINK_LENGTHS_34]
@@ -421,9 +429,9 @@ def main():
     gst_tendon_manager = GSTTendonManager(
         robot,
         stiffness=torch.tensor([128e3], device=device),
-        spring_rest_lengths=torch.tensor([0.06], device=device),
-        upper_tendon_lengths=torch.tensor([0.5], device=device),  # TODO: ask HW people
-        lower_tendon_lengths=torch.tensor([0.5], device=device),  # TODO: ask HW people
+        spring_rest_length=torch.tensor([0.06], device=device),
+        upper_tendon_length=torch.tensor([0.5], device=device),  # TODO: ask HW people
+        lower_tendon_length=torch.tensor([0.5], device=device),  # TODO: ask HW people
         joint_offsets_q=torch.tensor(
             [[0.0, 0.0, 0.0, 0.0]], device=device
         ),  # TODO: fill in => can be computed: theta = qleft + q + qright
