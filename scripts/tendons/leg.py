@@ -274,28 +274,29 @@ class GSTTendonManager:
             :, self.LINK_LENGTHS_56
         ] * torch.cos(phi_5_D)
 
+        # FIXME: changed the logic here to match the documentation
+        # seeing the state_* definitions below, it seemed like the logic is inverted
         h5_B_disengaged = torch.where(
-            h5_B <= self.pulley_radii[:, self.RADII_5],
+            h5_B > self.pulley_radii[:, self.RADII_5],
             True,
             False,
         )
         h5_C_disengaged = torch.where(
-            h5_C <= self.pulley_radii[:, self.RADII_5],
+            h5_C > self.pulley_radii[:, self.RADII_5],
             True,
             False,
         )
         h6_C_disengaged = torch.where(
-            h6_C <= self.pulley_radii[:, self.RADII_6],
+            h6_C > self.pulley_radii[:, self.RADII_6],
             True,
             False,
         )
 
         h6_D_disengaged = torch.where(
-            h6_D <= self.pulley_radii[:, self.RADII_6],
+            h6_D > self.pulley_radii[:, self.RADII_6],
             True,
             False,
         )
-
         state_C = (h5_B_disengaged & h6_C_disengaged) | (
             h6_D_disengaged & h5_C_disengaged
         )
