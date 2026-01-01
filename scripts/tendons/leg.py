@@ -257,10 +257,16 @@ class GSTTendonManager:
         x_57 = torch.sqrt(x_57_squared)
         l_57_squared = x_57_squared - self.pulley_radii[:, self.RADII_5] ** 2
         l_57 = torch.sqrt(l_57_squared)
-        phi_5_a = torch.asin(
-            self.link_lengths[:, self.LINK_LENGTHS_67]
-            * torch.sin(thetas[:, self.JOINT_ANGLES_6])
-            / x_57
+        phi_5_a_unsigned = torch.acos(
+            (self.link_lengths_squared[:, self.LINK_LENGTHS_56]
+            + x_57_squared
+            - self.link_lengths_squared[:, self.LINK_LENGTHS_67])
+            / (2 * self.link_lengths_squared[:, self.LINK_LENGTHS_56] * x_57)
+        )
+        phi_5_a = torch.where( # NOTE: finished this computation, check if now correct
+            thetas[:, self.JOINT_ANGLES_6] <= torch.pi,
+            phi_5_a_unsigned,
+            -phi_5_a_unsigned
         )
         phi_5_b = torch.acos(self.pulley_radii_squared[:, self.RADII_5] / x_57)
         phi_5_D = phi_5_a + phi_5_b
