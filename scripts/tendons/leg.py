@@ -86,9 +86,10 @@ def get_leg_cfg() -> ArticulationCfg:
 # 3) differentiate w.r.t. joint angles
 # 4) apply torques
 
-# TODO: Measure tendon lengths, include angle at 4-4' pulley!
-# FIXME: Fix acos/asin so that it always returns the right value (or have to use 2pi-phi)
-# Change USD so that thetas are always between 0 and 2pi
+# TODO: Measure tendon lengths (getting them on Monday from HW)
+# TODO: Include offset angle at 4-4' pulley!
+# FIXME (Pilar): Fix acos in formulas so it always returns the right value (include min in thetas)
+# FIXME (Linus): Change USD so that thetas are always between 0 and 2pi
 class GSTTendonManager:
     # affects joints j3, j4, j5, j6 through links s23, s34, s45, s56, s67
     def __init__(
