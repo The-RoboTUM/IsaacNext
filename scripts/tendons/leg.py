@@ -28,6 +28,8 @@ from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.math import quat_inv, quat_apply
 
+# Enable anomaly detection for autograd
+# torch.autograd.set_detect_anomaly(True)
 # usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"
 usd_path = "/home/linus/IsaacNext/assets/Leg_free/leg.usd"
 
@@ -84,10 +86,9 @@ def get_leg_cfg() -> ArticulationCfg:
 # 3) differentiate w.r.t. joint angles
 # 4) apply torques
 
-
-# TODO: Compute or measure geometry parameters
 # TODO: Measure tendon lengths, include angle at 4-4' pulley!
-# TODO: look at acos/asin if it always returns the right value (or have to use 2pi-phi)
+# FIXME: Fix acos/asin so that it always returns the right value (or have to use 2pi-phi)
+# Change USD so that thetas are always between 0 and 2pi
 class GSTTendonManager:
     # affects joints j3, j4, j5, j6 through links s23, s34, s45, s56, s67
     def __init__(
@@ -190,13 +191,13 @@ class GSTTendonManager:
             - self.link_lengths_squared[:, self.LINK_LENGTHS_56])
             / (2 * self.link_lengths_squared[:, self.LINK_LENGTHS_4prime5] * x_4prime6)
         )
-        phi_4prime_a = torch.where( # NOTE: finished this computation, check if now correct
+        phi_4prime_a = torch.where(
             thetas[:, self.JOINT_ANGLES_5] <= torch.pi,
             phi_4prime_a_unsigned,
             -phi_4prime_a_unsigned
         )
         phi_4prime_b = torch.acos(
-            (   # NOTE: changed signs in this computation
+            (
                 self.pulley_radii_squared[:, self.RADII_4prime]
                 + x_4prime6_squared
                 - self.pulley_radii_squared[:, self.RADII_6]
@@ -209,7 +210,7 @@ class GSTTendonManager:
             self.pulley_radii[:, self.RADII_4prime]
             - self.link_lengths[:, self.LINK_LENGTHS_4prime5] 
             * torch.cos(phi_4prime_B)
-         ) # NOTE: changed this computation
+         )
 
         # 1b) compute h5^C and h6^C
         theta_6_a = torch.pi - thetas[:, self.JOINT_ANGLES_5] - phi_4prime_a
@@ -229,7 +230,7 @@ class GSTTendonManager:
             - self.link_lengths_squared[:, self.LINK_LENGTHS_67])
             / (2 * x_4prime6 * x_4prime7)
         )
-        phi_4prime_d = torch.where( # NOTE: finished this computation, check if now correct
+        phi_4prime_d = torch.where(
             theta_6_b <= torch.pi,
             phi_4prime_d_unsigned,
             -phi_4prime_d_unsigned
@@ -263,7 +264,7 @@ class GSTTendonManager:
             - self.link_lengths_squared[:, self.LINK_LENGTHS_67])
             / (2 * self.link_lengths_squared[:, self.LINK_LENGTHS_56] * x_57)
         )
-        phi_5_a = torch.where( # NOTE: finished this computation, check if now correct
+        phi_5_a = torch.where(
             thetas[:, self.JOINT_ANGLES_6] <= torch.pi,
             phi_5_a_unsigned,
             -phi_5_a_unsigned
@@ -274,8 +275,6 @@ class GSTTendonManager:
             :, self.LINK_LENGTHS_56
         ] * torch.cos(phi_5_D)
 
-        # FIXME: changed the logic here to match the documentation
-        # seeing the state_* definitions below, it seemed like the logic is inverted
         h5_B_disengaged = torch.where(
             h5_B > self.pulley_radii[:, self.RADII_5],
             True,
@@ -291,7 +290,6 @@ class GSTTendonManager:
             True,
             False,
         )
-
         h6_D_disengaged = torch.where(
             h6_D > self.pulley_radii[:, self.RADII_6],
             True,
@@ -450,7 +448,7 @@ def main():
         lower_tendon_length=torch.tensor([0.5], device=device),  # TODO: ask HW people
         joint_offsets_q=torch.tensor(
             [[0.0, 0.0, 0.0, 0.0]], device=device
-        ),  # TODO: fill in => can be computed: theta = qleft + q + qright
+        ),  # TODO (Linus): fill in => can be computed: theta = qleft + q + qright
         joint_offsets_theta=torch.deg2rad(
             torch.tensor(
                 [
@@ -473,10 +471,10 @@ def main():
         ),  # lj23 is not needed but included for easier indexing
         tendon_section_lengths=torch.tensor(
             [[0.1, 0.1, 0.1, 0.1, 0.1]], device=device
-        ),  # TODO: fill in (compute from CAD ; measure l23)
+        ),  # TODO (Pilar): compute with appendix formulas in constants.py
         tendon_tangency_angles=torch.tensor(
             [[0.0, 0.0, 0.0, 0.0]], device=device
-        ),  # TODO: fill in (compute from CAD)
+        ),  # TODO (Pilar): compute with appendix formulas in constants.py
         link_names=[
             "knee_assyv9_1",  # 23
             "s12_front_assyv6_1",  # 34
