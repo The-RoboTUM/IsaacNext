@@ -88,7 +88,6 @@ def get_leg_cfg() -> ArticulationCfg:
 
 # TODO: Measure tendon lengths (getting them on Monday from HW)
 # TODO: Include offset angle at 4-4' pulley!
-# FIXME (Pilar): Fix acos in formulas so it always returns the right value (include min in thetas)
 # FIXME (Linus): Change USD so that thetas are always between 0 and 2pi
 class GSTTendonManager:
     # affects joints j3, j4, j5, j6 through links s23, s34, s45, s56, s67
@@ -155,6 +154,23 @@ class GSTTendonManager:
         self.tendon_section_lengths = tendon_section_lengths
         self.tendon_tangency_angles = tendon_tangency_angles
 
+    # TODO: see if I can do this more elegantly with tensors
+    # TODO: see if results change for radius_a > radius_b
+    def compute_tendon_section_length(radius_a, radius_b, link_length, is_opposite_wrap = False):
+        if is_opposite_wrap == False:
+            aux_angle = torch.asin((radius_b - radius_a)/ link_length)
+        else:
+            aux_angle = torch.asin((radius_b + radius_a)/ link_length)
+        return link_length * torch.cos(aux_angle)
+
+    def compute_tendon_tangency_angle(radius_a, radius_b, link_length, is_opposite_wrap = False):
+        if is_opposite_wrap == False:
+            aux_angle = torch.asin((radius_b - radius_a)/ link_length)
+            return torch.pi/2 + aux_angle
+        else:
+            aux_angle = torch.asin((radius_b + radius_a)/ link_length)
+            return torch.pi - aux_angle
+        
     def apply(self):
         joint_angles = (
             self.robot.data.joint_pos[:, self.joint_indices]
