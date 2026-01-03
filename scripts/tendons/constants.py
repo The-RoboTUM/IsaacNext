@@ -72,7 +72,9 @@ class TendonConstants:
 
     stiffness: float = 128e3
     spring_rest_length: float = 0.06
-    upper_tendon_length: float = 0.5  # TODO: ask HW people
+    upper_tendon_length: float = (
+        0.5  # TODO: ask HW people # TODO: Correct by angle-length at 4-4'
+    )
     lower_tendon_length: float = 0.5  # TODO: ask HW people
     joint_offsets_theta: list[float] = list_from_dict(
         {
@@ -115,19 +117,6 @@ class TendonConstants:
     length_2prime3: float = 0.0  # TODO: Meausre, distance from end of spring to joint 3
 
 
-joint_offsets_q = (
-    torch.tensor([[0.0, 0.0, 0.0, 0.0]], device=dev),
-)  # TODO: fill in => can be computed: theta = qleft + q + qright
-tendon_section_lengths = (
-    torch.tensor([[0.1, 0.1, 0.1, 0.1, 0.1]], device=dev),
-)  # TODO: fill in (compute from CAD)
-tendon_tangency_angles = (
-    torch.tensor([[0.0, 0.0, 0.0, 0.0]], device=dev),
-)  # TODO: fill in (compute from CAD)
-# self.pulley_radii_squared = pulley_radii**2
-# self.link_lengths_squared = link_lengths**2
-
-
 class TendonData:
     """Tendon data for for parallel training.
 
@@ -138,3 +127,15 @@ class TendonData:
         self, batch_size: int, randomization_ranges: dict[str, tuple[float, float]]
     ) -> None:
         pass
+
+        # joint_offsets_q = (
+        # torch.tensor([[0.0, 0.0, 0.0, 0.0]], device=dev),
+        # )  # TODO: fill in => can be computed: theta = qleft + q + qright
+        # tendon_section_lengths = (
+        #     torch.tensor([[0.1, 0.1, 0.1, 0.1, 0.1]], device=dev),
+        # )  # TODO: fill in (compute from CAD)
+        # tendon_tangency_angles = (
+        #     torch.tensor([[0.0, 0.0, 0.0, 0.0]], device=dev),
+        # )  # TODO: fill in (compute from CAD)
+        # self.pulley_radii_squared = pulley_radii**2
+        # self.link_lengths_squared = link_lengths**2
