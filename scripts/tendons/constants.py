@@ -114,7 +114,7 @@ class TendonConstants:
         },
         N_LINKS,
     )
-    length_2prime3: float = 0.0  # TODO: Meausre, distance from end of spring to joint 3
+    length_2prime3: float = 0.0  # TODO: compute from measurements from CAD
 
 
 class TendonData:
@@ -139,3 +139,25 @@ class TendonData:
         # )  # TODO: fill in (compute from CAD)
         # self.pulley_radii_squared = pulley_radii**2
         # self.link_lengths_squared = link_lengths**2
+
+
+# q offsets: q3 offset: phi_23_j3 -> 0?, phi_34_j3, theta_3 base
+#          q4 in base state (=offset) (up to 4=4') => compute from q4' in base state + phi_34_j4, phi_4'5_j4, theta_4 base
+#          q5 offset: phi_4'5_j5, phi_56_j5, theta_5 base
+#          q6 offset: phi_56_j6, phi_67_j6, theta_6 base
+
+# tendon section lengths:
+#   length_2'3: from CAD
+#   length_34: formula
+#   length_4'5: formula
+#   length_56: formula
+#   length_67: formula
+
+# tendon tangency angles:
+#   phi_34_j4: already computed for q4 offset
+#   phi_4'5_j4: already computed for q4 offset
+#   phi_4'5_j5: already computed for q5 offset
+#   phi_67_j6: already computed for q6 offset
+
+# angle of spring to link 2: 11°; orthogonal distance of spring-axis to joint 3: 2.547cm
+# end of spring to joint: 11.104cm
