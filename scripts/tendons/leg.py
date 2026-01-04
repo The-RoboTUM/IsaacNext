@@ -153,6 +153,7 @@ class GSTTendonManager:
         self.tendon_tangency_angles = tendon_tangency_angles
 
     def apply(self):
+        print("Applying GST tendon model...")
         joint_angles = (
             self.robot.data.joint_pos[:, self.joint_indices]
             .clone()
@@ -183,24 +184,36 @@ class GSTTendonManager:
             ** 2
         )
         l_4prime6 = torch.sqrt(l_4prime6_squared)
-        phi_4prime_a = torch.asin(
-            self.link_lengths[:, self.LINK_LENGTHS_56]
-            * torch.sin(thetas[:, self.JOINT_ANGLES_5])
-            / x_4prime6
+        phi_4prime_a_unsigned = torch.acos(
+            (
+                self.link_lengths_squared[:, self.LINK_LENGTHS_4prime5]
+                + x_4prime6_squared
+                - self.link_lengths_squared[:, self.LINK_LENGTHS_56]
+            )
+            / (2 * self.link_lengths_squared[:, self.LINK_LENGTHS_4prime5] * x_4prime6)
+        )
+        phi_4prime_a = (
+            torch.where(  # NOTE: finished this computation, check if now correct
+                thetas[:, self.JOINT_ANGLES_5] <= torch.pi,
+                phi_4prime_a_unsigned,
+                -phi_4prime_a_unsigned,
+            )
         )
         phi_4prime_b = torch.acos(
-            (
-                l_4prime6_squared
-                + self.pulley_radii_squared[:, self.RADII_6]
-                - self.pulley_radii_squared[:, self.RADII_4prime]
-                - x_4prime6_squared
+            (  # NOTE: changed signs in this computation
+                self.pulley_radii_squared[:, self.RADII_4prime]
+                + x_4prime6_squared
+                - self.pulley_radii_squared[:, self.RADII_6]
+                - l_4prime6_squared
             )
             / (2 * self.pulley_radii[:, self.RADII_4prime] * x_4prime6)
         )
         phi_4prime_B = phi_4prime_a + phi_4prime_b
-        h5_B = self.pulley_radii[:, self.RADII_4prime] - l_4prime6 * torch.cos(
+        h5_B = self.pulley_radii[:, self.RADII_4prime] - self.link_lengths[
+            :, self.LINK_LENGTHS_4prime5
+        ] * torch.cos(
             phi_4prime_B
-        )
+        )  # NOTE: changed this computation
 
         # 1b) compute h5^C and h6^C
         theta_6_a = torch.pi - thetas[:, self.JOINT_ANGLES_5] - phi_4prime_a
@@ -214,16 +227,26 @@ class GSTTendonManager:
             * torch.cos(theta_6_b)
         )
         x_4prime7 = torch.sqrt(x_4prime7_squared)
-        phi_4prime_d = torch.asin(
-            self.link_lengths[:, self.LINK_LENGTHS_67]
-            * torch.sin(theta_6_b)
-            / x_4prime7
+        phi_4prime_d_unsigned = torch.acos(
+            (
+                x_4prime7_squared
+                + x_4prime6_squared
+                - self.link_lengths_squared[:, self.LINK_LENGTHS_67]
+            )
+            / (2 * x_4prime6 * x_4prime7)
+        )
+        phi_4prime_d = (
+            torch.where(  # NOTE: finished this computation, check if now correct
+                theta_6_b <= torch.pi, phi_4prime_d_unsigned, -phi_4prime_d_unsigned
+            )
         )
         phi_4prime_c = torch.acos(self.pulley_radii[:, self.RADII_4prime] / x_4prime7)
         phi_4prime_C = phi_4prime_a + phi_4prime_c + phi_4prime_d
-        h5_C = self.pulley_radii[:, self.RADII_4prime] - l_4prime6 * torch.cos(
+        h5_C = self.pulley_radii[:, self.RADII_4prime] - self.link_lengths[
+            :, self.LINK_LENGTHS_4prime5
+        ] * torch.cos(
             phi_4prime_C
-        )
+        )  # NOTE: changed this computation
         h6_C = self.pulley_radii[:, self.RADII_4prime] - x_4prime6 * torch.cos(
             phi_4prime_c + phi_4prime_d
         )
@@ -240,10 +263,18 @@ class GSTTendonManager:
         x_57 = torch.sqrt(x_57_squared)
         l_57_squared = x_57_squared - self.pulley_radii[:, self.RADII_5] ** 2
         l_57 = torch.sqrt(l_57_squared)
-        phi_5_a = torch.asin(
-            self.link_lengths[:, self.LINK_LENGTHS_67]
-            * torch.sin(thetas[:, self.JOINT_ANGLES_6])
-            / x_57
+        phi_5_a_unsigned = torch.acos(
+            (
+                self.link_lengths_squared[:, self.LINK_LENGTHS_56]
+                + x_57_squared
+                - self.link_lengths_squared[:, self.LINK_LENGTHS_67]
+            )
+            / (2 * self.link_lengths_squared[:, self.LINK_LENGTHS_56] * x_57)
+        )
+        phi_5_a = torch.where(  # NOTE: finished this computation, check if now correct
+            thetas[:, self.JOINT_ANGLES_6] <= torch.pi,
+            phi_5_a_unsigned,
+            -phi_5_a_unsigned,
         )
         phi_5_b = torch.acos(self.pulley_radii_squared[:, self.RADII_5] / x_57)
         phi_5_D = phi_5_a + phi_5_b
@@ -373,6 +404,9 @@ class GSTTendonManager:
             body_ids=self.link_indices,
         )
 
+        print("Applied GST tendon model.")
+        return state_A, state_B, state_C, state_D, not_slack
+
 
 joints = [
     "rp1_pantograph",  # pantograph, actuated but always set to 0.0, stiffness? blockhöhe?     "s12p_pantograph_spring_assy_topv2_1" -> "s12p_pantograph_spring_assy_botv1_1"
@@ -393,7 +427,7 @@ def main():
     # IsaacLab simulation setup
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
     sim_cfg.dt = 0.0032
-    t_total = 3.0
+    t_total = 1.0
     sim = SimulationContext(sim_cfg)
     #  sim.set_camera_view([5.0, 0.0, 1.5], [0.0, 0.0, 1.0])  # type: ignore
 
@@ -468,27 +502,39 @@ def main():
         ],
     )
 
-    while True:
-        joint_pos = []
-        for _ in range(int(t_total / sim.get_physics_dt())):
-            gst_tendon_manager.apply()
-            robot.write_data_to_sim()
-            sim.step()
-            robot.update(sim.get_physics_dt())
-            joint_pos.append(robot.data.joint_pos[0].clone())
-        with open("outputs/joint_pos_gst.json", "w") as f:
-            json.dump([pos.tolist() for pos in joint_pos], f)
-
-        sim.reset()
-        robot.write_joint_state_to_sim(
-            position=robot.data.default_joint_pos,
-            velocity=robot.data.default_joint_vel,
+    # while True:
+    joint_pos = []
+    states = []
+    for _ in range(int(t_total / sim.get_physics_dt())):
+        a, b, c, d, not_slack = gst_tendon_manager.apply()
+        states.append(
+            "s"
+            if not_slack.sum() == 0
+            else (
+                "a"
+                if a.sum() > 0
+                else ("b" if b.sum() > 0 else ("c" if c.sum() > 0 else "d"))
+            )
         )
         robot.write_data_to_sim()
-        sim.step()  # step once to load the robot
+        sim.step()
         robot.update(sim.get_physics_dt())
+        joint_pos.append(robot.data.joint_pos[0].clone())
+    with open("outputs/joint_pos_gst.json", "w") as f:
+        json.dump([pos.tolist() for pos in joint_pos], f)
+    with open("outputs/states_gst.json", "w") as f:
+        json.dump(states, f)
 
-        time.sleep(1)
+    # sim.reset()
+    # robot.write_joint_state_to_sim(
+    #     position=robot.data.default_joint_pos,
+    #     velocity=robot.data.default_joint_vel,
+    # )
+    # robot.write_data_to_sim()
+    # sim.step()  # step once to load the robot
+    # robot.update(sim.get_physics_dt())
+
+    # time.sleep(1)
 
     simulation_app.close()
 
