@@ -173,7 +173,12 @@ class GSTTendonManager:
             - 2
             * self.link_lengths[:, self.LINK_LENGTHS_4prime5]
             * self.link_lengths[:, self.LINK_LENGTHS_56]
-            * torch.cos(thetas[:, self.JOINT_ANGLES_5])
+            * torch.cos(
+                torch.min(
+                    thetas[:, self.JOINT_ANGLES_5],
+                    2 * torch.pi - thetas[:, self.JOINT_ANGLES_5],
+                )
+            )  # added min because theta_5 can be > pi but should be handled symmetrically
         )
         x_4prime6 = torch.sqrt(x_4prime6_squared)
         l_4prime6_squared = (
@@ -225,7 +230,9 @@ class GSTTendonManager:
             - 2
             * x_4prime6
             * self.link_lengths[:, self.LINK_LENGTHS_67]
-            * torch.cos(theta_6_b)
+            * torch.cos(
+                torch.min(theta_6_b, 2 * torch.pi - theta_6_b)
+            )  # added min because theta_6_b can be > pi but should be handled symmetrically
         )
         x_4prime7 = torch.sqrt(x_4prime7_squared)
         phi_4prime_d_unsigned = torch.acos(
@@ -259,7 +266,12 @@ class GSTTendonManager:
             - 2
             * self.link_lengths[:, self.LINK_LENGTHS_56]
             * self.link_lengths[:, self.LINK_LENGTHS_67]
-            * torch.cos(thetas[:, self.JOINT_ANGLES_6])
+            * torch.cos(
+                torch.min(
+                    thetas[:, self.JOINT_ANGLES_6],
+                    2 * torch.pi - thetas[:, self.JOINT_ANGLES_6],
+                )
+            )  # added min because theta_6 can be > pi but should be handled symmetrically)
         )
         x_57 = torch.sqrt(x_57_squared)
         l_57_squared = x_57_squared - self.pulley_radii[:, self.RADII_5] ** 2
