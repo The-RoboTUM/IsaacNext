@@ -94,9 +94,9 @@ class GSTTendonManager:
         self,
         robot: Articulation,
         stiffness: torch.Tensor,  # K spring
-        spring_rest_lengths: torch.Tensor,  # L_R^S
-        upper_tendon_lengths: torch.Tensor,  # L^UT
-        lower_tendon_lengths: torch.Tensor,  # L^LT -> be sure to include the offset such that UT and LT
+        spring_rest_length: torch.Tensor,  # L_R^S
+        upper_tendon_length: torch.Tensor,  # L^UT
+        lower_tendon_length: torch.Tensor,  # L^LT -> be sure to include the offset such that UT and LT
         #                                      are connected at the same angle at the pulley
         joint_offsets_q: torch.Tensor,  # q for joint_angle=0
         joint_offsets_theta: torch.Tensor,  # theta for joint_angle=0
@@ -118,6 +118,7 @@ class GSTTendonManager:
         self.joint_indices, _ = self.robot.find_joints(
             self.joint_names, preserve_order=True
         )
+        # TODO: add explanation in params to discuss these indices definitions
         self.LINK_LENGTHS_23 = 0
         self.LINK_LENGTHS_34 = 1
         self.LINK_LENGTHS_4prime5 = 2
@@ -139,9 +140,9 @@ class GSTTendonManager:
         self.TENDON_TANGENGY_ANGLES_67_j6 = 3
 
         self.stiffness = stiffness
-        self.spring_rest_lengths = spring_rest_lengths
-        self.upper_tendon_lengths = upper_tendon_lengths
-        self.lower_tendon_lengths = lower_tendon_lengths
+        self.spring_rest_length = spring_rest_length
+        self.upper_tendon_length = upper_tendon_length
+        self.lower_tendon_length = lower_tendon_length
         self.joint_offsets_q = joint_offsets_q
         self.joint_offsets_theta = joint_offsets_theta
         self.joint_directions = joint_directions
@@ -282,28 +283,29 @@ class GSTTendonManager:
             :, self.LINK_LENGTHS_56
         ] * torch.cos(phi_5_D)
 
+        # FIXME: changed the logic here to match the documentation
+        # seeing the state_* definitions below, it seemed like the logic is inverted
         h5_B_disengaged = torch.where(
-            h5_B <= self.pulley_radii[:, self.RADII_5],
+            h5_B > self.pulley_radii[:, self.RADII_5],
             True,
             False,
         )
         h5_C_disengaged = torch.where(
-            h5_C <= self.pulley_radii[:, self.RADII_5],
+            h5_C > self.pulley_radii[:, self.RADII_5],
             True,
             False,
         )
         h6_C_disengaged = torch.where(
-            h6_C <= self.pulley_radii[:, self.RADII_6],
+            h6_C > self.pulley_radii[:, self.RADII_6],
             True,
             False,
         )
 
         h6_D_disengaged = torch.where(
-            h6_D <= self.pulley_radii[:, self.RADII_6],
+            h6_D > self.pulley_radii[:, self.RADII_6],
             True,
             False,
         )
-
         state_C = (h5_B_disengaged & h6_C_disengaged) | (
             h6_D_disengaged & h5_C_disengaged
         )
@@ -360,7 +362,7 @@ class GSTTendonManager:
         )
 
         q4prime = (
-            self.lower_tendon_lengths - lower_tendon_state_length_after_4prime
+            self.lower_tendon_length - lower_tendon_state_length_after_4prime
         ) / self.pulley_radii[:, self.RADII_4prime]
 
         q4 = (
@@ -371,8 +373,8 @@ class GSTTendonManager:
         )
 
         delta_L_s = (
-            self.upper_tendon_lengths
-            - self.spring_rest_lengths
+            self.upper_tendon_length
+            - self.spring_rest_length
             - self.tendon_section_lengths[:, self.LINK_LENGTHS_23]
             - qs[:, self.JOINT_ANGLES_3] * self.pulley_radii[:, self.RADII_3]
             - self.tendon_section_lengths[:, self.LINK_LENGTHS_34]
@@ -455,9 +457,9 @@ def main():
     gst_tendon_manager = GSTTendonManager(
         robot,
         stiffness=torch.tensor([128e3], device=device),
-        spring_rest_lengths=torch.tensor([0.06], device=device),
-        upper_tendon_lengths=torch.tensor([0.5], device=device),  # TODO: ask HW people
-        lower_tendon_lengths=torch.tensor([0.5], device=device),  # TODO: ask HW people
+        spring_rest_length=torch.tensor([0.06], device=device),
+        upper_tendon_length=torch.tensor([0.5], device=device),  # TODO: ask HW people
+        lower_tendon_length=torch.tensor([0.5], device=device),  # TODO: ask HW people
         joint_offsets_q=torch.tensor(
             [[0.0, 0.0, 0.0, 0.0]], device=device
         ),  # TODO: fill in => can be computed: theta = qleft + q + qright
