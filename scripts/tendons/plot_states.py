@@ -57,12 +57,12 @@ ax2.grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.savefig("outputs/states_gst_plot.png", dpi=150, bbox_inches="tight")
-print(f"Plot saved to outputs/states_gst_plot.png")
+print("Plot saved to outputs/states_gst_plot.png")
 print(f"Total timesteps: {len(states)}")
-print(f"State distribution:")
+print("State distribution:")
 for state in ["a", "b", "c", "d", "s"]:
     count = states.count(state)
-    print(f"  {state}: {count} ({100*count/len(states):.1f}%)")
+    print(f"  {state}: {count} ({100 * count / len(states):.1f}%)")
 print(f"Number of state transitions: {sum(state_changes)}")
 
 plt.show()

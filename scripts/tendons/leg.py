@@ -28,8 +28,20 @@ from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.math import quat_inv, quat_apply
 
+from isaaclab.tendons.constants import (
+    tids,
+    TendonData,
+    dummy_randomization,
+    link_names,
+    joint_names,
+    N_LINKS,
+)
+
 # usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"
 usd_path = "/home/linus/IsaacNext/assets/Leg_free/leg.usd"
+
+# throw error on NaN in backprop
+torch.autograd.set_detect_anomaly(True)
 
 
 def get_leg_cfg() -> ArticulationCfg:
@@ -77,6 +89,30 @@ def get_leg_cfg() -> ArticulationCfg:
     )
 
 
+def angle_from_sides(a, b, c, eps=1e-6):
+    # s = 0.5 * (a + b + c)
+    # area = torch.sqrt(torch.clamp(s * (s - a) * (s - b) * (s - c), min=0.0))
+
+    # sin_theta = 2 * area / (a * b)
+    # cos_theta = (a * a + b * b - c * c) / (2 * a * b)
+
+    # theta = torch.atan2(sin_theta, cos_theta)
+    # return theta
+    cos_theta = (a * a + b * b - c * c) / (2 * a * b)
+    cos_theta = torch.clamp(cos_theta, -1.0 + eps, 1.0 - eps)
+
+    sin_theta = torch.sqrt(1.0 - cos_theta * cos_theta + eps)
+
+    theta = torch.atan2(sin_theta, cos_theta)
+    return theta
+
+
+def angle_from_sws(a, b, theta):
+    x = a - b * torch.cos(theta)
+    y = b * torch.sin(torch.minimum(theta, 2 * torch.pi - theta))
+    return torch.atan2(y, x)
+
+
 # Running pipeline:
 # 0) transform joint angles to thetas and qs
 # 1) evaluate conditions
@@ -93,65 +129,14 @@ class GSTTendonManager:
     def __init__(
         self,
         robot: Articulation,
-        stiffness: torch.Tensor,  # K spring
-        spring_rest_length: torch.Tensor,  # L_R^S
-        upper_tendon_length: torch.Tensor,  # L^UT
-        lower_tendon_length: torch.Tensor,  # L^LT -> be sure to include the offset such that UT and LT
-        #                                      are connected at the same angle at the pulley
-        joint_offsets_q: torch.Tensor,  # q for joint_angle=0
-        joint_offsets_theta: torch.Tensor,  # theta for joint_angle=0
-        joint_directions: torch.Tensor,  # +-1 => joint_directions * joint_angles + joint_offsets_*
-        pulley_radii: torch.Tensor,  # r3, r4, r4', r5, r6
-        link_lengths: torch.Tensor,  # s23, s34, s45, s56, s67
-        tendon_section_lengths: torch.Tensor,  # l23, l34, l4'5, l56, l67
-        tendon_tangency_angles: torch.Tensor,  # phi_34^j4, phi_45^j4, phi_45^j5, phi_67^j6
-        link_names: list[str],  # s23, s34, s45, s56, s67
-        joint_names: list[str],  # j3, j4, j5, j6
     ):
         self.robot = robot
         self.device = robot.device
-        self.link_names = link_names
-        self.link_indices, _ = self.robot.find_bodies(
-            self.link_names, preserve_order=True
-        )
-        self.joint_names = joint_names
-        self.joint_indices, _ = self.robot.find_joints(
-            self.joint_names, preserve_order=True
-        )
-        # TODO: add explanation in params to discuss these indices definitions
-        self.LINK_LENGTHS_23 = 0
-        self.LINK_LENGTHS_34 = 1
-        self.LINK_LENGTHS_4prime5 = 2
-        self.LINK_LENGTHS_56 = 3
-        self.LINK_LENGTHS_67 = 4
-        self.N_LINKS = len(self.link_indices)
-        self.JOINT_ANGLES_3 = 0
-        self.JOINT_ANGLES_4 = 1
-        self.JOINT_ANGLES_5 = 2
-        self.JOINT_ANGLES_6 = 3
-        self.RADII_3 = 0
-        self.RADII_4 = 1
-        self.RADII_4prime = 2
-        self.RADII_5 = 3
-        self.RADII_6 = 4
-        self.TENDON_TANGENGY_ANGLES_34_j4 = 0
-        self.TENDON_TANGENGY_ANGLES_45_j4 = 1
-        self.TENDON_TANGENGY_ANGLES_45_j5 = 2
-        self.TENDON_TANGENGY_ANGLES_67_j6 = 3
 
-        self.stiffness = stiffness
-        self.spring_rest_length = spring_rest_length
-        self.upper_tendon_length = upper_tendon_length
-        self.lower_tendon_length = lower_tendon_length
-        self.joint_offsets_q = joint_offsets_q
-        self.joint_offsets_theta = joint_offsets_theta
-        self.joint_directions = joint_directions
-        self.pulley_radii = pulley_radii
-        self.pulley_radii_squared = pulley_radii**2
-        self.link_lengths = link_lengths
-        self.link_lengths_squared = link_lengths**2
-        self.tendon_section_lengths = tendon_section_lengths
-        self.tendon_tangency_angles = tendon_tangency_angles
+        self.link_indices, _ = self.robot.find_bodies(link_names, preserve_order=True)
+        self.joint_indices, _ = self.robot.find_joints(joint_names, preserve_order=True)
+        # TODO: add explanation in params to discuss these indices definitions
+        self.tendon_data = TendonData(1, dummy_randomization)
 
     def apply(self):
         print("Applying GST tendon model...")
@@ -161,85 +146,117 @@ class GSTTendonManager:
             .requires_grad_(True)
         )  # q3, q4, q5, q6
         # 0) transform joint angles to thetas and qs
-        joint_angles_signed = self.joint_directions * joint_angles
-        thetas = joint_angles_signed + self.joint_offsets_theta
-        qs = joint_angles_signed + self.joint_offsets_q
+        joint_angles_signed = self.tendon_data.joint_directions * joint_angles
+        thetas = joint_angles_signed + self.tendon_data.joint_offsets_theta
+        qs = joint_angles_signed + self.tendon_data.joint_offsets_q
 
         # 1) evaluate conditions
         # 1a) compute h5^B
         x_4prime6_squared = (
-            self.link_lengths_squared[:, self.LINK_LENGTHS_4prime5]
-            + self.link_lengths_squared[:, self.LINK_LENGTHS_56]
+            self.tendon_data.link_lengths_squared[:, tids.I_LINK_4prime5]
+            + self.tendon_data.link_lengths_squared[:, tids.I_LINK_56]
             - 2
-            * self.link_lengths[:, self.LINK_LENGTHS_4prime5]
-            * self.link_lengths[:, self.LINK_LENGTHS_56]
-            * torch.cos(
-                torch.min(
-                    thetas[:, self.JOINT_ANGLES_5],
-                    2 * torch.pi - thetas[:, self.JOINT_ANGLES_5],
-                )
-            )  # added min because theta_5 can be > pi but should be handled symmetrically
+            * self.tendon_data.link_lengths[:, tids.I_LINK_4prime5]
+            * self.tendon_data.link_lengths[:, tids.I_LINK_56]
+            * torch.cos(thetas[:, tids.I_JOINT_5])
         )
         x_4prime6 = torch.sqrt(x_4prime6_squared)
         l_4prime6_squared = (
             x_4prime6_squared
             - (
-                self.pulley_radii[:, self.RADII_4prime]
-                - self.pulley_radii[:, self.RADII_6]
+                self.tendon_data.pulley_radii[:, tids.I_RADIUS_4prime]
+                - self.tendon_data.pulley_radii[:, tids.I_RADIUS_6]
             )
             ** 2
         )
         l_4prime6 = torch.sqrt(l_4prime6_squared)
-        phi_4prime_a_unsigned = torch.acos(
-            (
-                self.link_lengths_squared[:, self.LINK_LENGTHS_4prime5]
-                + x_4prime6_squared
-                - self.link_lengths_squared[:, self.LINK_LENGTHS_56]
-            )
-            / (2 * self.link_lengths_squared[:, self.LINK_LENGTHS_4prime5] * x_4prime6)
+        print(
+            "Triangle with sides:",
+            self.tendon_data.link_lengths[:, tids.I_LINK_4prime5],
+            x_4prime6,
+            self.tendon_data.link_lengths[:, tids.I_LINK_56],
         )
+        print("Angle at link 5:", thetas[:, tids.I_JOINT_5])
+        print(
+            "Numerator of acos argument:",
+            (
+                self.tendon_data.link_lengths_squared[:, tids.I_LINK_4prime5]
+                + x_4prime6_squared
+                - self.tendon_data.link_lengths_squared[:, tids.I_LINK_56]
+            ),
+        )
+        print(
+            "Denominator of acos argument:",
+            2 * self.tendon_data.link_lengths[:, tids.I_LINK_4prime5] * x_4prime6,
+        )
+        print(
+            "Acos argument - 1:",
+            (
+                self.tendon_data.link_lengths_squared[:, tids.I_LINK_4prime5]
+                + x_4prime6_squared
+                - self.tendon_data.link_lengths_squared[:, tids.I_LINK_56]
+            )
+            / (2 * self.tendon_data.link_lengths[:, tids.I_LINK_4prime5] * x_4prime6)
+            - 1,
+        )
+        # phi_4prime_a_unsigned = angle_from_sides(
+        #     self.link_lengths[:, self.LINK_LENGTHS_4prime5],
+        #     x_4prime6,
+        #     self.link_lengths[:, self.LINK_LENGTHS_56],
+        # )
+        phi_4prime_a_unsigned = angle_from_sws(
+            self.tendon_data.link_lengths[:, tids.I_LINK_4prime5],
+            self.tendon_data.link_lengths[:, tids.I_LINK_56],
+            thetas[:, tids.I_JOINT_5],
+        )
+        # phi_4prime_a_unsigned = torch.acos(
+        #     (
+        #         self.link_lengths_squared[:, self.LINK_LENGTHS_4prime5]
+        #         + x_4prime6_squared
+        #         - self.link_lengths_squared[:, self.LINK_LENGTHS_56]
+        #     )
+        #     / (2 * self.link_lengths[:, self.LINK_LENGTHS_4prime5] * x_4prime6)
+        # )
         phi_4prime_a = (
             torch.where(  # NOTE: finished this computation, check if now correct
-                thetas[:, self.JOINT_ANGLES_5] <= torch.pi,
+                thetas[:, tids.I_JOINT_5] <= torch.pi,
                 phi_4prime_a_unsigned,
                 -phi_4prime_a_unsigned,
             )
         )
         phi_4prime_b = torch.acos(
             (  # NOTE: changed signs in this computation
-                self.pulley_radii_squared[:, self.RADII_4prime]
+                self.tendon_data.pulley_radii_squared[:, tids.I_RADIUS_4prime]
                 + x_4prime6_squared
-                - self.pulley_radii_squared[:, self.RADII_6]
+                - self.tendon_data.pulley_radii_squared[:, tids.I_RADIUS_6]
                 - l_4prime6_squared
             )
-            / (2 * self.pulley_radii[:, self.RADII_4prime] * x_4prime6)
+            / (2 * self.tendon_data.pulley_radii[:, tids.I_RADIUS_4prime] * x_4prime6)
         )
         phi_4prime_B = phi_4prime_a + phi_4prime_b
-        h5_B = self.pulley_radii[:, self.RADII_4prime] - self.link_lengths[
-            :, self.LINK_LENGTHS_4prime5
-        ] * torch.cos(
+        h5_B = self.tendon_data.pulley_radii[
+            :, tids.I_RADIUS_4prime
+        ] - self.tendon_data.link_lengths[:, tids.I_LINK_4prime5] * torch.cos(
             phi_4prime_B
         )  # NOTE: changed this computation
 
         # 1b) compute h5^C and h6^C
-        theta_6_a = torch.pi - thetas[:, self.JOINT_ANGLES_5] - phi_4prime_a
-        theta_6_b = thetas[:, self.JOINT_ANGLES_6] - theta_6_a
+        theta_6_a = torch.pi - thetas[:, tids.I_JOINT_5] - phi_4prime_a
+        theta_6_b = thetas[:, tids.I_JOINT_6] - theta_6_a
         x_4prime7_squared = (
             x_4prime6_squared
-            + self.link_lengths_squared[:, self.LINK_LENGTHS_67]
+            + self.tendon_data.link_lengths_squared[:, tids.I_LINK_67]
             - 2
             * x_4prime6
-            * self.link_lengths[:, self.LINK_LENGTHS_67]
-            * torch.cos(
-                torch.min(theta_6_b, 2 * torch.pi - theta_6_b)
-            )  # added min because theta_6_b can be > pi but should be handled symmetrically
+            * self.tendon_data.link_lengths[:, tids.I_LINK_67]
+            * torch.cos(theta_6_b)
         )
         x_4prime7 = torch.sqrt(x_4prime7_squared)
         phi_4prime_d_unsigned = torch.acos(
             (
                 x_4prime7_squared
                 + x_4prime6_squared
-                - self.link_lengths_squared[:, self.LINK_LENGTHS_67]
+                - self.tendon_data.link_lengths_squared[:, tids.I_LINK_67]
             )
             / (2 * x_4prime6 * x_4prime7)
         )
@@ -248,73 +265,100 @@ class GSTTendonManager:
                 theta_6_b <= torch.pi, phi_4prime_d_unsigned, -phi_4prime_d_unsigned
             )
         )
-        phi_4prime_c = torch.acos(self.pulley_radii[:, self.RADII_4prime] / x_4prime7)
+        phi_4prime_c = torch.acos(
+            self.tendon_data.pulley_radii[:, tids.I_RADIUS_4prime] / x_4prime7
+        )
         phi_4prime_C = phi_4prime_a + phi_4prime_c + phi_4prime_d
-        h5_C = self.pulley_radii[:, self.RADII_4prime] - self.link_lengths[
-            :, self.LINK_LENGTHS_4prime5
-        ] * torch.cos(
+        h5_C = self.tendon_data.pulley_radii[
+            :, tids.I_RADIUS_4prime
+        ] - self.tendon_data.link_lengths[:, tids.I_LINK_4prime5] * torch.cos(
             phi_4prime_C
         )  # NOTE: changed this computation
-        h6_C = self.pulley_radii[:, self.RADII_4prime] - x_4prime6 * torch.cos(
-            phi_4prime_c + phi_4prime_d
-        )
+        h6_C = self.tendon_data.pulley_radii[
+            :, tids.I_RADIUS_4prime
+        ] - x_4prime6 * torch.cos(phi_4prime_c + phi_4prime_d)
+
+        # print("Theta 6:", thetas[:, self.JOINT_ANGLES_6])
 
         # 1c) compute h6^D
         x_57_squared = (
-            self.link_lengths_squared[:, self.LINK_LENGTHS_56]
-            + self.link_lengths_squared[:, self.LINK_LENGTHS_67]
+            self.tendon_data.link_lengths_squared[:, tids.I_LINK_56]
+            + self.tendon_data.link_lengths_squared[:, tids.I_LINK_67]
             - 2
-            * self.link_lengths[:, self.LINK_LENGTHS_56]
-            * self.link_lengths[:, self.LINK_LENGTHS_67]
+            * self.tendon_data.link_lengths[:, tids.I_LINK_56]
+            * self.tendon_data.link_lengths[:, tids.I_LINK_67]
             * torch.cos(
-                torch.min(
-                    thetas[:, self.JOINT_ANGLES_6],
-                    2 * torch.pi - thetas[:, self.JOINT_ANGLES_6],
-                )
-            )  # added min because theta_6 can be > pi but should be handled symmetrically)
+                thetas[:, tids.I_JOINT_6],
+            )
         )
         x_57 = torch.sqrt(x_57_squared)
-        l_57_squared = x_57_squared - self.pulley_radii[:, self.RADII_5] ** 2
+        l_57_squared = (
+            x_57_squared - self.tendon_data.pulley_radii[:, tids.I_RADIUS_5] ** 2
+        )
         l_57 = torch.sqrt(l_57_squared)
+        # print("l_56_squared:", self.link_lengths_squared[:, self.LINK_LENGTHS_56])
+        # print("l_67_squared:", self.link_lengths_squared[:, self.LINK_LENGTHS_67])
+        # print("x_57_squared", x_57_squared)
+        # print(
+        #     "Argument of acos:",
+        #     (
+        #         self.link_lengths_squared[:, self.LINK_LENGTHS_56]
+        #         + x_57_squared
+        #         - self.link_lengths_squared[:, self.LINK_LENGTHS_67]
+        #     )
+        #     / (2 * self.link_lengths_squared[:, self.LINK_LENGTHS_56] * x_57),
+        # )
+        # print(
+        #     "Triangle with sides:",
+        #     self.link_lengths[:, self.LINK_LENGTHS_56],
+        #     x_57,
+        #     self.link_lengths[:, self.LINK_LENGTHS_67],
+        # )
         phi_5_a_unsigned = torch.acos(
             (
-                self.link_lengths_squared[:, self.LINK_LENGTHS_56]
+                self.tendon_data.link_lengths_squared[:, tids.I_LINK_56]
                 + x_57_squared
-                - self.link_lengths_squared[:, self.LINK_LENGTHS_67]
+                - self.tendon_data.link_lengths_squared[:, tids.I_LINK_67]
             )
-            / (2 * self.link_lengths_squared[:, self.LINK_LENGTHS_56] * x_57)
+            / (2 * self.tendon_data.link_lengths[:, tids.I_LINK_56] * x_57)
         )
         phi_5_a = torch.where(  # NOTE: finished this computation, check if now correct
-            thetas[:, self.JOINT_ANGLES_6] <= torch.pi,
+            thetas[:, tids.I_JOINT_6] <= torch.pi,
             phi_5_a_unsigned,
             -phi_5_a_unsigned,
         )
-        phi_5_b = torch.acos(self.pulley_radii_squared[:, self.RADII_5] / x_57)
+        print("x_57:", x_57)
+        print("pulley radius 5:", self.tendon_data.pulley_radii[:, tids.I_RADIUS_5])
+        print(
+            "Argument of acos for phi_5_b:",
+            self.tendon_data.pulley_radii[:, tids.I_RADIUS_5] / x_57,
+        )
+        phi_5_b = torch.acos(self.tendon_data.pulley_radii[:, tids.I_RADIUS_5] / x_57)
         phi_5_D = phi_5_a + phi_5_b
-        h6_D = self.pulley_radii[:, self.RADII_5] - self.link_lengths[
-            :, self.LINK_LENGTHS_56
-        ] * torch.cos(phi_5_D)
+        h6_D = self.tendon_data.pulley_radii[
+            :, tids.I_RADIUS_5
+        ] - self.tendon_data.link_lengths[:, tids.I_LINK_56] * torch.cos(phi_5_D)
 
         # FIXME: changed the logic here to match the documentation
         # seeing the state_* definitions below, it seemed like the logic is inverted
         h5_B_disengaged = torch.where(
-            h5_B > self.pulley_radii[:, self.RADII_5],
+            h5_B > self.tendon_data.pulley_radii[:, tids.I_RADIUS_5],
             True,
             False,
         )
         h5_C_disengaged = torch.where(
-            h5_C > self.pulley_radii[:, self.RADII_5],
+            h5_C > self.tendon_data.pulley_radii[:, tids.I_RADIUS_5],
             True,
             False,
         )
         h6_C_disengaged = torch.where(
-            h6_C > self.pulley_radii[:, self.RADII_6],
+            h6_C > self.tendon_data.pulley_radii[:, tids.I_RADIUS_6],
             True,
             False,
         )
 
         h6_D_disengaged = torch.where(
-            h6_D > self.pulley_radii[:, self.RADII_6],
+            h6_D > self.tendon_data.pulley_radii[:, tids.I_RADIUS_6],
             True,
             False,
         )
@@ -329,73 +373,82 @@ class GSTTendonManager:
         lower_tendon_state_length_after_4prime = torch.zeros_like(joint_angles[:, 0])
         # state A
         lower_tendon_state_length_after_4prime[state_A] = (
-            self.tendon_section_lengths[state_A, self.LINK_LENGTHS_4prime5]
-            + qs[state_A, self.JOINT_ANGLES_5]
-            * self.pulley_radii[state_A, self.RADII_5]
-            + self.tendon_section_lengths[state_A, self.LINK_LENGTHS_56]
-            + qs[state_A, self.JOINT_ANGLES_6]
-            * self.pulley_radii[state_A, self.RADII_6]
-            + self.tendon_section_lengths[state_A, self.LINK_LENGTHS_67]
+            self.tendon_data.tendon_section_lengths[state_A, tids.I_LINK_4prime5]
+            + qs[state_A, tids.I_JOINT_5]
+            * self.tendon_data.pulley_radii[state_A, tids.I_RADIUS_5]
+            + self.tendon_data.tendon_section_lengths[state_A, tids.I_LINK_56]
+            + qs[state_A, tids.I_JOINT_6]
+            * self.tendon_data.pulley_radii[state_A, tids.I_RADIUS_6]
+            + self.tendon_data.tendon_section_lengths[state_A, tids.I_LINK_67]
         )
 
         # state B
         q6_B = (
-            thetas[state_B, self.JOINT_ANGLES_6]
-            - self.tendon_tangency_angles[state_B, self.TENDON_TANGENGY_ANGLES_67_j6]
+            thetas[state_B, tids.I_JOINT_6]
+            - self.tendon_data.tendon_tangency_angles[
+                state_B, tids.I_TENDON_TANGENGY_ANGLES_67_j6
+            ]
             - 2 * torch.pi
             + phi_4prime_B[state_B]
-            + thetas[state_B, self.JOINT_ANGLES_5]
+            + thetas[state_B, tids.I_JOINT_5]
         )
 
         lower_tendon_state_length_after_4prime[state_B] = (
             l_4prime6[state_B]
-            + q6_B * self.pulley_radii[state_B, self.RADII_6]
-            + self.tendon_section_lengths[state_B, self.LINK_LENGTHS_67]
+            + q6_B * self.tendon_data.pulley_radii[state_B, tids.I_RADIUS_6]
+            + self.tendon_data.tendon_section_lengths[state_B, tids.I_LINK_67]
         )
 
         # state C
         l_4prime7_squared = (
             x_4prime7_squared[state_C]
-            - self.pulley_radii[state_C, self.RADII_4prime] ** 2
+            - self.tendon_data.pulley_radii[state_C, tids.I_RADIUS_4prime] ** 2
         )
         l_4prime7 = torch.sqrt(l_4prime7_squared)
         lower_tendon_state_length_after_4prime[state_C] = l_4prime7
 
         # state D
         q5_D = (
-            thetas[state_D, self.JOINT_ANGLES_5]
-            - self.tendon_tangency_angles[state_D, self.TENDON_TANGENGY_ANGLES_45_j5]
+            thetas[state_D, tids.I_JOINT_5]
+            - self.tendon_data.tendon_tangency_angles[
+                state_D, tids.I_TENDON_TANGENGY_ANGLES_45_j5
+            ]
             - phi_5_D[state_D]
         )
         lower_tendon_state_length_after_4prime[state_D] = (
-            self.tendon_section_lengths[state_D, self.LINK_LENGTHS_4prime5]
-            + q5_D * self.pulley_radii[state_D, self.RADII_5]
+            self.tendon_data.tendon_section_lengths[state_D, tids.I_LINK_4prime5]
+            + q5_D * self.tendon_data.pulley_radii[state_D, tids.I_RADIUS_5]
             + l_57[state_D]
         )
 
         q4prime = (
-            self.lower_tendon_length - lower_tendon_state_length_after_4prime
-        ) / self.pulley_radii[:, self.RADII_4prime]
+            self.tendon_data.lower_tendon_length
+            - lower_tendon_state_length_after_4prime
+        ) / self.tendon_data.pulley_radii[:, tids.I_RADIUS_4prime]
 
         q4 = (
-            thetas[:, self.JOINT_ANGLES_4]
+            thetas[:, tids.I_JOINT_4]
             - q4prime
-            - self.tendon_tangency_angles[:, self.TENDON_TANGENGY_ANGLES_34_j4]
-            - self.tendon_tangency_angles[:, self.TENDON_TANGENGY_ANGLES_45_j4]
+            - self.tendon_data.tendon_tangency_angles[
+                :, tids.I_TENDON_TANGENGY_ANGLES_34_j4
+            ]
+            - self.tendon_data.tendon_tangency_angles[
+                :, tids.I_TENDON_TANGENGY_ANGLES_45_j4
+            ]
         )
 
         delta_L_s = (
-            self.upper_tendon_length
-            - self.spring_rest_length
-            - self.tendon_section_lengths[:, self.LINK_LENGTHS_23]
-            - qs[:, self.JOINT_ANGLES_3] * self.pulley_radii[:, self.RADII_3]
-            - self.tendon_section_lengths[:, self.LINK_LENGTHS_34]
-            - q4 * self.pulley_radii[:, self.RADII_4]
+            self.tendon_data.upper_tendon_length
+            - self.tendon_data.spring_rest_length
+            - self.tendon_data.tendon_section_lengths[:, tids.I_LINK_23]
+            - qs[:, tids.I_JOINT_3] * self.tendon_data.pulley_radii[:, tids.I_RADIUS_3]
+            - self.tendon_data.tendon_section_lengths[:, tids.I_LINK_34]
+            - q4 * self.tendon_data.pulley_radii[:, tids.I_RADIUS_4]
         )
 
         not_slack = delta_L_s > 0.0
 
-        energy = 0.5 * self.stiffness * delta_L_s[not_slack] ** 2
+        energy = 0.5 * self.tendon_data.stiffness * delta_L_s[not_slack] ** 2
         # 3) differentiate w.r.t. joint angles
         tendon_torques = torch.autograd.grad(
             outputs=energy.sum(),
@@ -405,15 +458,13 @@ class GSTTendonManager:
         )[0]
         # 4) apply torques: with axis [0 1 0], to each link
         tendon_torques_full = torch.zeros(
-            (joint_angles.shape[0], self.N_LINKS, 3), device=self.device
+            (joint_angles.shape[0], N_LINKS, 3), device=self.device
         )
         tendon_torques_full[:, :4, 2] = tendon_torques
         tendon_torques_full[:, 1:, 2] -= tendon_torques
 
         self.robot.set_external_force_and_torque(
-            forces=torch.zeros(
-                (joint_angles.shape[0], self.N_LINKS, 3), device=self.device
-            ),
+            forces=torch.zeros((joint_angles.shape[0], N_LINKS, 3), device=self.device),
             torques=tendon_torques_full,
             body_ids=self.link_indices,
         )
@@ -425,7 +476,7 @@ class GSTTendonManager:
 joints = [
     "rp1_pantograph",  # pantograph, actuated but always set to 0.0, stiffness? blockhöhe?     "s12p_pantograph_spring_assy_topv2_1" -> "s12p_pantograph_spring_assy_botv1_1"
     "r2_pseudo_acetabulofemoral_flexion",  # j2 -> position control, stiffness? damping?       "outside_hip_v2_assyv28_1" -> "knee_assyv9_1"
-    "r3b_femorotibial_back",  # not actuated (fourbar), between j2 and j3                      "knee_assyv9_1" -> "s12p_pantograph_spring_assy_topv2_1"
+    "r3b_femorotibial_back",  # excluded from articulation (fourbar), between j2 and j3        "knee_assyv9_1" -> "s12p_pantograph_spring_assy_topv2_1"
     "r3f_femorotibial_front",  # j3 -> torque control, applied alongside other tendon torques  "knee_assyv9_1" -> "s12_front_assyv6_1"
     "r4f_intertarsal_front",  # only shows the pulley position q4' -> fix                      "s12_front_assyv6_1" -> "main_gst_pully_assyv4_1"
     "r4b_intertarsal_back",  # not actuated (fourbar), above j4                                "s12p_pantograph_spring_assy_botv1_1" -> "s23_assyv18_1_virtual"
@@ -466,78 +517,34 @@ def main():
     time.sleep(1)
 
     # Tendon manager setup
-    gst_tendon_manager = GSTTendonManager(
-        robot,
-        stiffness=torch.tensor([128e3], device=device),
-        spring_rest_length=torch.tensor([0.06], device=device),
-        upper_tendon_length=torch.tensor([0.5], device=device),  # TODO: ask HW people
-        lower_tendon_length=torch.tensor([0.5], device=device),  # TODO: ask HW people
-        joint_offsets_q=torch.tensor(
-            [[0.0, 0.0, 0.0, 0.0]], device=device
-        ),  # TODO: fill in => can be computed: theta = qleft + q + qright
-        joint_offsets_theta=torch.deg2rad(
-            torch.tensor(
-                [
-                    [
-                        227.671,
-                        225.931,
-                        200.0,
-                        240.0,
-                    ]
-                ],
-                device=device,
-            )
-        ),
-        joint_directions=torch.tensor([[-1.0, -1.0, -1.0, 1.0]], device=device),
-        pulley_radii=torch.tensor(
-            [[0.0075, 0.1, 0.05, 0.04, 0.01]], device=device
-        ),  # NOTE: assumes tendon thickness 0, maybe correct with small offset
-        link_lengths=torch.tensor(
-            [[0.33, 0.461, 0.357, 0.165, 0.044]], device=device
-        ),  # lj23 is not needed but included for easier indexing
-        tendon_section_lengths=torch.tensor(
-            [[0.1, 0.1, 0.1, 0.1, 0.1]], device=device
-        ),  # TODO: fill in (compute from CAD ; measure l23)
-        tendon_tangency_angles=torch.tensor(
-            [[0.0, 0.0, 0.0, 0.0]], device=device
-        ),  # TODO: fill in (compute from CAD)
-        link_names=[
-            "knee_assyv9_1",  # 23
-            "s12_front_assyv6_1",  # 34
-            "s23_assyv18_1",  # 4'5
-            "s34_foot_connector_assyv20_1",  # 56
-            "s45_digit_assyv2_1",  # 67
-        ],
-        joint_names=[
-            "r3f_femorotibial_front",  # j3
-            "r4p_intertarsal_pulley",  # j4
-            "r5_metatarsophalangeal",  # j5
-            "r6_interphalangeal",  # j6
-        ],
-    )
+    gst_tendon_manager = GSTTendonManager(robot)
 
     # while True:
     joint_pos = []
     states = []
-    for _ in range(int(t_total / sim.get_physics_dt())):
-        a, b, c, d, not_slack = gst_tendon_manager.apply()
-        states.append(
-            "s"
-            if not_slack.sum() == 0
-            else (
-                "a"
-                if a.sum() > 0
-                else ("b" if b.sum() > 0 else ("c" if c.sum() > 0 else "d"))
+    try:
+        for _ in range(int(t_total / sim.get_physics_dt())):
+            a, b, c, d, not_slack = gst_tendon_manager.apply()
+            states.append(
+                "s"
+                if not_slack.sum() == 0
+                else (
+                    "a"
+                    if a.sum() > 0
+                    else ("b" if b.sum() > 0 else ("c" if c.sum() > 0 else "d"))
+                )
             )
-        )
-        robot.write_data_to_sim()
-        sim.step()
-        robot.update(sim.get_physics_dt())
-        joint_pos.append(robot.data.joint_pos[0].clone())
-    with open("outputs/joint_pos_gst.json", "w") as f:
-        json.dump([pos.tolist() for pos in joint_pos], f)
-    with open("outputs/states_gst.json", "w") as f:
-        json.dump(states, f)
+            robot.write_data_to_sim()
+            sim.step()
+            robot.update(sim.get_physics_dt())
+            joint_pos.append(robot.data.joint_pos[0].clone())
+    except Exception as e:
+        carb.log_error(f"An error occurred during simulation: {e}")
+        with open("outputs/joint_pos_gst.json", "w") as f:
+            json.dump([pos.tolist() for pos in joint_pos], f)
+        with open("outputs/states_gst.json", "w") as f:
+            json.dump(states, f)
+        raise e
 
     # sim.reset()
     # robot.write_joint_state_to_sim(

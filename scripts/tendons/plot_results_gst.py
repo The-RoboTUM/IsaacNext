@@ -7,13 +7,14 @@ matplotlib.use("Qt5Agg")
 with open("outputs/joint_pos_gst.json", "r") as f:
     gst = json.load(f)
 
+last_index = 25
 
-gst_j1 = [x[0] for x in gst][:210]
-gst_j2 = [x[1] for x in gst][:210]
-gst_j3 = [x[2] for x in gst][:210]
-gst_j4 = [x[3] for x in gst][:210]
-gst_j5 = [x[4] for x in gst][:210]
-gst_j6 = [x[5] for x in gst][:210]
+gst_j1 = [x[0] for x in gst][:last_index]
+gst_j2 = [x[1] for x in gst][:last_index]
+gst_j3 = [x[2] for x in gst][:last_index]
+gst_j4 = [x[3] for x in gst][:last_index]
+gst_j5 = [x[4] for x in gst][:last_index]
+gst_j6 = [x[5] for x in gst][:last_index]
 
 
 fig = plt.figure(figsize=(5, 10))
