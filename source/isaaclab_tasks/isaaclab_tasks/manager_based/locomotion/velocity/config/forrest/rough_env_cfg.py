@@ -110,39 +110,36 @@ class ForrestRewards(RewardsCfg):
  #   Reward terms for the MDP.
 
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
-    track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=1.0,
-        params={"command_name": "base_velocity", "std": 0.5},
-    )
-    track_ang_vel_z_exp = RewTerm(
-        func=mdp.track_ang_vel_z_world_exp, weight=1.0, params={"command_name": "base_velocity", "std": 0.5}
-    )
+    
     feet_air_time = RewTerm(
         func=mdp.feet_air_time_positive_biped,
-        weight=0.0,
+        weight=2.5,
         params={
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=("S45_Digit_Assyv2_1",
                                                                        "S45_Digit_Assyv2_mirror_1")),
-            "threshold": 0.4,
+            "threshold": 0.3,
         },
     )
-    feet_slide = RewTerm(
-        func=mdp.feet_slide,
-        weight=-0.0,
+    
+    hip_deviation_l1 = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.2,
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=("S45_Digit_Assyv2_1",
-                                                                       "S45_Digit_Assyv2_mirror_1")),
-            "asset_cfg": SceneEntityCfg("robot", body_names=("S45_Digit_Assyv2_1",
-                                                             "S45_Digit_Assyv2_mirror_1")),
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    "l0_acetabulofemoral_roll",
+                    "r0_acetabulofemoral_roll",
+                ],
+            )
         },
     )
-
-    # Penalize deviation from default of the joints that are not essential for locomotion
+    
+    # Toes
     joint_deviation_l1 = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.2,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -158,32 +155,38 @@ class ForrestRewards(RewardsCfg):
         },
     )
 
-    hip_deviation_l1 = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.3,
+    dof_pos_limits = RewTerm(
+        func=mdp.joint_pos_limits, 
+        weight=-1.0, 
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
                 joint_names=[
-                    "l0_acetabulofemoral_roll",
-                    "r0_acetabulofemoral_roll",
+                    "l1_acetabulofemoral_lateral",
+                    "l5_metatarsophalangeal",
+                    "l6_interphalangeal",
+                    "r1_acetabulofemoral_lateral",
+                    "r5_metatarsophalangeal",
+                    "r6_interphalangeal",
                 ],
             )
-        },
-    )
+        })
+    
+    base_height = RewTerm(func=mdp.base_height_l2, params={"target_height": 0.9}, weight=-1.0)
+    
+    #gait_symetry = RewTerm(
+    #    func=feet_symmetry_penalty,
+    #    weight=-1.0,
+    #    params={
+    #        "asset_cfg": SceneEntityCfg(
+    #            "robot",
+    #            body_names=("S45_Digit_Assyv2_1", "S45_Digit_Assyv2_mirror_1"),
+    #        ),
+    #        "alpha":0.001,
+    #    },
+    # )
 
 
-    gait_symetry = RewTerm(
-        func=feet_symmetry_penalty,
-        weight=-1.0,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                body_names=("S45_Digit_Assyv2_1", "S45_Digit_Assyv2_mirror_1"),
-            ),
-            "alpha":0.001,
-        },
-    )
 
 
 @configclass
@@ -195,12 +198,12 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         super().__post_init__()
         # Scene
         self.scene.robot = FORREST_CFG.replace(prim_path="{ENV_REGEX_NS}/Forrest_URDF")
-        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Forrest_URDF/base_link"
+        #self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Forrest_URDF/base_link"
 
         # TEMP (Used only to make flat env model work)
-        # self.scene.height_scanner = None
-        # self.observations.policy.height_scan = None
-        # self.curriculum.terrain_levels = None
+        self.scene.height_scanner = None
+        self.observations.policy.height_scan = None
+        self.curriculum.terrain_levels = None
 
         # Solve issue with dropping contacts
         self.sim.physx.gpu_collision_stack_size = 160 * 1024 * 1024  # 80 MB
@@ -240,16 +243,22 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         }
         self.events.base_com.params["asset_cfg"].body_names = ["base_link"]
 
+
+
+
         # Rewards
-        self.rewards.lin_vel_z_l2.weight = 0.0  # disables vertical velocity penalty
-        self.rewards.undesired_contacts = None  # removes undesired contacts penalty
-        self.rewards.flat_orientation_l2.weight = -1.0  # keeps base upright
-        # self.rewards.flat_orientation_l2.weight = -0.0  # keeps base upright
-        # self.rewards.action_rate_l2.weight = -0.005  # penalizes fast changes in actions
-        self.rewards.action_rate_l2.weight = -0.0025  # penalizes fast changes in actions
+        #self.rewards.undesired_contacts = 1.0  
+        self.rewards.dof_torques_l2.weight = -5.0e-6
+        self.rewards.track_lin_vel_xy_exp.weight = 2.0
+        self.rewards.track_ang_vel_z_exp.weight = 1.0
+        self.rewards.action_rate_l2.weight *= 1.5          
+        self.rewards.dof_acc_l2.weight *= 1.5
+
+        
+        #self.rewards.flat_orientation_l2.weight = -1.0  # keeps base upright
+        #self.rewards.action_rate_l2.weight = -0.0025  # penalizes fast changes in actions
 
         # DOF accelerations penalty
-        self.rewards.dof_acc_l2.weight = -1.25e-7
         # self.rewards.dof_acc_l2.weight = 0.0
         self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg(
             "robot",
@@ -271,7 +280,6 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # DOF torques penalty
         # self.rewards.dof_torques_l2.weight = -1.5e-7
-        self.rewards.dof_torques_l2.weight = 0.0
         self.rewards.dof_torques_l2.params["asset_cfg"] = SceneEntityCfg(
             "robot",
             joint_names=[
@@ -291,8 +299,8 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # Commands
-        self.commands.base_velocity.ranges.lin_vel_x = (-4.0, 4.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
         # terminations
@@ -328,9 +336,6 @@ class ForrestRoughEnvCfg_PLAY(ForrestRoughEnvCfg):
             self.scene.terrain.terrain_generator.num_cols = 3
             self.scene.terrain.terrain_generator.curriculum = False
 
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.0, 1.5)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
-        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
         # self.commands.base_velocity.ranges.heading = (0.0, 0.0)
         # disable randomization for play
         self.observations.policy.enable_corruption = False

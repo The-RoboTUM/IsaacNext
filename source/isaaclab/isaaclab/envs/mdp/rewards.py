@@ -260,6 +260,7 @@ Contact sensor.
 def undesired_contacts(env: ManagerBasedRLEnv, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     """Penalize undesired contacts as the number of violations that are above a threshold."""
     # extract the used quantities (to enable type-hinting)
+    #from IPython import embed; embed(); exit()
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     # check if contact force is above threshold
     net_contact_forces = contact_sensor.data.net_forces_w_history

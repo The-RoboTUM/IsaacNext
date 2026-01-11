@@ -102,6 +102,7 @@ class CommandsCfg:
             lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
         ),
     )
+    
 
 
 @configclass
@@ -120,15 +121,14 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)  #noise=Unoise(n_min=-0.1, n_max=0.1)
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel)  #noise=Unoise(n_min=-0.2, n_max=0.2)
         projected_gravity = ObsTerm(
-            func=mdp.projected_gravity,
-            noise=Unoise(n_min=-0.05, n_max=0.05),
+            func=mdp.projected_gravity, #noise=Unoise(n_min=-0.05, n_max=0.05),
         )
         velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
-        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel) #, noise=Unoise(n_min=-0.01, n_max=0.01)
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel) #, noise=Unoise(n_min=-1.5, n_max=1.5)
         actions = ObsTerm(func=mdp.last_action)
         height_scan = ObsTerm(
             func=mdp.height_scan,
@@ -255,11 +255,12 @@ class RewardsCfg:
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
         weight=-1.0,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=['base_link', 'Differential_Cage_Assyv7_mirror_1', 'Knee_Assyv9_mirror_1', 'S45_Digit_Assyv2_mirror_1', 'Differential_Cage_Assyv7_1', 'Knee_Assyv9_1', 'S45_Digit_Assyv2_1']), "threshold": 1.0},
     )
     # -- optional penalties
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
-    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
+    #dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
+   
 
 
 @configclass
