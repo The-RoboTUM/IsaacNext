@@ -66,6 +66,19 @@ joint_names = list_from_dict(
     N_JOINTS,
 )
 
+all_joint_names = [
+    "rp1_pantograph",  # pantograph, actuated but always set to 0.0, stiffness? blockhöhe?     "s12p_pantograph_spring_assy_topv2_1" -> "s12p_pantograph_spring_assy_botv1_1"
+    "r2_pseudo_acetabulofemoral_flexion",  # j2 -> position control, stiffness? damping?       "outside_hip_v2_assyv28_1" -> "knee_assyv9_1"
+    "r3b_femorotibial_back",  # excluded from articulation (fourbar), between j2 and j3        "knee_assyv9_1" -> "s12p_pantograph_spring_assy_topv2_1"
+    "r3f_femorotibial_front",  # j3 -> torque control, applied alongside other tendon torques  "knee_assyv9_1" -> "s12_front_assyv6_1"
+    "r4f_intertarsal_front",  # only shows the pulley position q4' -> fix                      "s12_front_assyv6_1" -> "main_gst_pully_assyv4_1"
+    "r4b_intertarsal_back",  # not actuated (fourbar), above j4                                "s12p_pantograph_spring_assy_botv1_1" -> "s23_assyv18_1_virtual"
+    "r4p_intertarsal_pulley",  # j4, not actuated but affected by tendon                       "s12_front_assyv6_1" -> "s23_assyv18_1"
+    "r5_metatarsophalangeal",  # j5, not actuated but affected by tendon                       "s23_assyv18_1" -> "s34_foot_connector_assyv20_1"
+    "r6_interphalangeal",  # j6, not actuated but affected by tendon                           "s34_foot_connector_assyv20_1" -> "s45_digit_assyv2_1"
+    "virtual_s23_assyv18_1_anchor",  # necessary for the urdf exporter but not actuated        "s23_assyv18_1" -> "s23_assyv18_1_virtual"
+]
+
 
 # TODO: verify tendon lengths when prototype is built
 @dataclass
