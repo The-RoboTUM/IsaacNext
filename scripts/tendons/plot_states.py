@@ -1,5 +1,6 @@
 """
 Plot state transitions over time from the states_gst.json file.
+Compares left and right leg data side by side.
 """
 
 import json
@@ -8,127 +9,246 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from isaaclab.tendons.constants import (
-    joint_names,
+    joint_names_left,
+    joint_names_right,
 )
 
 matplotlib.use("Qt5Agg")
 
-# Load the states data
-with open("outputs/states_gst.json", "r") as f:
-    states = json.load(f)
+# Load all data from JSONL files (left and right)
+all_data_left = []
+with open("outputs/gst_data_left.jsonl", "r") as f:
+    for line in f:
+        all_data_left.append(json.loads(line))
 
-# Load joint positions data for reference
-with open("outputs/joint_pos_gst.json", "r") as f:
-    joint_positions = json.load(f)
+all_data_right = []
+with open("outputs/gst_data_right.jsonl", "r") as f:
+    for line in f:
+        all_data_right.append(json.loads(line))
 
-# Load lengths data
-with open("outputs/lengths_gst.json", "r") as f:
-    lengths = json.load(f)
+# Extract individual data arrays from loaded data
+states_left = [d["state"] for d in all_data_left]
+states_right = [d["state"] for d in all_data_right]
 
-# Load thetas data
-with open("outputs/thetas_gst.json", "r") as f:
-    thetas = json.load(f)
+joint_positions_left = [d["joint_pos"] for d in all_data_left]
+joint_positions_right = [d["joint_pos"] for d in all_data_right]
 
-# Create figure with subplots
-fig, axes = plt.subplots(5, 1, figsize=(12, 14))
+lengths_left = [d["delta_l"] for d in all_data_left]
+lengths_right = [d["delta_l"] for d in all_data_right]
+
+thetas_left = [d["thetas"] for d in all_data_left]
+thetas_right = [d["thetas"] for d in all_data_right]
+
+torques_left = [d["tendon_torques"] for d in all_data_left]
+torques_right = [d["tendon_torques"] for d in all_data_right]
+
+# Create figure with subplots (6 rows for each metric, 2 columns for left/right)
+fig, axes = plt.subplots(6, 2, figsize=(16, 20))
 
 # Determine the maximum x-axis length across all data
-max_length = max(len(states), len(lengths), len(joint_positions), len(thetas))
-
-# Plot 1: State over time
-timesteps = np.arange(len(states))
-state_to_numeric = {"a": 0, "b": 1, "c": 2, "d": 3, "s": 4}
-numeric_states = [state_to_numeric.get(state, -1) for state in states]
-
-ax1 = axes[0]
-ax1.plot(timesteps, numeric_states, linewidth=1, marker="o", markersize=3, alpha=0.7)
-ax1.set_xlabel("Timestep")
-ax1.set_ylabel("State")
-ax1.set_title("State Transitions Over Time (a, b, c, d, s)")
-ax1.set_yticks([0, 1, 2, 3, 4])
-ax1.set_yticklabels(["a", "b", "c", "d", "s"])
-ax1.set_xlim(0, max_length - 1)
-ax1.grid(True, alpha=0.3)
-
-# Plot 2: State changes (when transition occurs)
-state_changes = [0] + [
-    1 if states[i] != states[i - 1] else 0 for i in range(1, len(states))
-]
-ax2 = axes[1]
-change_indices = [i for i, change in enumerate(state_changes) if change == 1]
-ax2.scatter(
-    change_indices,
-    [1] * len(change_indices),
-    color="red",
-    s=50,
-    label="State Transitions",
+max_length = max(
+    len(states_left),
+    len(states_right),
+    len(lengths_left),
+    len(lengths_right),
+    len(joint_positions_left),
+    len(joint_positions_right),
+    len(thetas_left),
+    len(thetas_right),
+    len(torques_left),
+    len(torques_right),
 )
-ax2.set_xlabel("Timestep")
-ax2.set_ylabel("State Transition")
-ax2.set_title("State Transition Events")
-ax2.set_ylim([0, 2])
-ax2.set_xlim(0, max_length - 1)
-ax2.legend()
-ax2.grid(True, alpha=0.3)
 
-# Plot 3: Lengths over time
-ax3 = axes[2]
-timesteps_lengths = np.arange(len(lengths))
-ax3.plot(timesteps_lengths, lengths, linewidth=1, color="green", alpha=0.7)
-ax3.set_xlabel("Timestep")
-ax3.set_ylabel("Length")
-ax3.set_title("Lengths Over Time")
-ax3.set_xlim(0, max_length - 1)
-ax3.grid(True, alpha=0.3)
+state_to_numeric = {"a": 0, "b": 1, "c": 2, "d": 3, "s": 4}
 
-# Plot 4: Joint angles over time
-ax4 = axes[3]
-joint_angles = [[x[i] for x in joint_positions] for i in range(len(joint_names))]
-for i in range(len(joint_names)):
-    ax4.plot(
-        range(len(joint_angles[i])),
-        joint_angles[i],
-        label=joint_names[i],
+
+def plot_states(ax, states, title, max_length):
+    """Plot state transitions over time."""
+    timesteps = np.arange(len(states))
+    numeric_states = [state_to_numeric.get(state[0], -1) for state in states]
+    ax.plot(
+        timesteps,
+        numeric_states,
         linewidth=1,
+        marker="o",
+        markersize=3,
         alpha=0.7,
     )
+    # slack_indices = [i for i, state in enumerate(states) if state.startswith("s")]
+    # ax.scatter(
+    #     slack_indices,
+    #     [numeric_states[i] for i in slack_indices],
+    #     color="grey",
+    #     s=30,
+    #     label="Slack State",
+    #     alpha=1.0,
+    # )
+    ax.set_xlabel("Timestep")
+    ax.set_ylabel("State")
+    ax.set_title(title)
+    ax.set_yticks([0, 1, 2, 3, 4])
+    ax.set_yticklabels(["a", "b", "c", "d", "s"])
+    ax.set_xlim(0, max_length - 1)
+    ax.grid(True, alpha=0.3)
 
 
-ax4.set_xlabel("Timestep")
-ax4.set_ylabel("Joint Angle")
-ax4.set_title("Joint Angles Over Time")
-ax4.set_xlim(0, max_length - 1)
-ax4.legend(loc="best")
-ax4.grid(True, alpha=0.3)
-
-# Plot 5: Thetas over time
-ax5 = axes[4]
-thetas_values = [[x[i] for x in thetas] for i in range(len(joint_names))]
-for i in range(len(joint_names)):
-    ax5.plot(
-        range(len(thetas_values[i])),
-        thetas_values[i],
-        label=joint_names[i],
-        linewidth=1,
-        alpha=0.7,
+def plot_state_changes(ax, states, title, max_length):
+    """Plot state change events."""
+    state_changes = [0] + [
+        1 if states[i] != states[i - 1] else 0 for i in range(1, len(states))
+    ]
+    change_indices = [i for i, change in enumerate(state_changes) if change == 1]
+    ax.scatter(
+        change_indices,
+        [1] * len(change_indices),
+        color="red",
+        s=50,
+        label="State Transitions",
     )
+    ax.set_xlabel("Timestep")
+    ax.set_ylabel("State Transition")
+    ax.set_title(title)
+    ax.set_ylim([0, 2])
+    ax.set_xlim(0, max_length - 1)
+    ax.legend(loc="lower right")
+    ax.grid(True, alpha=0.3)
+    return sum(state_changes)
 
 
-ax5.set_xlabel("Timestep")
-ax5.set_ylabel("Theta")
-ax5.set_title("Thetas Over Time")
-ax5.set_xlim(0, max_length - 1)
-ax5.legend(loc="best")
-ax5.grid(True, alpha=0.3)
+def plot_lengths(ax, lengths, title, max_length):
+    """Plot lengths over time."""
+    timesteps_lengths = np.arange(len(lengths))
+    ax.plot(timesteps_lengths, lengths, linewidth=1, color="green", alpha=0.7)
+    ax.set_xlabel("Timestep")
+    ax.set_ylabel("Length")
+    ax.set_title(title)
+    ax.set_xlim(0, max_length - 1)
+    ax.grid(True, alpha=0.3)
+
+
+def plot_joint_angles(ax, joint_positions, joint_names, title, max_length):
+    """Plot joint angles over time."""
+    joint_angles = [[x[i] for x in joint_positions] for i in range(len(joint_names))]
+    for i in range(len(joint_names)):
+        ax.plot(
+            range(len(joint_angles[i])),
+            joint_angles[i],
+            label=joint_names[i],
+            linewidth=1,
+            alpha=0.7,
+        )
+    ax.set_xlabel("Timestep")
+    ax.set_ylabel("Joint Angle")
+    ax.set_title(title)
+    ax.set_xlim(0, max_length - 1)
+    ax.legend(loc="lower right")
+    ax.grid(True, alpha=0.3)
+
+
+def plot_thetas(ax, thetas, joint_names, title, max_length):
+    """Plot thetas over time."""
+    thetas_values = [[x[i] for x in thetas] for i in range(len(joint_names))]
+    for i in range(len(joint_names)):
+        ax.plot(
+            range(len(thetas_values[i])),
+            thetas_values[i],
+            label=joint_names[i],
+            linewidth=1,
+            alpha=0.7,
+        )
+    ax.set_xlabel("Timestep")
+    ax.set_ylabel("Theta")
+    ax.set_title(title)
+    ax.set_xlim(0, max_length - 1)
+    ax.legend(loc="lower right")
+    ax.grid(True, alpha=0.3)
+
+
+def plot_torques(ax, torques, joint_names, title, max_length):
+    """Plot torques over time for each joint."""
+    torque_values = [[x[i] for x in torques] for i in range(len(joint_names))]
+    for i in range(len(joint_names)):
+        ax.plot(
+            range(len(torque_values[i])),
+            torque_values[i],
+            label=joint_names[i],
+            linewidth=1,
+            alpha=0.7,
+        )
+    ax.set_xlabel("Timestep")
+    ax.set_ylabel("Torque [Nm]")
+    ax.set_title(title)
+    ax.set_xlim(0, max_length - 1)
+    ax.legend(loc="lower right")
+    ax.grid(True, alpha=0.3)
+
+
+# Row 0: States (Left and Right)
+plot_states(axes[0, 0], states_left, "State Transitions Over Time - LEFT", max_length)
+plot_states(axes[0, 1], states_right, "State Transitions Over Time - RIGHT", max_length)
+
+# Row 1: State Changes (Left and Right)
+n_transitions_left = plot_state_changes(
+    axes[1, 0], states_left, "State Transition Events - LEFT", max_length
+)
+n_transitions_right = plot_state_changes(
+    axes[1, 1], states_right, "State Transition Events - RIGHT", max_length
+)
+
+# Row 2: Lengths (Left and Right)
+plot_lengths(axes[2, 0], lengths_left, "Lengths Over Time - LEFT", max_length)
+plot_lengths(axes[2, 1], lengths_right, "Lengths Over Time - RIGHT", max_length)
+
+# Row 3: Joint Angles (Left and Right)
+plot_joint_angles(
+    axes[3, 0],
+    joint_positions_left,
+    joint_names_left,
+    "Joint Angles Over Time - LEFT",
+    max_length,
+)
+plot_joint_angles(
+    axes[3, 1],
+    joint_positions_right,
+    joint_names_right,
+    "Joint Angles Over Time - RIGHT",
+    max_length,
+)
+
+# Row 4: Thetas (Left and Right)
+plot_thetas(
+    axes[4, 0], thetas_left, joint_names_left, "Thetas Over Time - LEFT", max_length
+)
+plot_thetas(
+    axes[4, 1], thetas_right, joint_names_right, "Thetas Over Time - RIGHT", max_length
+)
+
+# Row 5: Torques (Left and Right)
+plot_torques(
+    axes[5, 0], torques_left, joint_names_left, "Torques Over Time - LEFT", max_length
+)
+plot_torques(
+    axes[5, 1],
+    torques_right,
+    joint_names_right,
+    "Torques Over Time - RIGHT",
+    max_length,
+)
 
 plt.tight_layout()
 plt.savefig("outputs/states_gst_plot.png", dpi=150, bbox_inches="tight")
 print("Plot saved to outputs/states_gst_plot.png")
-print(f"Total timesteps: {len(states)}")
-print("State distribution:")
-for state in ["a", "b", "c", "d", "s"]:
-    count = states.count(state)
-    print(f"  {state}: {count} ({100 * count / len(states):.1f}%)")
-print(f"Number of state transitions: {sum(state_changes)}")
+
+# Print statistics for both legs
+for side, states in [("LEFT", states_left), ("RIGHT", states_right)]:
+    print(f"\n=== {side} LEG ===")
+    print(f"Total timesteps: {len(states)}")
+    print("State distribution:")
+    for state in ["a", "b", "c", "d", "s"]:
+        count = states.count(state)
+        print(f"  {state}: {count} ({100 * count / len(states):.1f}%)")
+
+print(f"\nNumber of state transitions - LEFT: {n_transitions_left}")
+print(f"Number of state transitions - RIGHT: {n_transitions_right}")
 
 plt.show()
