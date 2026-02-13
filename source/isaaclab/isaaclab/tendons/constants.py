@@ -4,12 +4,52 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import torch
+import isaaclab.tendons.gst_indices as tids
 
 dev = "cuda"
-N_LINKS: int = 5
+
+
+@torch.jit.script
+class TendonDataJIT:
+    """JIT-compatible tendon data container with only tensor attributes."""
+
+    def __init__(
+        self,
+        stiffness: torch.Tensor,
+        spring_rest_length: torch.Tensor,
+        joint_offsets_theta: torch.Tensor,
+        joint_offsets_q: torch.Tensor,
+        pulley_radii: torch.Tensor,
+        link_lengths: torch.Tensor,
+        tendon_section_lengths: torch.Tensor,
+        tendon_tangency_angles: torch.Tensor,
+        upper_tendon_length: torch.Tensor,
+        lower_tendon_length: torch.Tensor,
+        joint_directions: torch.Tensor,
+        pulley_radii_squared: torch.Tensor,
+        link_lengths_squared: torch.Tensor,
+    ) -> None:
+        self.stiffness = stiffness
+        self.spring_rest_length = spring_rest_length
+        self.joint_offsets_theta = joint_offsets_theta
+        self.joint_offsets_q = joint_offsets_q
+        self.pulley_radii = pulley_radii
+        self.link_lengths = link_lengths
+        self.tendon_section_lengths = tendon_section_lengths
+        self.tendon_tangency_angles = tendon_tangency_angles
+        self.upper_tendon_length = upper_tendon_length
+        self.lower_tendon_length = lower_tendon_length
+        self.joint_directions = joint_directions
+        self.pulley_radii_squared = pulley_radii_squared
+        self.link_lengths_squared = link_lengths_squared
+
+
+N_LINKS_PER_LEG: int = 5
 N_RADII: int = 5
 N_JOINTS: int = 4
 N_TENDON_TANGENCY_ANGLES: int = 4
+
+JOINT_AXIS_IDX = 0  # axis index for joint torques around x-axis
 
 
 def list_from_dict(d: dict, n: int) -> list:
@@ -20,43 +60,27 @@ def list_from_dict(d: dict, n: int) -> list:
     return [d[k] for k in sorted(d.keys())]
 
 
-@dataclass
-class TendonIndices:
-    """Indices for our tendon model."""
-
-    I_LINK_23: int = 0
-    I_LINK_34: int = 1
-    I_LINK_4prime5: int = 2
-    I_LINK_56: int = 3
-    I_LINK_67: int = 4
-    I_JOINT_3: int = 0
-    I_JOINT_4: int = 1
-    I_JOINT_5: int = 2
-    I_JOINT_6: int = 3
-    I_RADIUS_3: int = 0
-    I_RADIUS_4: int = 1
-    I_RADIUS_4prime: int = 2
-    I_RADIUS_5: int = 3
-    I_RADIUS_6: int = 4
-    I_TENDON_TANGENGY_ANGLES_34_j4: int = 0
-    I_TENDON_TANGENGY_ANGLES_45_j4: int = 1
-    I_TENDON_TANGENGY_ANGLES_45_j5: int = 2
-    I_TENDON_TANGENGY_ANGLES_67_j6: int = 3
-
-
-tids = TendonIndices()
-
-link_names = list_from_dict(
+link_names_right = list_from_dict(
     {
-        tids.I_LINK_23: "knee_assyv9_1",  # 23
-        tids.I_LINK_34: "s12_front_assyv6_1",  # 34
-        tids.I_LINK_4prime5: "s23_assyv18_1",  # 4'5
-        tids.I_LINK_56: "s34_foot_connector_assyv20_1",  # 56
-        tids.I_LINK_67: "s45_digit_assyv2_1",  # 67
+        tids.I_LINK_23: "outside_hip_v2_assy_axialv21_1",  # "knee_assyv9_1",  # 23
+        tids.I_LINK_34: "s12_front_assyv14_1",  # "s12_front_assyv6_1",  # 34
+        tids.I_LINK_4prime5: "s23_assyv21_1",  # "s23_assyv18_1",  # 4'5
+        tids.I_LINK_56: "s34_foot_connector_assyv23_1",  # "s34_foot_connector_assyv20_1",  # 56
+        tids.I_LINK_67: "s45_digit_assyv2_1",  # "s45_digit_assyv2_1",  # 67
     },
-    N_LINKS,
+    N_LINKS_PER_LEG,
 )
-joint_names = list_from_dict(
+link_names_left = list_from_dict(
+    {
+        tids.I_LINK_23: "outside_hip_v2_assy_axialv21_2",  # 23
+        tids.I_LINK_34: "s12_front_assyv14_2",  # 34
+        tids.I_LINK_4prime5: "s23_assyv21_2",  # 4'5
+        tids.I_LINK_56: "s34_foot_connector_assyv23_2",  # 56
+        tids.I_LINK_67: "s45_digit_assyv2_2",  # 67
+    },
+    N_LINKS_PER_LEG,
+)
+joint_names_right = list_from_dict(
     {
         tids.I_JOINT_3: "r3f_femorotibial_front",  # j3
         tids.I_JOINT_4: "r4p_intertarsal_pulley",  # j4
@@ -65,8 +89,19 @@ joint_names = list_from_dict(
     },
     N_JOINTS,
 )
+joint_names_left = list_from_dict(
+    {
+        tids.I_JOINT_3: "l3f_femorotibial_front",  # j3
+        tids.I_JOINT_4: "l4p_intertarsal_pulley",  # j4
+        tids.I_JOINT_5: "l5_metatarsophalangeal",  # j5
+        tids.I_JOINT_6: "l6_interphalangeal",  # j6
+    },
+    N_JOINTS,
+)
 
-all_joint_names = [
+all_joint_names_right = [
+    "r0_acetabulofemoral_roll,"  # j0, position/torque control
+    "r1_acetabulofemoral_lateral",  # j1, position/torque control
     "rp1_pantograph",  # pantograph, actuated but always set to 0.0, stiffness? blockhöhe?     "s12p_pantograph_spring_assy_topv2_1" -> "s12p_pantograph_spring_assy_botv1_1"
     "r2_pseudo_acetabulofemoral_flexion",  # j2 -> position control, stiffness? damping?       "outside_hip_v2_assyv28_1" -> "knee_assyv9_1"
     "r3b_femorotibial_back",  # excluded from articulation (fourbar), between j2 and j3        "knee_assyv9_1" -> "s12p_pantograph_spring_assy_topv2_1"
@@ -80,6 +115,8 @@ all_joint_names = [
 ]
 
 
+# TODO: make a CAD model from which we can build a urdf, then get the names of links and joints from there;
+# ideally do not mirror joint directions for easier parallelisation across left/right legs
 # TODO: verify tendon lengths when prototype is built
 @dataclass
 class TendonConstants:
@@ -93,8 +130,8 @@ class TendonConstants:
                 {
                     tids.I_JOINT_3: 227.671,
                     tids.I_JOINT_4: 225.931,
-                    tids.I_JOINT_5: 200.0,
-                    tids.I_JOINT_6: 240.0,
+                    tids.I_JOINT_5: 180.0,
+                    tids.I_JOINT_6: 270.0,
                 },
                 N_JOINTS,
             ),
@@ -105,9 +142,9 @@ class TendonConstants:
         list_from_dict(
             {
                 tids.I_JOINT_3: -1.0,
-                tids.I_JOINT_4: -1.0,
+                tids.I_JOINT_4: +1.0,
                 tids.I_JOINT_5: -1.0,
-                tids.I_JOINT_6: 1.0,
+                tids.I_JOINT_6: -1.0,
             },
             N_JOINTS,
         ),
@@ -135,7 +172,7 @@ class TendonConstants:
                 tids.I_LINK_56: 0.165,
                 tids.I_LINK_67: 0.044,
             },
-            N_LINKS,
+            N_LINKS_PER_LEG,
         ),
         device=dev,
     )
@@ -191,7 +228,7 @@ class TendonConstantRandomizationRanges:
                 tids.I_LINK_56: (-0.001, 0.001),
                 tids.I_LINK_67: (-0.001, 0.001),
             },
-            N_LINKS,
+            N_LINKS_PER_LEG,
         )
     )
     b_23: tuple[float, float] = (-0.001, 0.001)
@@ -232,7 +269,7 @@ dummy_randomization = TendonConstantRandomizationRanges(
             tids.I_LINK_56: (0.0, 0.0),
             tids.I_LINK_67: (0.0, 0.0),
         },
-        N_LINKS,
+        N_LINKS_PER_LEG,
     ),
     b_23=(0.0, 0.0),
     a_23=(0.0, 0.0),
@@ -287,9 +324,12 @@ class TendonData:
     """
 
     def __init__(
-        self, batch_size: int, randomization_ranges: TendonConstantRandomizationRanges
+        self,
+        batch_size: int,
+        randomization_ranges: TendonConstantRandomizationRanges,
     ) -> None:
         """Initialize tendon data."""
+        batch_size *= 2  # for left and right legs
         tc = TendonConstants()
         stiffness = tc.stiffness + torch.empty(batch_size, device=dev).uniform_(
             *randomization_ranges.stiffness
@@ -326,7 +366,7 @@ class TendonData:
                 + torch.empty(batch_size, device=dev).uniform_(
                     *randomization_ranges.link_lengths[i]
                 )
-                for i in range(N_LINKS)
+                for i in range(N_LINKS_PER_LEG)
             ],
             dim=1,
         )  # (B, N_LINKS)
@@ -344,9 +384,7 @@ class TendonData:
         ).uniform_(*randomization_ranges.angle_4prime5_to_j44prime)
 
         l_2prime3 = torch.sqrt(b_23**2 - pulley_radii[:, tids.I_RADIUS_3] ** 2)
-        phi_23_j3_upper = torch.asin(
-            pulley_radii[:, tids.I_RADIUS_3] / b_23
-        )  # asin is okay because of right triangle
+        phi_23_j3_upper = torch.acos(pulley_radii[:, tids.I_RADIUS_3] / b_23)
         phi_23_j3_lower = torch.acos((b_23**2 + c_23**2 - a_23**2) / (2 * b_23 * c_23))
         phi_23_j3 = phi_23_j3_upper + phi_23_j3_lower
 
@@ -383,7 +421,7 @@ class TendonData:
                     tids.I_LINK_56: l_56,
                     tids.I_LINK_67: l_67,
                 },
-                N_LINKS,
+                N_LINKS_PER_LEG,
             ),
             dim=1,
         )  # (B, N_LINKS)
@@ -448,6 +486,9 @@ class TendonData:
             *randomization_ranges.lower_tendon_length
         )
 
+        # upper_tendon_length -= 0.02
+        # lower_tendon_length -= 0.02
+
         self.stiffness = stiffness
         self.spring_rest_length = spring_rest_length
         self.joint_offsets_theta = joint_offsets_theta
@@ -460,10 +501,29 @@ class TendonData:
         self.upper_tendon_length = upper_tendon_length
         self.lower_tendon_length = lower_tendon_length
 
+        # TODO: verify for left side when urdf works
         self.joint_directions = tc.joint_directions
 
         self.pulley_radii_squared = pulley_radii**2
         self.link_lengths_squared = link_lengths**2
+
+    def to_jit(self) -> TendonDataJIT:
+        """Convert to JIT-compatible TendonDataJIT."""
+        return TendonDataJIT(
+            stiffness=self.stiffness,
+            spring_rest_length=self.spring_rest_length,
+            joint_offsets_theta=self.joint_offsets_theta,
+            joint_offsets_q=self.joint_offsets_q,
+            pulley_radii=self.pulley_radii,
+            link_lengths=self.link_lengths,
+            tendon_section_lengths=self.tendon_section_lengths,
+            tendon_tangency_angles=self.tendon_tangency_angles,
+            upper_tendon_length=self.upper_tendon_length,
+            lower_tendon_length=self.lower_tendon_length,
+            joint_directions=self.joint_directions,
+            pulley_radii_squared=self.pulley_radii_squared,
+            link_lengths_squared=self.link_lengths_squared,
+        )
 
 
 def main():
@@ -480,6 +540,15 @@ def main():
     print("Tendon tangency angles:", tendon_data.tendon_tangency_angles)
     print("Upper tendon length:", tendon_data.upper_tendon_length)
     print("Lower tendon length:", tendon_data.lower_tendon_length)
+    print(
+        "Phi_23:",
+        torch.rad2deg(
+            torch.atan2(
+                tendon_data.pulley_radii[:, tids.I_RADIUS_3],
+                tendon_data.tendon_section_lengths[:, tids.I_LINK_23],
+            )
+        ),
+    )
 
 
 if __name__ == "__main__":
