@@ -389,6 +389,17 @@ class KinematicChainAnimator:
             fontfamily="monospace",
             bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
         )
+        # Delta l text in top center with larger font
+        self.delta_l_text = self.ax.text(
+            0.5,
+            0.98,
+            "",
+            transform=self.ax.transAxes,
+            verticalalignment="top",
+            horizontalalignment="center",
+            fontfamily="monospace",
+            fontsize=16,
+        )
 
         # Compute axis limits from all frames
         self._compute_axis_limits()
@@ -606,12 +617,16 @@ class KinematicChainAnimator:
         self.info_text.set_text(
             f"{status}\n"
             f"State: {state}\n"
-            f"$\\Delta l$: {all_data[frame_idx]['delta_l'] * 100:.3f} cm\n"
             f"θ₃: {np.rad2deg(thetas[0]):.1f}°\n"
             f"θ₄: {np.rad2deg(thetas[1]):.1f}°\n"
             f"θ₅: {np.rad2deg(thetas[2]):.1f}°\n"
             f"θ₆: {np.rad2deg(thetas[3]):.1f}°"
         )
+        # Update delta l text with conditional coloring
+        delta_l = all_data[frame_idx]["delta_l"]
+        delta_l_color = "grey" if delta_l > 0 else "green"
+        self.delta_l_text.set_text(f"$\\Delta L={delta_l * 1000:02.3f}$ mm")
+        self.delta_l_text.set_color(delta_l_color)
 
         return self.skeleton_line, self.joints_scatter, self.end_effector
 
@@ -652,7 +667,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--fps",
         type=int,
-        default=15,
+        default=30,
         help="Frames per second for saved video (default: 30)",
     )
     args = parser.parse_args()

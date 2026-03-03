@@ -1,5 +1,5 @@
-"""
-Create an animated MP4 of state transitions over time from the states_gst.json file.
+"""Create an animated MP4 of state transitions over time from the states_gst.json file.
+
 Compares left and right leg data side by side with animation showing data developing.
 """
 
@@ -16,35 +16,32 @@ from isaaclab.tendons.constants import (
 
 matplotlib.use("Agg")  # Use non-interactive backend for video generation
 
-# Load the states data (left and right)
-with open("outputs/states_gst_left.json", "r") as f:
-    states_left = json.load(f)
-with open("outputs/states_gst_right.json", "r") as f:
-    states_right = json.load(f)
+# Load all data from JSONL files (left and right)
+all_data_left = []
+with open("outputs/gst_data_left.jsonl", "r") as f:
+    for line in f:
+        all_data_left.append(json.loads(line))
 
-# Load joint positions data for reference (left and right)
-with open("outputs/joint_pos_gst_left.json", "r") as f:
-    joint_positions_left = json.load(f)
-with open("outputs/joint_pos_gst_right.json", "r") as f:
-    joint_positions_right = json.load(f)
+all_data_right = []
+with open("outputs/gst_data_right.jsonl", "r") as f:
+    for line in f:
+        all_data_right.append(json.loads(line))
 
-# Load lengths data (left and right)
-with open("outputs/lengths_gst_left.json", "r") as f:
-    lengths_left = json.load(f)
-with open("outputs/lengths_gst_right.json", "r") as f:
-    lengths_right = json.load(f)
+# Extract individual data arrays from loaded data
+states_left = [d["state"] for d in all_data_left]
+states_right = [d["state"] for d in all_data_right]
 
-# Load thetas data (left and right)
-with open("outputs/thetas_gst_left.json", "r") as f:
-    thetas_left = json.load(f)
-with open("outputs/thetas_gst_right.json", "r") as f:
-    thetas_right = json.load(f)
+joint_positions_left = [d["joint_pos"] for d in all_data_left]
+joint_positions_right = [d["joint_pos"] for d in all_data_right]
 
-# Load torques data (left and right)
-with open("outputs/torques_gst_left.json", "r") as f:
-    torques_left = json.load(f)
-with open("outputs/torques_gst_right.json", "r") as f:
-    torques_right = json.load(f)
+lengths_left = [d["delta_l"] for d in all_data_left]
+lengths_right = [d["delta_l"] for d in all_data_right]
+
+thetas_left = [d["thetas"] for d in all_data_left]
+thetas_right = [d["thetas"] for d in all_data_right]
+
+torques_left = [d["tendon_torques"] for d in all_data_left]
+torques_right = [d["tendon_torques"] for d in all_data_right]
 
 # Determine the maximum x-axis length across all data
 max_length = max(
@@ -63,8 +60,8 @@ max_length = max(
 state_to_numeric = {"a": 0, "b": 1, "c": 2, "d": 3, "s": 4}
 
 # Pre-compute all data arrays
-numeric_states_left = [state_to_numeric.get(state, -1) for state in states_left]
-numeric_states_right = [state_to_numeric.get(state, -1) for state in states_right]
+numeric_states_left = [state_to_numeric.get(state[0], -1) for state in states_left]
+numeric_states_right = [state_to_numeric.get(state[0], -1) for state in states_right]
 
 state_changes_left = [0] + [
     1 if states_left[i] != states_left[i - 1] else 0 for i in range(1, len(states_left))
