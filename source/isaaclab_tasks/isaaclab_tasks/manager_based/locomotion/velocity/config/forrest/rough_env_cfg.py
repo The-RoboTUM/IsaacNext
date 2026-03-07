@@ -23,7 +23,7 @@ from isaaclab.assets.articulation import Articulation
 
 FEET_CFG = SceneEntityCfg(
     "robot",
-    body_names=("S45_Digit_Assyv2_1", "S45_Digit_Assyv2_mirror_1"),
+    body_names=("s45_digit_assyv2_1", "s45_digit_assyv2_2"),
 )
 
 import torch
@@ -71,10 +71,7 @@ def get_feet_pose_base(env, feet_cfg: SceneEntityCfg = FEET_CFG):
 
 def feet_symmetry_penalty(
     env: ManagerBasedRLEnv,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg(
-        "robot",
-        body_names=("S45_Digit_Assyv2_1", "S45_Digit_Assyv2_mirror_1"),
-    ),
+    asset_cfg: SceneEntityCfg = FEET_CFG,
     alpha: float = 0.01,
 ) -> torch.Tensor:
     # initialize EMA if not already present
@@ -123,8 +120,7 @@ class ForrestRewards(RewardsCfg):
         weight=0.0,
         params={
             "command_name": "base_velocity",
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=("S45_Digit_Assyv2_1",
-                                                                       "S45_Digit_Assyv2_mirror_1")),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=FEET_CFG.body_names),
             "threshold": 0.4,
         },
     )
@@ -132,10 +128,8 @@ class ForrestRewards(RewardsCfg):
         func=mdp.feet_slide,
         weight=-0.0,
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=("S45_Digit_Assyv2_1",
-                                                                       "S45_Digit_Assyv2_mirror_1")),
-            "asset_cfg": SceneEntityCfg("robot", body_names=("S45_Digit_Assyv2_1",
-                                                             "S45_Digit_Assyv2_mirror_1")),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=FEET_CFG.body_names),
+            "asset_cfg": FEET_CFG,
         },
     )
 
@@ -148,11 +142,7 @@ class ForrestRewards(RewardsCfg):
                 "robot",
                 joint_names=[
                     "l1_acetabulofemoral_lateral",
-                    "l5_metatarsophalangeal",
-                    "l6_interphalangeal",
                     "r1_acetabulofemoral_lateral",
-                    "r5_metatarsophalangeal",
-                    "r6_interphalangeal",
                 ],
             )
         },
@@ -177,10 +167,7 @@ class ForrestRewards(RewardsCfg):
         func=feet_symmetry_penalty,
         weight=-1.0,
         params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                body_names=("S45_Digit_Assyv2_1", "S45_Digit_Assyv2_mirror_1"),
-            ),
+            "asset_cfg": FEET_CFG,
             "alpha":0.001,
         },
     )
@@ -195,7 +182,7 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         super().__post_init__()
         # Scene
         self.scene.robot = FORREST_CFG.replace(prim_path="{ENV_REGEX_NS}/Forrest_URDF")
-        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Forrest_URDF/base_link"
+        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Forrest_URDF/world_corrected"
 
         # TEMP (Used only to make flat env model work)
         # self.scene.height_scanner = None
@@ -215,7 +202,7 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         #     track_air_time=True,
         # )
         self.scene.contact_forces = ContactSensorCfg(
-            prim_path="{ENV_REGEX_NS}/Forrest_URDF/(S45_Digit_Assyv2_1|S45_Digit_Assyv2_mirror_1|base_link|Differential_Cage_Assyv7_mirror_1|Differential_Cage_Assyv7_1|Knee_Assyv9_mirror_1|Knee_Assyv9_1)",
+            prim_path="{ENV_REGEX_NS}/Forrest_URDF/(s45_digit_assyv2_1|s45_digit_assyv2_2|world_corrected|outside_hip_v2_assy_axialv21_2|outside_hip_v2_assy_axialv21_1)",
             update_period=0.0,  # update every sim step
             history_length=6,
             debug_vis=True,
@@ -226,7 +213,7 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.push_robot = None
         self.events.add_base_mass = None
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
-        self.events.base_external_force_torque.params["asset_cfg"].body_names = ["base_link"]
+        self.events.base_external_force_torque.params["asset_cfg"].body_names = ["world_corrected"]
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "velocity_range": {
@@ -238,7 +225,7 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "yaw": (0.0, 0.0),
             },
         }
-        self.events.base_com.params["asset_cfg"].body_names = ["base_link"]
+        self.events.base_com.params["asset_cfg"].body_names = ["world_corrected"]
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0  # disables vertical velocity penalty
@@ -258,14 +245,10 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "l1_acetabulofemoral_lateral",
                 "l2_pseudo_acetabulofemoral_flexion",
                 "l3f_femorotibial_front",
-                "l5_metatarsophalangeal",
-                "l6_interphalangeal",
                 "r0_acetabulofemoral_roll",
                 "r1_acetabulofemoral_lateral",
                 "r2_pseudo_acetabulofemoral_flexion",
                 "r3f_femorotibial_front",
-                "r5_metatarsophalangeal",
-                "r6_interphalangeal",
             ],
         )
 
@@ -278,15 +261,9 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "l0_acetabulofemoral_roll",
                 "l1_acetabulofemoral_lateral",
                 "l2_pseudo_acetabulofemoral_flexion",
-                "l3f_femorotibial_front",
-                "l5_metatarsophalangeal",
-                "l6_interphalangeal",
                 "r0_acetabulofemoral_roll",
                 "r1_acetabulofemoral_lateral",
                 "r2_pseudo_acetabulofemoral_flexion",
-                "r3f_femorotibial_front",
-                "r5_metatarsophalangeal",
-                "r6_interphalangeal",
             ],
         )
 
@@ -296,11 +273,9 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
         # terminations
-        self.terminations.base_contact.params["sensor_cfg"].body_names = ("base_link",
-                                                                          "Differential_Cage_Assyv7_mirror_1",
-                                                                          "Differential_Cage_Assyv7_1",
-                                                                          "Knee_Assyv9_mirror_1",
-                                                                          "Knee_Assyv9_1"
+        self.terminations.base_contact.params["sensor_cfg"].body_names = ("world_corrected",
+                                                                          "outside_hip_v2_assy_axialv21_1",
+                                                                          "outside_hip_v2_assy_axialv21_2"
                                                                           )
 
         # # DEBUG

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import os
 import isaaclab.sim as sim_utils
+import numpy as np
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
 # from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
@@ -41,59 +42,73 @@ FORREST_CFG = ArticulationCfg(
     soft_joint_pos_limit_factor=0.9,
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 1.5),
-        # rot=(0.0, 0.0, 0.707, 0.707),   # <— quaternion for upright base
         joint_pos={
             # Left leg
+            "lp1_pantograph": 0.0,
             "l0_acetabulofemoral_roll": 0.0,
             "l1_acetabulofemoral_lateral": 0.0,
             "l2_pseudo_acetabulofemoral_flexion": 0.0,
-            "l3b_femorotibial_back": 0.0,
+            # "l3b_femorotibial_back": 0.0,
             "l4b_intertarsal_back": 0.0,
             "l3f_femorotibial_front": 0.0,
             "l4f_intertarsal_front": 0.0,
             "l4p_intertarsal_pulley": 0.0,
-            "l2p_acetabulofemoral_pulley": 0.0,
-            "l2b_acetabulofemoral_flexion": 0.0,
-            "l2f_acetabulofemoral_flexion": 0.0,
-            "l5_metatarsophalangeal": 0.0,
-            "l6_interphalangeal": 0.0,
+            "l5_metatarsophalangeal": float(np.deg2rad(-19.9)),
+            "l6_interphalangeal": float(np.deg2rad(25.0)),
             # Right leg
+            "rp1_pantograph": 0.0,
             "r0_acetabulofemoral_roll": 0.0,
             "r1_acetabulofemoral_lateral": 0.0,
             "r2_pseudo_acetabulofemoral_flexion": 0.0,
-            "r3b_femorotibial_back": 0.0,
+            # "r3b_femorotibial_back": 0.0,
             "r4b_intertarsal_back": 0.0,
             "r3f_femorotibial_front": 0.0,
             "r4f_intertarsal_front": 0.0,
             "r4p_intertarsal_pulley": 0.0,
-            "r2p_acetabulofemoral_pulley": 0.0,
-            "r2b_acetabulofemoral_flexion": 0.0,
-            "r2f_acetabulofemoral_flexion": 0.0,
-            "r5_metatarsophalangeal": 0.0,
-            "r6_interphalangeal": 0.0,
+            "r5_metatarsophalangeal": float(np.deg2rad(-19.9)),
+            "r6_interphalangeal": float(np.deg2rad(25.0)),
         },
         joint_vel={".*": 0.0},
     ),
+        # all_joint_names_right = [
+        #     "r0_acetabulofemoral_roll,"  # j0, position/torque control
+        #     "r1_acetabulofemoral_lateral",  # j1, position/torque control
+        #     "rp1_pantograph",  # pantograph, actuated but always set to 0.0, stiffness? blockhöhe?     "s12p_pantograph_spring_assy_topv2_1" -> "s12p_pantograph_spring_assy_botv1_1"
+        #     "r2_pseudo_acetabulofemoral_flexion",  # j2 -> position control, stiffness? damping?       "outside_hip_v2_assyv28_1" -> "knee_assyv9_1"
+        #     "r3b_femorotibial_back",  # excluded from articulation (fourbar), between j2 and j3        "knee_assyv9_1" -> "s12p_pantograph_spring_assy_topv2_1"
+        #     "r3f_femorotibial_front",  # j3 -> torque control, applied alongside other tendon torques  "knee_assyv9_1" -> "s12_front_assyv6_1"
+        #     "r4f_intertarsal_front",  # only shows the pulley position q4' -> fix                      "s12_front_assyv6_1" -> "main_gst_pully_assyv4_1"
+        #     "r4b_intertarsal_back",  # not actuated (fourbar), above j4                                "s12p_pantograph_spring_assy_botv1_1" -> "s23_assyv18_1_virtual"
+        #     "r4p_intertarsal_pulley",  # j4, not actuated but affected by tendon                       "s12_front_assyv6_1" -> "s23_assyv18_1"
+        #     "r5_metatarsophalangeal",  # j5, not actuated but affected by tendon                       "s23_assyv18_1" -> "s34_foot_connector_assyv20_1"
+        #     "r6_interphalangeal",  # j6, not actuated but affected by tendon                           "s34_foot_connector_assyv20_1" -> "s45_digit_assyv2_1"
+        #     "virtual_s23_assyv18_1_anchor",  # necessary for the urdf exporter but not actuated        "s23_assyv18_1" -> "s23_assyv18_1_virtual"
+        # ]
     actuators={
-        "legs": ImplicitActuatorCfg(
-            joint_names_expr=[
-                "l0_acetabulofemoral_roll",
-                "l1_acetabulofemoral_lateral",
-                "l2_pseudo_acetabulofemoral_flexion",
-                "l3f_femorotibial_front",
-                "l5_metatarsophalangeal",
-                "l6_interphalangeal",
-                "r0_acetabulofemoral_roll",
-                "r1_acetabulofemoral_lateral",
-                "r2_pseudo_acetabulofemoral_flexion",
-                "r3f_femorotibial_front",
-                "r5_metatarsophalangeal",
-                "r6_interphalangeal",
-            ],
-            # stiffness=42.0,
-            stiffness=100.0,
-            damping=2.5,
-        )
-    },
+                # Spring: Rest 63,5mm, Compressed 20mm, => travel 43,5mm 128 N/mm
+                "pantograph": ImplicitActuatorCfg(
+                    joint_names_expr=[
+                        "rp1_pantograph",
+                        "lp1_pantograph",
+                    ],
+                    effort_limit_sim=1e9,
+                    velocity_limit_sim=1000.0,
+                    stiffness=128e3,
+                    damping=10.0,
+                ),
+                "hip": ImplicitActuatorCfg(
+                    joint_names_expr=[
+                        "r2_pseudo_acetabulofemoral_flexion",
+                        "l2_pseudo_acetabulofemoral_flexion",
+                        "r0_acetabulofemoral_roll",
+                        "l0_acetabulofemoral_roll",
+                        "r1_acetabulofemoral_lateral",
+                        "l1_acetabulofemoral_lateral",
+                    ],
+                    effort_limit_sim=100.0,
+                    stiffness=100.0,
+                    damping=1.0,
+                ),
+            },
 )
 """Configuration for RoboTUM's Forrest robot."""
