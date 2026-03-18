@@ -37,7 +37,7 @@ def compute_delta_l_s_jit(
     # 0) transform joint angles to thetas and qs
     joint_angles_signed = tendon_data.joint_directions * joint_angles
     thetas = joint_angles_signed + tendon_data.joint_offsets_theta
-    qs = joint_angles_signed + tendon_data.joint_offsets_q
+    qs = joint_angles_signed + tendon_data.joint_offsets_gst_q
 
     # 1) evaluate conditions
     # 1a) compute h5^B
@@ -169,17 +169,17 @@ def compute_delta_l_s_jit(
     # 2) compute energy with conditional function for lower tendon state length
     # state A
     lower_tendon_state_length_after_4prime_A = (
-        tendon_data.tendon_section_lengths[:, tids.I_LINK_4prime5]
+        tendon_data.gst_tendon_section_lengths[:, tids.I_LINK_4prime5]
         + qs[:, tids.I_JOINT_5] * tendon_data.pulley_radii[:, tids.I_RADIUS_5]
-        + tendon_data.tendon_section_lengths[:, tids.I_LINK_56]
+        + tendon_data.gst_tendon_section_lengths[:, tids.I_LINK_56]
         + qs[:, tids.I_JOINT_6] * tendon_data.pulley_radii[:, tids.I_RADIUS_6]
-        + tendon_data.tendon_section_lengths[:, tids.I_LINK_67]
+        + tendon_data.gst_tendon_section_lengths[:, tids.I_LINK_67]
     )
 
     # state B
     q6_B = (
         thetas[:, tids.I_JOINT_6]
-        - tendon_data.tendon_tangency_angles[:, tids.I_TENDON_TANGENGY_ANGLES_67_j6]
+        - tendon_data.gst_tendon_tangency_angles[:, tids.I_TENDON_TANGENGY_ANGLES_67_j6]
         - 2 * torch.pi
         + phi_4prime_B
         + thetas[:, tids.I_JOINT_5]
@@ -188,7 +188,7 @@ def compute_delta_l_s_jit(
     lower_tendon_state_length_after_4prime_B = (
         l_4prime6
         + q6_B * tendon_data.pulley_radii[:, tids.I_RADIUS_6]
-        + tendon_data.tendon_section_lengths[:, tids.I_LINK_67]
+        + tendon_data.gst_tendon_section_lengths[:, tids.I_LINK_67]
     )
 
     # state C
@@ -201,11 +201,11 @@ def compute_delta_l_s_jit(
     # state D
     q5_D = (
         thetas[:, tids.I_JOINT_5]
-        - tendon_data.tendon_tangency_angles[:, tids.I_TENDON_TANGENGY_ANGLES_45_j5]
+        - tendon_data.gst_tendon_tangency_angles[:, tids.I_TENDON_TANGENGY_ANGLES_45_j5]
         - phi_5_D
     )
     lower_tendon_state_length_after_4prime_D = (
-        tendon_data.tendon_section_lengths[:, tids.I_LINK_4prime5]
+        tendon_data.gst_tendon_section_lengths[:, tids.I_LINK_4prime5]
         + q5_D * tendon_data.pulley_radii[:, tids.I_RADIUS_5]
         + l_57
     )
@@ -230,19 +230,19 @@ def compute_delta_l_s_jit(
     )
 
     q4prime = (
-        tendon_data.lower_tendon_length - lower_tendon_state_length_after_4prime
+        tendon_data.lower_gst_length - lower_tendon_state_length_after_4prime
     ) / tendon_data.pulley_radii[:, tids.I_RADIUS_4prime]
 
     q4_base = (
         thetas[:, tids.I_JOINT_4]
         - q4prime
-        - tendon_data.tendon_tangency_angles[:, tids.I_TENDON_TANGENGY_ANGLES_34_j4]
+        - tendon_data.gst_tendon_tangency_angles[:, tids.I_TENDON_TANGENGY_ANGLES_34_j4]
     )
 
     # Use torch.where instead of in-place masked operations to preserve gradient flow
     q4_adjustment = torch.where(
         torch.logical_or(state_A, state_D),
-        tendon_data.tendon_tangency_angles[:, tids.I_TENDON_TANGENGY_ANGLES_45_j4],
+        tendon_data.gst_tendon_tangency_angles[:, tids.I_TENDON_TANGENGY_ANGLES_45_j4],
         torch.where(
             state_B,
             phi_4prime_B,
@@ -252,11 +252,11 @@ def compute_delta_l_s_jit(
     q4 = q4_base - q4_adjustment
 
     delta_L_s = (
-        tendon_data.upper_tendon_length
-        - tendon_data.spring_rest_length
-        - tendon_data.tendon_section_lengths[:, tids.I_LINK_23]
+        tendon_data.upper_gst_length
+        - tendon_data.gst_spring_rest_length
+        - tendon_data.gst_tendon_section_lengths[:, tids.I_LINK_23]
         - qs[:, tids.I_JOINT_3] * tendon_data.pulley_radii[:, tids.I_RADIUS_3]
-        - tendon_data.tendon_section_lengths[:, tids.I_LINK_34]
+        - tendon_data.gst_tendon_section_lengths[:, tids.I_LINK_34]
         - q4 * tendon_data.pulley_radii[:, tids.I_RADIUS_4]
     )
 
@@ -326,7 +326,7 @@ class GSTTendonManager:
         # 0) transform joint angles to thetas and qs
         joint_angles_signed = tendon_data.joint_directions * joint_angles
         thetas = joint_angles_signed + tendon_data.joint_offsets_theta
-        qs = joint_angles_signed + tendon_data.joint_offsets_q
+        qs = joint_angles_signed + tendon_data.joint_offsets_gst_q
 
         # 1) evaluate conditions
         # 1a) compute h5^B
@@ -460,19 +460,21 @@ class GSTTendonManager:
         lower_tendon_state_length_after_4prime = torch.zeros_like(joint_angles[:, 0])
         # state A
         lower_tendon_state_length_after_4prime[state_A] = (
-            tendon_data.tendon_section_lengths[state_A, tids.I_LINK_4prime5]
+            tendon_data.gst_tendon_section_lengths[state_A, tids.I_LINK_4prime5]
             + qs[state_A, tids.I_JOINT_5]
             * tendon_data.pulley_radii[state_A, tids.I_RADIUS_5]
-            + tendon_data.tendon_section_lengths[state_A, tids.I_LINK_56]
+            + tendon_data.gst_tendon_section_lengths[state_A, tids.I_LINK_56]
             + qs[state_A, tids.I_JOINT_6]
             * tendon_data.pulley_radii[state_A, tids.I_RADIUS_6]
-            + tendon_data.tendon_section_lengths[state_A, tids.I_LINK_67]
+            + tendon_data.gst_tendon_section_lengths[state_A, tids.I_LINK_67]
         )
 
         # state B
         q6_B = (
             thetas[:, tids.I_JOINT_6]
-            - tendon_data.tendon_tangency_angles[:, tids.I_TENDON_TANGENGY_ANGLES_67_j6]
+            - tendon_data.gst_tendon_tangency_angles[
+                :, tids.I_TENDON_TANGENGY_ANGLES_67_j6
+            ]
             - 2 * torch.pi
             + phi_4prime_B
             + thetas[:, tids.I_JOINT_5]
@@ -481,7 +483,7 @@ class GSTTendonManager:
         lower_tendon_state_length_after_4prime[state_B] = (
             l_4prime6[state_B]
             + q6_B[state_B] * tendon_data.pulley_radii[state_B, tids.I_RADIUS_6]
-            + tendon_data.tendon_section_lengths[state_B, tids.I_LINK_67]
+            + tendon_data.gst_tendon_section_lengths[state_B, tids.I_LINK_67]
         )
 
         # state C
@@ -494,38 +496,42 @@ class GSTTendonManager:
         # state D
         q5_D = (
             thetas[:, tids.I_JOINT_5]
-            - tendon_data.tendon_tangency_angles[:, tids.I_TENDON_TANGENGY_ANGLES_45_j5]
+            - tendon_data.gst_tendon_tangency_angles[
+                :, tids.I_TENDON_TANGENGY_ANGLES_45_j5
+            ]
             - phi_5_D
         )
         lower_tendon_state_length_after_4prime[state_D] = (
-            tendon_data.tendon_section_lengths[state_D, tids.I_LINK_4prime5]
+            tendon_data.gst_tendon_section_lengths[state_D, tids.I_LINK_4prime5]
             + q5_D[state_D] * tendon_data.pulley_radii[state_D, tids.I_RADIUS_5]
             + l_57[state_D]
         )
 
         q4prime = (
-            tendon_data.lower_tendon_length - lower_tendon_state_length_after_4prime
+            tendon_data.lower_gst_length - lower_tendon_state_length_after_4prime
         ) / tendon_data.pulley_radii[:, tids.I_RADIUS_4prime]
 
         q4 = (
             thetas[:, tids.I_JOINT_4]
             - q4prime
-            - tendon_data.tendon_tangency_angles[:, tids.I_TENDON_TANGENGY_ANGLES_34_j4]
+            - tendon_data.gst_tendon_tangency_angles[
+                :, tids.I_TENDON_TANGENGY_ANGLES_34_j4
+            ]
         )
 
         state_A_or_D = state_A | state_D
-        q4[state_A_or_D] -= tendon_data.tendon_tangency_angles[
+        q4[state_A_or_D] -= tendon_data.gst_tendon_tangency_angles[
             state_A_or_D, tids.I_TENDON_TANGENGY_ANGLES_45_j4
         ]
         q4[state_B] -= phi_4prime_B[state_B]
         q4[state_C] -= phi_4prime_C[state_C]
 
         delta_L_s = (
-            tendon_data.upper_tendon_length
-            - tendon_data.spring_rest_length
-            - tendon_data.tendon_section_lengths[:, tids.I_LINK_23]
+            tendon_data.upper_gst_length
+            - tendon_data.gst_spring_rest_length
+            - tendon_data.gst_tendon_section_lengths[:, tids.I_LINK_23]
             - qs[:, tids.I_JOINT_3] * tendon_data.pulley_radii[:, tids.I_RADIUS_3]
-            - tendon_data.tendon_section_lengths[:, tids.I_LINK_34]
+            - tendon_data.gst_tendon_section_lengths[:, tids.I_LINK_34]
             - q4 * tendon_data.pulley_radii[:, tids.I_RADIUS_4]
         )
 
@@ -579,7 +585,7 @@ class GSTTendonManager:
 
         not_slack = delta_L_s <= 0.0
 
-        energy = 0.5 * self.tendon_data.stiffness * delta_L_s**2
+        energy = 0.5 * self.tendon_data.gst_stiffness * delta_L_s**2
 
         tendon_torques = torch.autograd.grad(
             outputs=energy[not_slack].sum(),
@@ -614,7 +620,7 @@ class GSTTendonManager:
 
         not_slack = delta_L_s <= 0.0
 
-        energy = 0.5 * self.tendon_data.stiffness * delta_L_s**2
+        energy = 0.5 * self.tendon_data.gst_stiffness * delta_L_s**2
 
         tendon_torques = torch.autograd.grad(
             outputs=energy[not_slack].sum(),

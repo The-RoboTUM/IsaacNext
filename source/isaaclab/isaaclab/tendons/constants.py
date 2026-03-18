@@ -15,30 +15,37 @@ class TendonDataJIT:
 
     def __init__(
         self,
-        stiffness: torch.Tensor,
-        spring_rest_length: torch.Tensor,
+        gst_stiffness: torch.Tensor,
+        dft_stiffness: torch.Tensor,
+        gst_spring_rest_length: torch.Tensor,
+        dft_length: torch.Tensor,
         joint_offsets_theta: torch.Tensor,
-        joint_offsets_q: torch.Tensor,
+        joint_offsets_gst_q: torch.Tensor,
         pulley_radii: torch.Tensor,
         link_lengths: torch.Tensor,
-        tendon_section_lengths: torch.Tensor,
-        tendon_tangency_angles: torch.Tensor,
-        upper_tendon_length: torch.Tensor,
-        lower_tendon_length: torch.Tensor,
+        gst_tendon_section_lengths: torch.Tensor,
+        dft_tendon_section_lengths: torch.Tensor,
+        gst_tendon_tangency_angles: torch.Tensor,
+        dft_tendon_tangency_angles: torch.Tensor,
+        upper_gst_length: torch.Tensor,
+        lower_gst_length: torch.Tensor,
         joint_directions: torch.Tensor,
         pulley_radii_squared: torch.Tensor,
         link_lengths_squared: torch.Tensor,
     ) -> None:
-        self.stiffness = stiffness
-        self.spring_rest_length = spring_rest_length
+        self.gst_stiffness = gst_stiffness
+        self.gst_spring_rest_length = gst_spring_rest_length
         self.joint_offsets_theta = joint_offsets_theta
-        self.joint_offsets_q = joint_offsets_q
+        self.joint_offsets_gst_q = joint_offsets_gst_q
         self.pulley_radii = pulley_radii
         self.link_lengths = link_lengths
-        self.tendon_section_lengths = tendon_section_lengths
-        self.tendon_tangency_angles = tendon_tangency_angles
-        self.upper_tendon_length = upper_tendon_length
-        self.lower_tendon_length = lower_tendon_length
+        self.gst_tendon_section_lengths = gst_tendon_section_lengths
+        self.dft_tendon_section_lengths = dft_tendon_section_lengths
+        self.gst_tendon_tangency_angles = gst_tendon_tangency_angles
+        self.dft_tendon_tangency_angles = dft_tendon_tangency_angles
+        self.upper_gst_length = upper_gst_length
+        self.lower_gst_length = lower_gst_length
+        self.dft_length = dft_length
         self.joint_directions = joint_directions
         self.pulley_radii_squared = pulley_radii_squared
         self.link_lengths_squared = link_lengths_squared
@@ -47,7 +54,8 @@ class TendonDataJIT:
 N_LINKS_PER_LEG: int = 5
 N_RADII: int = 5
 N_JOINTS: int = 4
-N_TENDON_TANGENCY_ANGLES: int = 4
+N_GST_TENDON_TANGENCY_ANGLES: int = 4
+N_DFT_TENDON_TANGENCY_ANGLES: int = 2
 
 JOINT_AXIS_IDX = 0  # axis index for joint torques around x-axis
 
@@ -115,15 +123,15 @@ all_joint_names_right = [
 ]
 
 
-# TODO: make a CAD model from which we can build a urdf, then get the names of links and joints from there;
-# ideally do not mirror joint directions for easier parallelisation across left/right legs
 # TODO: verify tendon lengths when prototype is built
 @dataclass
 class TendonConstants:
     """Fixed baseline mathematical constants for our tendon model: link lengths and pulley radii etc."""
 
-    stiffness: float = 128e3
-    spring_rest_length: float = 0.06
+    gst_stiffness: float = 128e3
+    gst_spring_rest_length: float = 0.06
+    dft_stiffness: float = 100e4  # FIXME: find out real value
+    gst_spring_rest_length: float = 0.06
     joint_offsets_theta: torch.Tensor = torch.deg2rad(
         torch.tensor(
             list_from_dict(
@@ -182,14 +190,20 @@ class TendonConstants:
     angle_4prime5_to_j44prime = np.deg2rad(
         124.069
     )  # angle between link 4'5 and line from joint 4 to 4-4' transition
+    dft_attachment_point_to_j5 = 0.08  # FIXME: measure correct value
+    dft_limit_angle_theta5 = np.deg2rad(190)
+    dft_limit_angle_theta6 = np.deg2rad(240)
+    # distance from dft tendon attachment point to joint 5, along the line from joint 4 to joint 5
 
 
 @dataclass
 class TendonConstantRandomizationRanges:
     """Ranges for randomizing tendon constants for sim-to-real transfer."""
 
-    stiffness: tuple[float, float] = (-10e3, 10e3)
-    spring_rest_length: tuple[float, float] = (-0.005, 0.005)
+    gst_stiffness: tuple[float, float] = (-10e3, 10e3)
+    dft_stiffness: tuple[float, float] = (-10e3, 10e3)
+    gst_spring_rest_length: tuple[float, float] = (-0.005, 0.005)
+    dft_length: tuple[float, float] = (-0.005, 0.005)
 
     upper_tendon_length: tuple[float, float] = (-0.01, 0.01)
     lower_tendon_length: tuple[float, float] = (-0.01, 0.01)
@@ -235,11 +249,15 @@ class TendonConstantRandomizationRanges:
     a_23: tuple[float, float] = (-0.001, 0.001)
     c_23: tuple[float, float] = (-0.001, 0.001)
     angle_4prime5_to_j44prime: tuple[float, float] = (-0.05, 0.05)
+    dft_limit_angle_theta5: tuple[float, float] = (np.deg2rad(-5), np.deg2rad(5))
+    dft_limit_angle_theta6: tuple[float, float] = (np.deg2rad(-5), np.deg2rad(5))
 
 
 dummy_randomization = TendonConstantRandomizationRanges(
-    stiffness=(0.0, 0.0),
-    spring_rest_length=(0.0, 0.0),
+    gst_stiffness=(0.0, 0.0),
+    dft_stiffness=(0.0, 0.0),
+    gst_spring_rest_length=(0.0, 0.0),
+    dft_length=(0.0, 0.0),
     upper_tendon_length=(0.0, 0.0),
     lower_tendon_length=(0.0, 0.0),
     joint_offsets_theta=list_from_dict(
@@ -275,6 +293,8 @@ dummy_randomization = TendonConstantRandomizationRanges(
     a_23=(0.0, 0.0),
     c_23=(0.0, 0.0),
     angle_4prime5_to_j44prime=(0.0, 0.0),
+    dft_limit_angle_theta5=(0.0, 0.0),
+    dft_limit_angle_theta6=(0.0, 0.0),
 )
 
 
@@ -331,12 +351,6 @@ class TendonData:
         """Initialize tendon data."""
         batch_size *= 2  # for left and right legs
         tc = TendonConstants()
-        stiffness = tc.stiffness + torch.empty(batch_size, device=dev).uniform_(
-            *randomization_ranges.stiffness
-        )
-        spring_rest_length = tc.spring_rest_length + torch.empty(
-            batch_size, device=dev
-        ).uniform_(*randomization_ranges.spring_rest_length)
 
         joint_offsets_theta = torch.stack(
             [
@@ -370,6 +384,14 @@ class TendonData:
             ],
             dim=1,
         )  # (B, N_LINKS)
+
+        # ----------------------GST ------------------ #
+        gst_stiffness = tc.gst_stiffness + torch.empty(batch_size, device=dev).uniform_(
+            *randomization_ranges.gst_stiffness
+        )
+        gst_spring_rest_length = tc.gst_spring_rest_length + torch.empty(
+            batch_size, device=dev
+        ).uniform_(*randomization_ranges.gst_spring_rest_length)
         a_23 = tc.a_23 + torch.empty(batch_size, device=dev).uniform_(
             *randomization_ranges.a_23
         )
@@ -379,7 +401,7 @@ class TendonData:
         c_23 = tc.c_23 + torch.empty(batch_size, device=dev).uniform_(
             *randomization_ranges.c_23
         )
-        angle_4prime5_to_j44prime = tc.angle_4prime5_to_j44prime + torch.empty(
+        gst_angle_4prime5_to_j44prime = tc.angle_4prime5_to_j44prime + torch.empty(
             batch_size, device=dev
         ).uniform_(*randomization_ranges.angle_4prime5_to_j44prime)
 
@@ -412,7 +434,7 @@ class TendonData:
             link_lengths[:, tids.I_LINK_67],
         )
 
-        tendon_section_lengths = torch.stack(
+        gst_tendon_section_lengths = torch.stack(
             list_from_dict(
                 {
                     tids.I_LINK_23: l_2prime3,
@@ -426,7 +448,7 @@ class TendonData:
             dim=1,
         )  # (B, N_LINKS)
 
-        tendon_tangency_angles = torch.stack(
+        gst_tendon_tangency_angles = torch.stack(
             list_from_dict(
                 {
                     tids.I_TENDON_TANGENGY_ANGLES_34_j4: phi_34_j4,
@@ -434,74 +456,75 @@ class TendonData:
                     tids.I_TENDON_TANGENGY_ANGLES_45_j5: phi_4prime5_j5,
                     tids.I_TENDON_TANGENGY_ANGLES_67_j6: phi_67_j6,
                 },
-                N_TENDON_TANGENCY_ANGLES,
+                N_GST_TENDON_TANGENCY_ANGLES,
             ),
             dim=1,
         )  # (B, N_TENDON_TANGENCY_ANGLES)
 
-        q_3_offset = joint_offsets_theta[:, tids.I_JOINT_3] - phi_23_j3 - phi_34_j3
-        q_4_offset = (
+        gst_q_3_offset = joint_offsets_theta[:, tids.I_JOINT_3] - phi_23_j3 - phi_34_j3
+        gst_q_4_offset = (
             joint_offsets_theta[:, tids.I_JOINT_4]
-            - angle_4prime5_to_j44prime
+            - gst_angle_4prime5_to_j44prime
             - phi_34_j4
         )
 
-        q_4prime_relaxed = angle_4prime5_to_j44prime - phi_4prime5_j4
-        q_5_offset = joint_offsets_theta[:, tids.I_JOINT_5] - phi_4prime5_j5 - phi_56_j5
-        q_6_offset = joint_offsets_theta[:, tids.I_JOINT_6] - phi_56_j6 - phi_67_j6
+        gst_q_4prime_relaxed = gst_angle_4prime5_to_j44prime - phi_4prime5_j4
+        gst_q_5_offset = (
+            joint_offsets_theta[:, tids.I_JOINT_5] - phi_4prime5_j5 - phi_56_j5
+        )
+        gst_q_6_offset = joint_offsets_theta[:, tids.I_JOINT_6] - phi_56_j6 - phi_67_j6
 
-        joint_offsets_q = torch.stack(
+        joint_offsets_gst_q = torch.stack(
             list_from_dict(
                 {
-                    tids.I_JOINT_3: q_3_offset,
-                    tids.I_JOINT_4: q_4_offset,
-                    tids.I_JOINT_5: q_5_offset,
-                    tids.I_JOINT_6: q_6_offset,
+                    tids.I_JOINT_3: gst_q_3_offset,
+                    tids.I_JOINT_4: gst_q_4_offset,
+                    tids.I_JOINT_5: gst_q_5_offset,
+                    tids.I_JOINT_6: gst_q_6_offset,
                 },
                 N_JOINTS,
             ),
             dim=1,
         )  # (B, N_JOINTS)
 
-        upper_tendon_length = (
-            spring_rest_length
+        upper_gst_length = (
+            gst_spring_rest_length
             + l_2prime3
             + l_34
-            + pulley_radii[:, tids.I_RADIUS_3] * q_3_offset
-            + pulley_radii[:, tids.I_RADIUS_4] * q_4_offset
+            + pulley_radii[:, tids.I_RADIUS_3] * gst_q_3_offset
+            + pulley_radii[:, tids.I_RADIUS_4] * gst_q_4_offset
         )
-        lower_tendon_length = (
+        lower_gst_length = (
             l_4prime5
             + l_56
             + l_67
-            + pulley_radii[:, tids.I_RADIUS_4prime] * q_4prime_relaxed
-            + pulley_radii[:, tids.I_RADIUS_5] * q_5_offset
-            + pulley_radii[:, tids.I_RADIUS_6] * q_6_offset
+            + pulley_radii[:, tids.I_RADIUS_4prime] * gst_q_4prime_relaxed
+            + pulley_radii[:, tids.I_RADIUS_5] * gst_q_5_offset
+            + pulley_radii[:, tids.I_RADIUS_6] * gst_q_6_offset
         )
         # Note: we randomize upper and lower tendon lengths after computing other offsets because of manufacturing tolerances.
-        upper_tendon_length += torch.empty(batch_size, device=dev).uniform_(
+        upper_gst_length += torch.empty(batch_size, device=dev).uniform_(
             *randomization_ranges.upper_tendon_length
         )
-        lower_tendon_length += torch.empty(batch_size, device=dev).uniform_(
+        lower_gst_length += torch.empty(batch_size, device=dev).uniform_(
             *randomization_ranges.lower_tendon_length
         )
 
-        # upper_tendon_length -= 0.02
-        # lower_tendon_length -= 0.02
+        # -------------------- DFT ------------------ #
+        "dft_stiffness", "dft_length", "dft_tendon_section_lengths", "dft_tendon_tangency_angles"
 
-        self.stiffness = stiffness
-        self.spring_rest_length = spring_rest_length
+        self.gst_stiffness = gst_stiffness
+        self.gst_spring_rest_length = gst_spring_rest_length
         self.joint_offsets_theta = joint_offsets_theta
-        self.joint_offsets_q = joint_offsets_q
+        self.joint_offsets_gst_q = joint_offsets_gst_q
         self.pulley_radii = pulley_radii
         self.link_lengths = link_lengths
-        self.tendon_section_lengths = tendon_section_lengths
-        self.tendon_tangency_angles = tendon_tangency_angles
+        self.gst_tendon_section_lengths = gst_tendon_section_lengths
+        self.gst_tendon_tangency_angles = gst_tendon_tangency_angles
 
-        self.upper_tendon_length = upper_tendon_length
-        self.lower_tendon_length = lower_tendon_length
+        self.upper_gst_length = upper_gst_length
+        self.lower_gst_length = lower_gst_length
 
-        # TODO: verify for left side when urdf works
         self.joint_directions = tc.joint_directions
 
         self.pulley_radii_squared = pulley_radii**2
@@ -510,16 +533,16 @@ class TendonData:
     def to_jit(self) -> TendonDataJIT:
         """Convert to JIT-compatible TendonDataJIT."""
         return TendonDataJIT(
-            stiffness=self.stiffness,
-            spring_rest_length=self.spring_rest_length,
+            gst_stiffness=self.gst_stiffness,
+            gst_spring_rest_length=self.gst_spring_rest_length,
             joint_offsets_theta=self.joint_offsets_theta,
-            joint_offsets_q=self.joint_offsets_q,
+            joint_offsets_gst_q=self.joint_offsets_gst_q,
             pulley_radii=self.pulley_radii,
             link_lengths=self.link_lengths,
-            tendon_section_lengths=self.tendon_section_lengths,
-            tendon_tangency_angles=self.tendon_tangency_angles,
-            upper_tendon_length=self.upper_tendon_length,
-            lower_tendon_length=self.lower_tendon_length,
+            gst_tendon_section_lengths=self.gst_tendon_section_lengths,
+            gst_tendon_tangency_angles=self.gst_tendon_tangency_angles,
+            upper_gst_length=self.upper_gst_length,
+            lower_gst_length=self.lower_gst_length,
             joint_directions=self.joint_directions,
             pulley_radii_squared=self.pulley_radii_squared,
             link_lengths_squared=self.link_lengths_squared,
@@ -530,22 +553,22 @@ def main():
     """Test tendon constants."""
     batch_size = 1
     tendon_data = TendonData(batch_size, dummy_randomization)
-    print("Stiffness:", tendon_data.stiffness)
-    print("Spring rest length:", tendon_data.spring_rest_length)
+    print("Stiffness:", tendon_data.gst_stiffness)
+    print("Spring rest length:", tendon_data.gst_spring_rest_length)
     print("Joint offsets (theta):", tendon_data.joint_offsets_theta)
-    print("Joint offsets (q):", tendon_data.joint_offsets_q)
+    print("Joint offsets (q):", tendon_data.joint_offsets_gst_q)
     print("Pulley radii:", tendon_data.pulley_radii)
     print("Link lengths:", tendon_data.link_lengths)
-    print("Tendon section lengths:", tendon_data.tendon_section_lengths)
-    print("Tendon tangency angles:", tendon_data.tendon_tangency_angles)
-    print("Upper tendon length:", tendon_data.upper_tendon_length)
-    print("Lower tendon length:", tendon_data.lower_tendon_length)
+    print("Tendon section lengths:", tendon_data.gst_tendon_section_lengths)
+    print("Tendon tangency angles:", tendon_data.gst_tendon_tangency_angles)
+    print("Upper tendon length:", tendon_data.upper_gst_length)
+    print("Lower tendon length:", tendon_data.lower_gst_length)
     print(
         "Phi_23:",
         torch.rad2deg(
             torch.atan2(
                 tendon_data.pulley_radii[:, tids.I_RADIUS_3],
-                tendon_data.tendon_section_lengths[:, tids.I_LINK_23],
+                tendon_data.gst_tendon_section_lengths[:, tids.I_LINK_23],
             )
         ),
     )

@@ -102,13 +102,13 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
     )
     p3_i = starting_point + rotate_by(
         direction_angle,
-        np.array([tendon_data.tendon_section_lengths[0, tids.I_LINK_23].item(), 0.0]),
+        np.array([tendon_data.gst_tendon_section_lengths[0, tids.I_LINK_23].item(), 0.0]),
     )
     p3_o = rotate_by(-q3, p3_i - j3) + j3
     direction_angle -= q3
     p4_i = p3_o + rotate_by(
         direction_angle,
-        np.array([tendon_data.tendon_section_lengths[0, tids.I_LINK_34].item(), 0.0]),
+        np.array([tendon_data.gst_tendon_section_lengths[0, tids.I_LINK_34].item(), 0.0]),
     )
     p4_o = (
         rotate_by(
@@ -152,7 +152,7 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
         p5_i = p4prime_o + rotate_by(
             direction_angle,
             np.array(
-                [tendon_data.tendon_section_lengths[0, tids.I_LINK_4prime5].item(), 0.0]
+                [tendon_data.gst_tendon_section_lengths[0, tids.I_LINK_4prime5].item(), 0.0]
             ),
         )
         p5_o = rotate_by(q5, p5_i - j5) + j5
@@ -160,7 +160,7 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
         p6_i = p5_o + rotate_by(
             direction_angle,
             np.array(
-                [tendon_data.tendon_section_lengths[0, tids.I_LINK_56].item(), 0.0]
+                [tendon_data.gst_tendon_section_lengths[0, tids.I_LINK_56].item(), 0.0]
             ),
         )
         p6_o = rotate_by(q6, p6_i - j6) + j6
@@ -168,7 +168,7 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
         p7 = p6_o + rotate_by(
             direction_angle,
             np.array(
-                [tendon_data.tendon_section_lengths[0, tids.I_LINK_67].item(), 0.0]
+                [tendon_data.gst_tendon_section_lengths[0, tids.I_LINK_67].item(), 0.0]
             ),
         )
         lower_tendon_points.extend([p5_i, p5_o, p6_i, p6_o, p7])
@@ -180,7 +180,7 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
         p7 = p6_o + rotate_by(
             direction_angle,
             np.array(
-                [tendon_data.tendon_section_lengths[0, tids.I_LINK_67].item(), 0.0]
+                [tendon_data.gst_tendon_section_lengths[0, tids.I_LINK_67].item(), 0.0]
             ),
         )
         lower_tendon_points.extend([p6_i, p6_o, p7])
@@ -194,7 +194,7 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
         p5_i = p4prime_o + rotate_by(
             direction_angle,
             np.array(
-                [tendon_data.tendon_section_lengths[0, tids.I_LINK_4prime5].item(), 0.0]
+                [tendon_data.gst_tendon_section_lengths[0, tids.I_LINK_4prime5].item(), 0.0]
             ),
         )
         p5_o = rotate_by(q5_D, p5_i - j5) + j5
