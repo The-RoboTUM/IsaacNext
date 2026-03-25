@@ -21,6 +21,10 @@ from isaaclab_assets import FORREST_CFG  # isort: skip
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.assets.articulation import Articulation
 
+# Experimental
+from isaaclab.tendons.action_term_cfg import TendonActionTermHybridCfg
+from isaaclab.tendons.constants import TendonConstantRandomizationRanges, actuated_joint_names
+
 FEET_CFG = SceneEntityCfg(
     "robot",
     body_names=("s45_digit_assyv2_1", "s45_digit_assyv2_2"),
@@ -172,10 +176,26 @@ class ForrestRewards(RewardsCfg):
         },
     )
 
+@configclass
+class ForrestActionsCfg:
+    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=actuated_joint_names, scale=0.5,
+                                           use_default_offset=True)
+    tendon = TendonActionTermHybridCfg(
+        asset_name="robot",
+        randomization_ranges=TendonConstantRandomizationRanges(
+            gst_stiffness=(-2e3, 2e3),
+            dft_stiffness=(-2e3, 2e3),
+            gst_spring_rest_length=(-0.002, 0.002),
+            dft_length=(-0.002, 0.002),
+            upper_tendon_length=(-0.005, 0.005),
+            lower_tendon_length=(-0.005, 0.005),
+        ),
+    )
 
 @configclass
 class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     rewards: ForrestRewards = ForrestRewards()
+    actions: ForrestActionsCfg = ForrestActionsCfg()
 
     def __post_init__(self):
         # post init of parent
@@ -183,6 +203,7 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Scene
         self.scene.robot = FORREST_CFG.replace(prim_path="{ENV_REGEX_NS}/Forrest_URDF")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Forrest_URDF/world_corrected"
+
 
         # TEMP (Used only to make flat env model work)
         # self.scene.height_scanner = None
@@ -205,7 +226,7 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             prim_path="{ENV_REGEX_NS}/Forrest_URDF/(s45_digit_assyv2_1|s45_digit_assyv2_2|world_corrected|outside_hip_v2_assy_axialv21_2|outside_hip_v2_assy_axialv21_1)",
             update_period=0.0,  # update every sim step
             history_length=6,
-            debug_vis=True,
+            debug_vis=False,
             track_air_time=True,
         )
 
@@ -268,9 +289,9 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # Commands
-        self.commands.base_velocity.ranges.lin_vel_x = (-4.0, 4.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.0, 0.0)
 
         # terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = ("world_corrected",
@@ -303,9 +324,9 @@ class ForrestRoughEnvCfg_PLAY(ForrestRoughEnvCfg):
             self.scene.terrain.terrain_generator.num_cols = 3
             self.scene.terrain.terrain_generator.curriculum = False
 
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.0, 1.5)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
-        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.0, 0.0)
         # self.commands.base_velocity.ranges.heading = (0.0, 0.0)
         # disable randomization for play
         self.observations.policy.enable_corruption = False

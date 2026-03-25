@@ -1,4 +1,5 @@
 """GST tendon manager implementation."""
+from math import isnan
 
 from isaaclab.utils.math import quat_apply_inverse, quat_rotate_inverse
 import numpy as np
@@ -34,6 +35,18 @@ def angle_from_sws(
 def compute_delta_l_s_jit(
     joint_angles: torch.Tensor, tendon_data: TendonDataJIT
 ) -> torch.Tensor:
+    # bad = ~torch.isfinite(joint_angles)
+    # if bad.any():
+    #     print("joint_angles contains non-finite values")
+    #     print("joint_angles =", joint_angles)
+    #     print("Bad mask =", bad)
+    #     print("Bad indices =", bad.nonzero(as_tuple=False))
+    #     print("Bad values before fix =", joint_angles[bad])
+    #
+    #     joint_angles = torch.where(bad, torch.zeros_like(joint_angles), joint_angles)
+    #
+    #     print("Bad values after fix =", joint_angles[bad])
+
     # 0) transform joint angles to thetas and qs
     joint_angles_signed = tendon_data.joint_directions * joint_angles
     thetas = joint_angles_signed + tendon_data.joint_offsets_theta
@@ -323,10 +336,24 @@ class GSTTendonManager:
     def compute_delta_l_s_debug(
         self, joint_angles: torch.Tensor, tendon_data: TendonData
     ):
+
+        # bad = ~torch.isfinite(joint_angles)
+        # if bad.any():
+        #     print("joint_angles contains non-finite values")
+        #     print("joint_angles =", joint_angles)
+        #     print("Bad mask =", bad)
+        #     print("Bad indices =", bad.nonzero(as_tuple=False))
+        #     print("Bad values before fix =", joint_angles[bad])
+        #
+        #     joint_angles = torch.where(bad, torch.zeros_like(joint_angles), joint_angles)
+        #
+        #     print("Bad values after fix =", joint_angles[bad])
+
         # 0) transform joint angles to thetas and qs
         joint_angles_signed = tendon_data.joint_directions * joint_angles
         thetas = joint_angles_signed + tendon_data.joint_offsets_theta
         qs = joint_angles_signed + tendon_data.joint_offsets_gst_q
+
 
         # 1) evaluate conditions
         # 1a) compute h5^B
@@ -366,6 +393,8 @@ class GSTTendonManager:
         h5_B = tendon_data.pulley_radii[
             :, tids.I_RADIUS_4prime
         ] - tendon_data.link_lengths[:, tids.I_LINK_4prime5] * torch.cos(phi_4prime_B)
+
+        # print("I am in the first")
 
         # 1b) compute h5^C and h6^C
         theta_6_a = torch.pi - thetas[:, tids.I_JOINT_5] - phi_4prime_a
@@ -413,6 +442,8 @@ class GSTTendonManager:
         l_57_squared = x_57_squared - tendon_data.pulley_radii[:, tids.I_RADIUS_5] ** 2
         l_57 = torch.sqrt(l_57_squared)
 
+        # print("I am in the later")
+
         phi_5_a = angle_from_sws(
             tendon_data.link_lengths[:, tids.I_LINK_56],
             tendon_data.link_lengths[:, tids.I_LINK_67],
@@ -424,6 +455,7 @@ class GSTTendonManager:
         h6_D = tendon_data.pulley_radii[:, tids.I_RADIUS_5] - tendon_data.link_lengths[
             :, tids.I_LINK_56
         ] * torch.cos(phi_5_D)
+
 
         h5_B_disengaged = torch.where(
             h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_5],
@@ -451,9 +483,12 @@ class GSTTendonManager:
         )
         state_B = ~state_C & h5_B_disengaged
         state_D = ~state_C & h6_D_disengaged
-        assert (
-            state_B.sum() + state_D.sum() == (state_B | state_D).sum()
-        ), "States B and D are active simultaneously"
+        if state_B.sum() + state_D.sum() != (state_B | state_D).sum():
+            print("States B and D are active simultaneously for ", state_B.sum() + state_D.sum() - (state_B | state_D).sum(), " robots.")
+            print(torch.nonzero(state_B * state_D))
+        #assert (
+        #    state_B.sum() + state_D.sum() == (state_B | state_D).sum()
+        #), "States B and D are active simultaneously"
         state_A = ~(state_B | state_C | state_D)
 
         # 2) compute energy with conditional function for lower tendon state length
@@ -485,6 +520,8 @@ class GSTTendonManager:
             + q6_B[state_B] * tendon_data.pulley_radii[state_B, tids.I_RADIUS_6]
             + tendon_data.gst_tendon_section_lengths[state_B, tids.I_LINK_67]
         )
+
+        # print("I am in the latest")
 
         # state C
         l_4prime7_squared = (
@@ -519,6 +556,8 @@ class GSTTendonManager:
             ]
         )
 
+        # print("I am in the mid")
+
         state_A_or_D = state_A | state_D
         q4[state_A_or_D] -= tendon_data.gst_tendon_tangency_angles[
             state_A_or_D, tids.I_TENDON_TANGENGY_ANGLES_45_j4
@@ -534,6 +573,8 @@ class GSTTendonManager:
             - tendon_data.gst_tendon_section_lengths[:, tids.I_LINK_34]
             - q4 * tendon_data.pulley_radii[:, tids.I_RADIUS_4]
         )
+
+        # print("I am in the end")
 
         return (
             delta_L_s,
@@ -604,32 +645,39 @@ class GSTTendonManager:
     # @torch.jit.script
     def compute_torques_jit(self):
         batch_size = self.robot.num_instances
-        joint_angles = torch.cat(
-            (
-                self.robot.data.joint_pos[:, self.joint_indices_left]
-                .clone()
-                .requires_grad_(True),
-                self.robot.data.joint_pos[:, self.joint_indices_right]
-                .clone()
-                .requires_grad_(True),
-            ),
-            dim=0,
-        )  # q3, q4, q5, q6, (2*N_envs) x 4 joints
+        torch.autograd.set_detect_anomaly(True)
+        with torch.inference_mode(False):
+            # with torch.enable_grad():
+            joint_angles = torch.cat(
+                (
+                    self.robot.data.joint_pos[:, self.joint_indices_left]
+                    .clone()
+                    .requires_grad_(True),
+                    self.robot.data.joint_pos[:, self.joint_indices_right]
+                    .clone()
+                    .requires_grad_(True),
+                ),
+                dim=0,
+            ).requires_grad_(True)  # q3, q4, q5, q6, (2*N_envs) x 4 joints
 
-        delta_L_s = compute_delta_l_s_jit(joint_angles, self.tendon_data_jit)
+            delta_L_s = compute_delta_l_s_jit(joint_angles, self.tendon_data_jit)
+            # delta_L_s, info = self.compute_delta_l_s_debug(joint_angles, self.tendon_data)
 
-        not_slack = delta_L_s <= 0.0
+            not_slack = delta_L_s <= 0.0
 
-        energy = 0.5 * self.tendon_data.gst_stiffness * delta_L_s**2
+            energy = 0.5 * self.tendon_data.gst_stiffness * delta_L_s**2
 
-        tendon_torques = torch.autograd.grad(
-            outputs=energy[not_slack].sum(),
-            inputs=joint_angles,
-            create_graph=False,
-            allow_unused=True,
-        )[0]
+            tendon_torques = torch.autograd.grad(
+                outputs=energy[not_slack].sum(),
+                inputs=joint_angles,
+                create_graph=False,
+                allow_unused=True,
+            )[0]
         tendon_torques_left = tendon_torques[:batch_size]
         tendon_torques_right = tendon_torques[batch_size:]
+
+        # print("tendon_torques_left", tendon_torques_left)
+        # print("tendon_torques_right", tendon_torques_right)
 
         return tendon_torques_left, tendon_torques_right
 

@@ -38,7 +38,7 @@ from isaaclab.sim import SimulationContext
 from isaaclab.tendons.gst_manager import GSTTendonManager
 
 # usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"
-usd_path = "/media/C/Programmieren/RoboTUM/forrest_full_static.usd"
+usd_path = "symlinks/Forrest_URDF_no_self_collision/Forrest_URDF.usd"
 # usd_path = "/home/linus/IsaacNext/assets/Leg_free_v2/leg.usd"
 
 # throw error on NaN in backprop

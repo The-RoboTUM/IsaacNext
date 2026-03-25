@@ -107,6 +107,24 @@ joint_names_left = list_from_dict(
     N_JOINTS,
 )
 
+hip_joint_names = [
+    "l0_acetabulofemoral_roll",
+    "l1_acetabulofemoral_lateral",
+    "l2_pseudo_acetabulofemoral_flexion",
+    "r0_acetabulofemoral_roll",
+    "r1_acetabulofemoral_lateral",
+    "r2_pseudo_acetabulofemoral_flexion",
+]
+
+actuated_joint_names = [
+    "l0_acetabulofemoral_roll",
+    "l1_acetabulofemoral_lateral",
+    "l2_pseudo_acetabulofemoral_flexion",
+    "r0_acetabulofemoral_roll",
+    "r1_acetabulofemoral_lateral",
+    "r2_pseudo_acetabulofemoral_flexion",
+]
+
 all_joint_names_right = [
     "r0_acetabulofemoral_roll,"  # j0, position/torque control
     "r1_acetabulofemoral_lateral",  # j1, position/torque control
@@ -128,7 +146,7 @@ all_joint_names_right = [
 class TendonConstants:
     """Fixed baseline mathematical constants for our tendon model: link lengths and pulley radii etc."""
 
-    gst_stiffness: float = 128e3
+    gst_stiffness: float = 128e2 # (Calculated 128e3)
     gst_spring_rest_length: float = 0.06
     dft_stiffness: float = 100e4  # FIXME: find out real value
     gst_spring_rest_length: float = 0.06
@@ -187,12 +205,12 @@ class TendonConstants:
     b_23 = 0.11104  # distance from end of spring to joint 3
     a_23 = 0.0594097  # distance from other attachment point of pantograph on l23 to end of spring
     c_23 = 0.14  # distance from joint 3 to other attachment point of pantograph on l23
-    angle_4prime5_to_j44prime = np.deg2rad(
+    angle_4prime5_to_j44prime = float(np.deg2rad(
         124.069
-    )  # angle between link 4'5 and line from joint 4 to 4-4' transition
+    ))  # angle between link 4'5 and line from joint 4 to 4-4' transition
     dft_attachment_point_to_j5 = 0.08  # FIXME: measure correct value
-    dft_limit_angle_theta5 = np.deg2rad(190)
-    dft_limit_angle_theta6 = np.deg2rad(240)
+    dft_limit_angle_theta5 = float(np.deg2rad(190))
+    dft_limit_angle_theta6 = float(np.deg2rad(240))
     # distance from dft tendon attachment point to joint 5, along the line from joint 4 to joint 5
 
 
@@ -249,8 +267,8 @@ class TendonConstantRandomizationRanges:
     a_23: tuple[float, float] = (-0.001, 0.001)
     c_23: tuple[float, float] = (-0.001, 0.001)
     angle_4prime5_to_j44prime: tuple[float, float] = (-0.05, 0.05)
-    dft_limit_angle_theta5: tuple[float, float] = (np.deg2rad(-5), np.deg2rad(5))
-    dft_limit_angle_theta6: tuple[float, float] = (np.deg2rad(-5), np.deg2rad(5))
+    dft_limit_angle_theta5: tuple[float, float] = (float(np.deg2rad(-5)), float(np.deg2rad(5)))
+    dft_limit_angle_theta6: tuple[float, float] = (float(np.deg2rad(-5)), float(np.deg2rad(5)))
 
 
 dummy_randomization = TendonConstantRandomizationRanges(
@@ -534,6 +552,10 @@ class TendonData:
         """Convert to JIT-compatible TendonDataJIT."""
         return TendonDataJIT(
             gst_stiffness=self.gst_stiffness,
+            dft_stiffness=self.gst_stiffness,
+            dft_length=self.gst_tendon_section_lengths,
+            dft_tendon_section_lengths=self.gst_tendon_section_lengths,
+            dft_tendon_tangency_angles=self.gst_tendon_tangency_angles,
             gst_spring_rest_length=self.gst_spring_rest_length,
             joint_offsets_theta=self.joint_offsets_theta,
             joint_offsets_gst_q=self.joint_offsets_gst_q,
