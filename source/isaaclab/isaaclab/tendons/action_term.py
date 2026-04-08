@@ -5,7 +5,7 @@ from typing import Sequence
 from isaaclab.envs.manager_based_env import ManagerBasedEnv
 from isaaclab.managers.action_manager import ActionTerm
 from isaaclab.tendons.action_term_cfg import TendonActionTermCfg
-from isaaclab.tendons.constants import (
+from isaaclab.tendons.constants_old import (
     N_LINKS_PER_LEG,
     TendonData,
     tids,
@@ -102,10 +102,10 @@ class TendonActionTerm(ActionTerm):
         )
 
         # Fix coordinate system inversion for joint 3 and 4
-        gst_tendon_torques_left[:, tids.I_JOINT_3] *= -1.0
-        gst_tendon_torques_right[:, tids.I_JOINT_3] *= -1.0
-        gst_tendon_torques_left[:, tids.I_JOINT_4] *= -1.0
-        gst_tendon_torques_right[:, tids.I_JOINT_4] *= -1.0
+        gst_tendon_torques_left[:, tids.GST_I_Q_OFFSET_3] *= -1.0
+        gst_tendon_torques_right[:, tids.GST_I_Q_OFFSET_3] *= -1.0
+        gst_tendon_torques_left[:, tids.GST_I_Q_OFFSET_4] *= -1.0
+        gst_tendon_torques_right[:, tids.GST_I_Q_OFFSET_4] *= -1.0
 
         # Apply GST torques
         tendon_torques_full[:, : N_LINKS_PER_LEG - 1, JOINT_AXIS_IDX] = (
@@ -123,14 +123,18 @@ class TendonActionTerm(ActionTerm):
 
         # Apply knee motor torques from actions
         tendon_torques_full[
-            :, self.link_indices_left_right[tids.I_LINK_23], JOINT_AXIS_IDX
+            :,
+            self.link_indices_left_right[tids.I_CONNECTOR_LINK_GST_23],
+            JOINT_AXIS_IDX,
         ] = -self._processed_actions[:, 0]
         tendon_torques_full[
             :, self.link_indices_left_right[tids.I_LINK_34], JOINT_AXIS_IDX
         ] += self._processed_actions[:, 0]
         tendon_torques_full[
             :,
-            self.link_indices_left_right[tids.I_LINK_23 + N_LINKS_PER_LEG],
+            self.link_indices_left_right[
+                tids.I_CONNECTOR_LINK_GST_23 + N_LINKS_PER_LEG
+            ],
             JOINT_AXIS_IDX,
         ] = -self._processed_actions[:, 1]
         tendon_torques_full[

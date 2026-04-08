@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import numpy as np
 
-from isaaclab.tendons.constants import (
+from isaaclab.tendons.constants_old import (
     joint_names_left,
     joint_names_right,
 )

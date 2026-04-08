@@ -29,7 +29,7 @@ from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.math import quat_inv, quat_apply
 
-from isaaclab.tendons.constants import (
+from isaaclab.tendons.constants_old import (
     tids,
     TendonData,
     dummy_randomization,
@@ -161,11 +161,11 @@ def main():
 
     try:
         for link_id in [
-            tids.I_LINK_23,
+            tids.I_CONNECTOR_LINK_GST_23,
             tids.I_LINK_34,
             tids.I_LINK_4prime5,
             tids.I_LINK_56,
-            tids.I_LINK_67,
+            tids.GST_I_LINK_67,
         ]:
             carb.log_warn(f"Link id {link_id}")
             for iteration in range(int(t_total / sim.get_physics_dt())):

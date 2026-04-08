@@ -29,7 +29,7 @@ from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.math import quat_inv, quat_apply
 
-from isaaclab.tendons.constants import (
+from isaaclab.tendons.constants_old import (
     tids,
     TendonData,
     dummy_randomization,

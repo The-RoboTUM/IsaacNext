@@ -44,15 +44,15 @@ from isaaclab.sensors.camera import TiledCamera, TiledCameraCfg
 
 from isaaclab.tendons.constants import (
     tids,
-    TendonData,
     dummy_randomization,
     link_names_left,
     link_names_right,
     joint_names_left,
     joint_names_right,
-    N_LINKS_PER_LEG,
+    N_CHAIN_LINKS_PER_LEG,
 )
-from isaaclab.tendons.gst_manager import GSTTendonManager
+from isaaclab.tendons.tendon_data import TendonData
+from isaaclab.tendons.tendon_manager import TendonManager
 
 # usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"
 usd_path = "/media/C/Programmieren/RoboTUM/forrest_full_static.usd"
@@ -137,6 +137,25 @@ def get_leg_cfg() -> ArticulationCfg:
             }
         ),
     )
+
+
+def leg_tensordict_to_python_dict(tensordict):
+    """Converts a tensordict to a python dict for easier logging."""
+    data_left = {}
+    data_right = {}
+    for key in tensordict.keys():
+        value = tensordict[key]
+        value_left = value[0]
+        value_right = value[1]
+        if len(value.shape) == 1:
+            data_left[key] = value_left.detach().cpu().numpy().tolist()
+            data_right[key] = value_right.detach().cpu().numpy().tolist()
+        elif len(value.shape) == 0:
+            data_left[key] = value_left.item()
+            data_right[key] = value_right.item()
+        else:
+            raise ValueError(f"Unsupported value shape {value.shape} for key {key}")
+    return data_left, data_right
 
 
 def main():
@@ -226,7 +245,7 @@ def main():
     joint_indices_left, _ = robot.find_joints(joint_names_left, preserve_order=True)
 
     # Tendon manager setup
-    gst_tendon_manager = GSTTendonManager(robot)
+    tendon_manager = TendonManager(robot)
     phi_0_combined_offset = np.pi / 2  # np.pi / 2
     cpg_leg_params_left = CPGParams(phi0=-np.pi / 2 + phi_0_combined_offset, f_hz=2.5)
     cpg_leg_left = BirdBotCPGLeg(cpg_leg_params_left)
@@ -255,90 +274,10 @@ def main():
                 apply_tendons=True,
             )
             if not args_cli.jit:
-                info = gst_tendon_manager.apply_actuated_debug(**kwargs)
-                data_left = {}
-                data_left["state"] = ("s" if info["delta_l"][0].item() > 0 else "") + (
-                    "a"
-                    if info["a"][0].item() > 0
-                    else (
-                        "b"
-                        if info["b"][0].item() > 0
-                        else (
-                            "c"
-                            if info["c"][0].item() > 0
-                            else ("d" if info["d"][0].item() > 0 else "x")
-                        )
-                    )
-                )
-                data_left["delta_l"] = info["delta_l"][0].item()
-                data_left["thetas"] = info["thetas"][0].detach().cpu().numpy().tolist()
-                data_left["qs"] = info["qs"][0].detach().cpu().numpy().tolist()
-                data_left["q4"] = info["q4"][0].item()
-                data_left["q4prime"] = info["q4prime"][0].item()
-                data_left["q5_D"] = info["q5_D"][0].item()
-                data_left["q6_B"] = info["q6_B"][0].item()
-                data_left["l_4prime6"] = info["l_4prime6"][0].item()
-                data_left["l_4prime7"] = info["l_4prime7"][0].item()
-                data_left["l_57"] = info["l_57"][0].item()
-                data_left["x_4prime6"] = info["x_4prime6"][0].item()
-                data_left["x_4prime7"] = info["x_4prime7"][0].item()
-                data_left["x_57"] = info["x_57"][0].item()
-                data_left["phi_4prime_a"] = info["phi_4prime_a"][0].item()
-                data_left["phi_4prime_b"] = info["phi_4prime_b"][0].item()
-                data_left["phi_4prime_c"] = info["phi_4prime_c"][0].item()
-                data_left["phi_4prime_d"] = info["phi_4prime_d"][0].item()
-                data_left["phi_5_a"] = info["phi_5_a"][0].item()
-                data_left["phi_5_b"] = info["phi_5_b"][0].item()
-                data_left["h5_B"] = info["h5_B"][0].item()
-                data_left["h5_C"] = info["h5_C"][0].item()
-                data_left["h6_C"] = info["h6_C"][0].item()
-                data_left["h6_D"] = info["h6_D"][0].item()
-                data_left["tendon_torques"] = (
-                    info["tendon_torques_left"][0].cpu().numpy().tolist()
-                )
+                info = tendon_manager.apply_debug(**kwargs)
+                data_left, data_right = leg_tensordict_to_python_dict(info)
 
-                data_right = {}
-                data_right["state"] = ("s" if info["delta_l"][1].item() > 0 else "") + (
-                    "a"
-                    if info["a"][1].item() > 0
-                    else (
-                        "b"
-                        if info["b"][1].item() > 0
-                        else (
-                            "c"
-                            if info["c"][1].item() > 0
-                            else ("d" if info["d"][1].item() > 0 else "x")
-                        )
-                    )
-                )
-                data_right["delta_l"] = info["delta_l"][1].item()
-                data_right["thetas"] = info["thetas"][1].detach().cpu().numpy().tolist()
-                data_right["qs"] = info["qs"][1].detach().cpu().numpy().tolist()
-                data_right["q4"] = info["q4"][1].item()
-                data_right["q4prime"] = info["q4prime"][1].item()
-                data_right["q5_D"] = info["q5_D"][1].item()
-                data_right["q6_B"] = info["q6_B"][1].item()
-                data_right["l_4prime6"] = info["l_4prime6"][1].item()
-                data_right["l_4prime7"] = info["l_4prime7"][1].item()
-                data_right["l_57"] = info["l_57"][1].item()
-                data_right["x_4prime6"] = info["x_4prime6"][1].item()
-                data_right["x_4prime7"] = info["x_4prime7"][1].item()
-                data_right["x_57"] = info["x_57"][1].item()
-                data_right["phi_4prime_a"] = info["phi_4prime_a"][1].item()
-                data_right["phi_4prime_b"] = info["phi_4prime_b"][1].item()
-                data_right["phi_4prime_c"] = info["phi_4prime_c"][1].item()
-                data_right["phi_4prime_d"] = info["phi_4prime_d"][1].item()
-                data_right["phi_5_a"] = info["phi_5_a"][1].item()
-                data_right["phi_5_b"] = info["phi_5_b"][1].item()
-                data_right["h5_B"] = info["h5_B"][1].item()
-                data_right["h5_C"] = info["h5_C"][1].item()
-                data_right["h6_C"] = info["h6_C"][1].item()
-                data_right["h6_D"] = info["h6_D"][1].item()
-                data_right["tendon_torques"] = (
-                    info["tendon_torques_right"][0].cpu().numpy().tolist()
-                )
-            else:
-                gst_tendon_manager.apply_actuated_jit(**kwargs)
+            # TODO: target for j8 knee motor
 
             robot.write_data_to_sim()
             sim.step()
