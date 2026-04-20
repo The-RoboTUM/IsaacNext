@@ -1,5 +1,6 @@
 """Tendon data for parallel training."""
 
+from isaaclab.tendons.constants_old import N_TENDON_TANGENCY_ANGLES
 from isaaclab.tendons.utils import list_from_dict
 import torch
 
@@ -19,8 +20,6 @@ from isaaclab.tendons.constants import (
 )
 
 import isaaclab.tendons.indices as tids
-
-N_GST_TENDON_TANGENCY_ANGLES = 0  # FIXME: just a placeholder
 
 
 def same_sided_wrap(
@@ -321,7 +320,7 @@ class TendonData:
 
         kft_theta_offset_3 = joint_offsets_theta[
             :, tids.I_JOINT_3
-        ] + torch.atan2(  # larger theta because connector is opposite to the side where link-theta is measured
+        ] - torch.atan2(  # smaller theta because connector is on the same side as where link-theta is measured
             connector_link_lengths_lateral[:, tids.I_CONNECTOR_LINK_KFT_3C],
             connector_link_lengths_longitudinal[:, tids.I_CONNECTOR_LINK_KFT_3C],
         )
@@ -360,7 +359,7 @@ class TendonData:
                     tids.I_TENDON_TANGENCY_ANGLE_EDT1_5C_J5: edt1_phi_5c_jc,
                     tids.I_TENDON_TANGENCY_ANGLE_EDT2_56_J5: edt2_phi_56_j5,
                 },
-                N_GST_TENDON_TANGENCY_ANGLES,
+                N_TENDON_TANGENCY_ANGLES,
             ),
             dim=1,
         )  # (B, N_TENDON_TANGENCY_ANGLES)

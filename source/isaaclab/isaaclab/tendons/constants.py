@@ -17,7 +17,6 @@ N_LINK_LENGTHS_PER_LEG: int = (
     + N_CONNECTOR_OFFSETS  # -> number of link lengths per leg (including virtual links for tendon attachment points)
 )
 N_JOINTS: int = 5
-N_JOINT_WRAPPINGS: int = 13  # -> number of thetas
 N_RADII: int = 11  # -> number of pulley radii
 
 
@@ -100,23 +99,22 @@ all_joint_names_right = [
 
 
 # TODO: verify tendon lengths when prototype is built
-# TODO: Joint offsets for new tendons and j8
 @dataclass
 class TendonConstants:
     """Fixed baseline mathematical constants for our tendon model: link lengths and pulley radii etc."""
 
-    gst_stiffness: float = 128e3
+    gst_stiffness: float = 128e2  # FIXME: Reduced for simulation stability by 10x
     gst_spring_rest_length: float = 0.06
-    dft_stiffness: float = 100e4  # FIXME: find out real value
-    edt1_stiffness: float = 100e4  # FIXME: find out real value
-    edt2_stiffness: float = 100e4  # FIXME: find out real value
-    kft_stiffness: float = 100e4  # FIXME: find out real value
+    dft_stiffness: float = 20e3  # FIXME: find out real value
+    edt1_stiffness: float = 20e3  # FIXME: find out real value
+    edt2_stiffness: float = 20e3  # FIXME: find out real value
+    kft_stiffness: float = 20e3  # FIXME: find out real value
     upper_gst_length: float = 0.6867  # FIXME: measure correct value
     lower_gst_length: float = 1.0314  # FIXME: measure correct value
-    dft_length: float = 0.2  # FIXME: measure correct value
-    edt1_length: float = 0.3  # FIXME: measure correct value
-    edt2_length: float = 0.5  # FIXME: measure correct value
-    kft_length: float = 0.4  # FIXME: measure correct value
+    dft_length: float = 0.395  # FIXME: measure correct value
+    edt1_length: float = 0.55  # FIXME: measure correct value
+    edt2_length: float = 0.66  # FIXME: measure correct value
+    kft_length: float = 0.382  # FIXME: measure correct value
     joint_offsets_theta: torch.Tensor = (
         torch.deg2rad(  # between joint-to-joint links, offsets to raw joint angles
             torch.tensor(
@@ -160,7 +158,7 @@ class TendonConstants:
                 tids.I_RADIUS_EDT1_5: 0.04,
                 tids.I_RADIUS_EDT2_5: 0.04,
                 tids.I_RADIUS_EDT2_6: 0.04,
-                tids.I_RADIUS_KFT_8: 0.0,
+                tids.I_RADIUS_KFT_8: 0.035,
             },
             N_RADII,
         ),
@@ -184,11 +182,11 @@ class TendonConstants:
         list_from_dict(
             {
                 tids.I_CONNECTOR_LINK_GST_23: 0.1072,
-                tids.I_CONNECTOR_LINK_DFT_C5: 0.0,
-                tids.I_CONNECTOR_LINK_EDT1_C4: 0.0,
-                tids.I_CONNECTOR_LINK_EDT1_5C: 0.0,
-                tids.I_CONNECTOR_LINK_EDT2_C4: 0.0,
-                tids.I_CONNECTOR_LINK_KFT_3C: 0.0,
+                tids.I_CONNECTOR_LINK_DFT_C5: 0.13,
+                tids.I_CONNECTOR_LINK_EDT1_C4: 0.17,
+                tids.I_CONNECTOR_LINK_EDT1_5C: 0.088,
+                tids.I_CONNECTOR_LINK_EDT2_C4: 0.22,
+                tids.I_CONNECTOR_LINK_KFT_3C: 0.0635,
             },
             N_CONNECTOR_OFFSETS,
         )
@@ -197,11 +195,11 @@ class TendonConstants:
         list_from_dict(
             {
                 tids.I_CONNECTOR_LINK_GST_23: 0.0,
-                tids.I_CONNECTOR_LINK_DFT_C5: 0.0,
-                tids.I_CONNECTOR_LINK_EDT1_C4: 0.0,
-                tids.I_CONNECTOR_LINK_EDT1_5C: 0.0,
-                tids.I_CONNECTOR_LINK_EDT2_C4: 0.0,
-                tids.I_CONNECTOR_LINK_KFT_3C: 0.0,
+                tids.I_CONNECTOR_LINK_DFT_C5: 0.04,
+                tids.I_CONNECTOR_LINK_EDT1_C4: 0.04,
+                tids.I_CONNECTOR_LINK_EDT1_5C: 0.007,  # measured towards the front side (GST spring side) TODO: verify
+                tids.I_CONNECTOR_LINK_EDT2_C4: 0.04,
+                tids.I_CONNECTOR_LINK_KFT_3C: 0.009,  # measured from the j3-j4 axis towards the GST spring
             },
             N_CONNECTOR_OFFSETS,
         )
