@@ -55,8 +55,10 @@ from isaaclab.tendons.tendon_data import TendonData
 from isaaclab.tendons.tendon_manager import TendonManager
 
 # usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"
-usd_path = "/media/C/Programmieren/RoboTUM/forrest_full_static.usd"
+# usd_path = "/media/C/Programmieren/RoboTUM/forrest_full_static.usd"
+usd_path = "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"
 # usd_path = "/home/linus/IsaacNext/assets/Leg_free_v2/leg.usd"
+
 
 # throw error on NaN in backprop
 # torch.autograd.set_detect_anomaly(True)
@@ -129,6 +131,7 @@ def get_leg_cfg() -> ArticulationCfg:
             ),
         },
         init_state=ArticulationCfg.InitialStateCfg(
+            pos=(0.0, 0.0, 1.6),
             joint_pos={
                 "r5_metatarsophalangeal": np.deg2rad(-19.9, dtype=np.float32),
                 "l5_metatarsophalangeal": np.deg2rad(-19.9, dtype=np.float32),
@@ -140,21 +143,36 @@ def get_leg_cfg() -> ArticulationCfg:
 
 
 def leg_tensordict_to_python_dict(tensordict):
-    """Converts a tensordict to a python dict for easier logging."""
     data_left = {}
     data_right = {}
-    for key in tensordict.keys():
-        value = tensordict[key]
-        value_left = value[0]
-        value_right = value[1]
-        if len(value.shape) == 1:
-            data_left[key] = value_left.detach().cpu().numpy().tolist()
-            data_right[key] = value_right.detach().cpu().numpy().tolist()
-        elif len(value.shape) == 0:
+
+    for key, value in tensordict.items():
+        if not torch.is_tensor(value):
+            data_left[key] = value
+            data_right[key] = value
+            continue
+
+        if value.ndim == 0:
+            data_left[key] = value.item()
+            data_right[key] = value.item()
+            continue
+
+        if value.shape[0] == 2:
+            value_left = value[0]
+            value_right = value[1]
+        elif value.shape[0] == 1:
+            value_left = value[0]
+            value_right = value[0]
+        else:
+            raise ValueError(f"Unsupported batch size {value.shape[0]} for key {key}")
+
+        if value_left.ndim == 0:
             data_left[key] = value_left.item()
             data_right[key] = value_right.item()
         else:
-            raise ValueError(f"Unsupported value shape {value.shape} for key {key}")
+            data_left[key] = value_left.detach().cpu().numpy().tolist()
+            data_right[key] = value_right.detach().cpu().numpy().tolist()
+
     return data_left, data_right
 
 
@@ -162,7 +180,7 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # IsaacLab simulation setup
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
-    sim_cfg.dt = 0.0032
+    sim_cfg.dt = 0.032
     t_total = 2.0
     sim = SimulationContext(sim_cfg)
     sim.set_camera_view(  # pyright: ignore[reportAttributeAccessIssue]
@@ -274,7 +292,8 @@ def main():
                 apply_tendons=True,
             )
             if not args_cli.jit:
-                info = tendon_manager.apply_debug(**kwargs)
+                info = tendon_manager.apply_debug()
+                # info = {}
                 data_left, data_right = leg_tensordict_to_python_dict(info)
 
             # TODO: target for j8 knee motor
