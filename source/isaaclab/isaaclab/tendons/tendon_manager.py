@@ -374,10 +374,10 @@ def compute_delta_l_s_jit(
 
     ### --------- KFT ---------- ###
     KFT_l_8c_j_squared = (
-        tendon_data.link_lengths_squared[:, tids.I_LINK_83]
+        tendon_data.link_lengths_squared[:, tids.I_LINK_38]
         + tendon_data.link_lengths_squared[:, tids.I_LINK_KFT_3C]
         - 2
-        * tendon_data.link_lengths[:, tids.I_LINK_83]
+        * tendon_data.link_lengths[:, tids.I_LINK_38]
         * tendon_data.link_lengths[:, tids.I_LINK_KFT_3C]
         * torch.cos(theta_hats[:, tids.I_THETA_KFT_3])
     )
@@ -386,7 +386,7 @@ def compute_delta_l_s_jit(
     )
     KFT_phi_8 = torch.atan2(KFT_l_8c, tendon_data.pulley_radii[:, tids.I_RADIUS_KFT_8])
     KFT_phi_8_a = angle_from_sws(
-        tendon_data.link_lengths[:, tids.I_LINK_83],
+        tendon_data.link_lengths[:, tids.I_LINK_38],
         tendon_data.link_lengths[:, tids.I_LINK_KFT_3C],
         theta_hats[:, tids.I_THETA_KFT_3],
     )
@@ -757,7 +757,7 @@ class TendonManager:
         # 0) transform joint angles to thetas and qs
         joint_angles_signed = tendon_data.joint_directions * joint_angles
         thetas = torch.empty_like(tendon_data.tendon_offsets_theta)
-        thetas[
+        thetas[:, 
             (
                 tids.I_THETA_GST_3,
                 tids.I_THETA_GST_4,
@@ -772,7 +772,7 @@ class TendonManager:
                 tids.I_THETA_KFT_8,
             )
         ] = (
-            joint_angles_signed[
+            joint_angles_signed[:, 
                 (
                     tids.I_JOINT_3,
                     tids.I_JOINT_4,
@@ -787,7 +787,7 @@ class TendonManager:
                     tids.I_JOINT_8,
                 )
             ]
-            + tendon_data.tendon_offsets_theta[
+            + tendon_data.tendon_offsets_theta[:, 
                 (
                     tids.I_THETA_GST_3,
                     tids.I_THETA_GST_4,
@@ -804,7 +804,7 @@ class TendonManager:
             ]
         )
         qs = torch.empty_like(tendon_data.tendon_offsets_q_theta)
-        qs[
+        qs[:, 
             (
                 tids.I_Q_GST_3,
                 tids.I_Q_GST_4,
@@ -814,7 +814,7 @@ class TendonManager:
                 tids.I_Q_DFT_6,
             )
         ] = (
-            thetas[
+            thetas[:, 
                 (
                     tids.I_THETA_GST_3,
                     tids.I_THETA_GST_4,
@@ -824,7 +824,7 @@ class TendonManager:
                     tids.I_THETA_ALL_6,
                 )
             ]
-            + tendon_data.tendon_offsets_q_theta[
+            + tendon_data.tendon_offsets_q_theta[:, 
                 (
                     tids.I_Q_GST_3,
                     tids.I_Q_GST_4,
@@ -838,9 +838,9 @@ class TendonManager:
 
         theta_hats = -thetas + 2 * torch.pi
         qhats = torch.empty_like(tendon_data.tendon_offsets_qhat_thetahat)
-        qhats[(tids.I_QHAT_EDT2_6,)] = (
-            theta_hats[(tids.I_THETA_ALL_6,)]
-            + tendon_data.tendon_offsets_qhat_thetahat[[(tids.I_QHAT_EDT2_6,)]]
+        qhats[:, (tids.I_QHAT_EDT2_6,)] = (
+            theta_hats[:, (tids.I_THETA_ALL_6,)]
+            + tendon_data.tendon_offsets_qhat_thetahat[:, (tids.I_QHAT_EDT2_6,)]
         )
 
         ### --------------- GST --------------- ###
@@ -1110,10 +1110,10 @@ class TendonManager:
 
         ### --------- KFT ---------- ###
         KFT_l_8c_j_squared = (
-            tendon_data.link_lengths_squared[:, tids.I_LINK_83]
+            tendon_data.link_lengths_squared[:, tids.I_LINK_38]
             + tendon_data.link_lengths_squared[:, tids.I_LINK_KFT_3C]
             - 2
-            * tendon_data.link_lengths[:, tids.I_LINK_83]
+            * tendon_data.link_lengths[:, tids.I_LINK_38]
             * tendon_data.link_lengths[:, tids.I_LINK_KFT_3C]
             * torch.cos(theta_hats[:, tids.I_THETA_KFT_3])
         )
@@ -1125,7 +1125,7 @@ class TendonManager:
             KFT_l_8c, tendon_data.pulley_radii[:, tids.I_RADIUS_KFT_8]
         )
         KFT_phi_8_a = angle_from_sws(
-            tendon_data.link_lengths[:, tids.I_LINK_83],
+            tendon_data.link_lengths[:, tids.I_LINK_38],
             tendon_data.link_lengths[:, tids.I_LINK_KFT_3C],
             theta_hats[:, tids.I_THETA_KFT_3],
         )

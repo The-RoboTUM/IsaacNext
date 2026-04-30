@@ -55,8 +55,9 @@ from isaaclab.tendons.tendon_data import TendonData
 from isaaclab.tendons.tendon_manager import TendonManager
 
 # usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"
-usd_path = "/media/C/Programmieren/RoboTUM/forrest_full_static.usd"
+# usd_path = "/media/C/Programmieren/RoboTUM/forrest_full_static.usd"
 # usd_path = "/home/linus/IsaacNext/assets/Leg_free_v2/leg.usd"
+usd_path = "/media/C/Programmieren/RoboTUM/fuse2bot/out/forrest_j8_v2/forrest_urdf_latest_description/urdf/forrest_urdf_latest/forrest_urdf_latest.usd"
 
 # throw error on NaN in backprop
 # torch.autograd.set_detect_anomaly(True)
@@ -127,6 +128,16 @@ def get_leg_cfg() -> ArticulationCfg:
                 stiffness=10000.0,
                 damping=10.0,
             ),
+            "knee_flex": ImplicitActuatorCfg(
+                joint_names_expr=[
+                    "r8_knee_flexor",
+                    "l8_knee_flexor",
+                ],
+                effort_limit_sim=1.0e9,
+                velocity_limit_sim=100.0,
+                stiffness=10000.0,
+                damping=10.0,
+            ),
         },
         init_state=ArticulationCfg.InitialStateCfg(
             joint_pos={
@@ -145,16 +156,24 @@ def leg_tensordict_to_python_dict(tensordict):
     data_right = {}
     for key in tensordict.keys():
         value = tensordict[key]
+        if key == "tendon_torques_left":
+            data_left["tendon_torques"] = value.detach().cpu().numpy().tolist()
+            continue
+        if key == "tendon_torques_right":
+            data_right["tendon_torques"] = value.detach().cpu().numpy().tolist()
+            continue
         value_left = value[0]
         value_right = value[1]
-        if len(value.shape) == 1:
+        if len(value_left.shape) == 1:
             data_left[key] = value_left.detach().cpu().numpy().tolist()
             data_right[key] = value_right.detach().cpu().numpy().tolist()
-        elif len(value.shape) == 0:
+        elif len(value_left.shape) == 0:
             data_left[key] = value_left.item()
             data_right[key] = value_right.item()
         else:
-            raise ValueError(f"Unsupported value shape {value.shape} for key {key}")
+            raise ValueError(
+                f"Unsupported value shape {value_left.shape} for key {key}"
+            )
     return data_left, data_right
 
 
@@ -244,6 +263,16 @@ def main():
     joint_indices_right, _ = robot.find_joints(joint_names_right, preserve_order=True)
     joint_indices_left, _ = robot.find_joints(joint_names_left, preserve_order=True)
 
+    actuated_joint_indices, _ = robot.find_joints(
+        [
+            "l2_pseudo_acetabulofemoral_flexion",
+            "l8_knee_flexor",
+            "r2_pseudo_acetabulofemoral_flexion",
+            "r8_knee_flexor",
+        ],
+        preserve_order=True,
+    )
+
     # Tendon manager setup
     tendon_manager = TendonManager(robot)
     phi_0_combined_offset = np.pi / 2  # np.pi / 2
@@ -255,29 +284,26 @@ def main():
     try:
         for iteration in range(int(t_total / sim.get_physics_dt())):
             t = iteration * sim.get_physics_dt()
-            kwargs = dict(
-                hip_position=torch.tensor(
-                    [
-                        cpg_leg_left.hip_flex(t)[0],
-                        cpg_leg_right.hip_flex(t)[0],
-                    ],
-                    dtype=torch.float32,
-                ),
-                knee_torque=torch.tensor(
-                    [
-                        cpg_leg_left.knee(t)[0] * 20.0,
-                        cpg_leg_right.knee(t)[0] * 20.0,
-                    ],  # TODO: better torque computation
-                    dtype=torch.float32,
-                ),
-                virtual_ground_height=0.38,
-                apply_tendons=True,
-            )
+
             if not args_cli.jit:
-                info = tendon_manager.apply_debug(**kwargs)
+                info = tendon_manager.apply_debug()
                 data_left, data_right = leg_tensordict_to_python_dict(info)
 
-            # TODO: target for j8 knee motor
+            robot.set_joint_position_target(
+                torch.tensor(
+                    [
+                        [
+                            cpg_leg_left.hip_flex(t)[0],
+                            cpg_leg_left.knee(t)[0],
+                            cpg_leg_right.hip_flex(t)[0],
+                            cpg_leg_right.knee(t)[0],
+                        ]
+                    ],
+                    dtype=torch.float32,
+                    device=device,
+                ),
+                joint_ids=actuated_joint_indices,
+            )
 
             robot.write_data_to_sim()
             sim.step()

@@ -7,7 +7,6 @@ from isaaclab.tendons.utils import list_from_dict
 import numpy as np
 import torch
 
-
 N_CHAIN_LINKS_PER_LEG: int = 6  # -> number of links in the kinematic chain of the leg
 N_CONNECTOR_OFFSETS: int = (
     6  # -> GST, DFT, EDT2, KFT have a connector not on the ji-ji+1 axis; EDT1 has two
@@ -33,6 +32,10 @@ N_QHAT_OFFSETS: int = (
     1  # -> number of joint angle theta hat offsets to wrapping angles : 4 for GST, 2 for DFT, j6 for EDT2
 )
 
+N_TENDON_TANGENCY_ANGLES: int = (
+    8  # number of fixed tendon tangency angles used in the computation
+)
+
 JOINT_AXIS_IDX: int = 0  # axis index for joint torques around x-axis
 
 dev = "cuda"
@@ -40,23 +43,23 @@ dev = "cuda"
 
 link_names_right = list_from_dict(
     {
-        tids.I_CHAIN_LINK_23: "outside_hip_v2_assy_axialv21_1",  # "knee_assyv9_1",  # 23
-        tids.I_CHAIN_LINK_34: "s12_front_assyv14_1",  # "s12_front_assyv6_1",  # 34
-        tids.I_CHAIN_LINK_4prime5: "s23_assyv21_1",  # "s23_assyv18_1",  # 4'5
-        tids.I_CHAIN_LINK_56: "s34_foot_connector_assyv23_1",  # "s34_foot_connector_assyv20_1",  # 56
-        tids.I_CHAIN_LINK_67: "s45_digit_assyv2_1",  # "s45_digit_assyv2_1",  # 67
-        tids.I_CHAIN_LINK_83: "TODO",  # TODO: Add to CAD 83
+        tids.I_CHAIN_LINK_23: "outside_hip_v2_assy_axial_1",  # "knee_assyv9_1",  # 23
+        tids.I_CHAIN_LINK_34: "s12_front_assy_1",  # "s12_front_assyv6_1",  # 34
+        tids.I_CHAIN_LINK_4prime5: "s23_assy_1",  # "s23_assyv18_1",  # 4'5
+        tids.I_CHAIN_LINK_56: "s34_foot_connector_assy_1",  # "s34_foot_connector_assyv20_1",  # 56
+        tids.I_CHAIN_LINK_67: "s45_digit_assy_1",  # "s45_digit_assyv2_1",  # 67
+        tids.I_CHAIN_LINK_38: "knee_motor_winch_big_motor_1",  # j8 to end of pulley (p9), better name would be 89
     },
     N_CHAIN_LINKS_PER_LEG,
 )
 link_names_left = list_from_dict(
     {
-        tids.I_CHAIN_LINK_23: "outside_hip_v2_assy_axialv21_2",  # 23
-        tids.I_CHAIN_LINK_34: "s12_front_assyv14_2",  # 34
-        tids.I_CHAIN_LINK_4prime5: "s23_assyv21_2",  # 4'5
-        tids.I_CHAIN_LINK_56: "s34_foot_connector_assyv23_2",  # 56
-        tids.I_CHAIN_LINK_67: "s45_digit_assyv2_2",  # 67
-        tids.I_CHAIN_LINK_83: "TODO",  # TODO: Add to CAD 83
+        tids.I_CHAIN_LINK_23: "outside_hip_v2_assy_axial_left_1",  # 23 # is also 28 if you think about it
+        tids.I_CHAIN_LINK_34: "s12_front_assy_2",  # 34
+        tids.I_CHAIN_LINK_4prime5: "s23_assy_2",  # 4'5
+        tids.I_CHAIN_LINK_56: "s34_foot_connector_assy_2",  # 56
+        tids.I_CHAIN_LINK_67: "s45_digit_assy_2",  # 67
+        tids.I_CHAIN_LINK_38: "knee_motor_winch_big_motor_2",  # j8 to end of pulley (p9), better name would be 89
     },
     N_CHAIN_LINKS_PER_LEG,
 )
@@ -66,7 +69,7 @@ joint_names_right = list_from_dict(
         tids.I_JOINT_4: "r4p_intertarsal_pulley",  # j4
         tids.I_JOINT_5: "r5_metatarsophalangeal",  # j5
         tids.I_JOINT_6: "r6_interphalangeal",  # j6
-        tids.I_JOINT_8: "TODO",  # TODO: Add to CAD j8
+        tids.I_JOINT_8: "r8_knee_flexor",  # j8
     },
     N_JOINTS,
 )
@@ -76,7 +79,7 @@ joint_names_left = list_from_dict(
         tids.I_JOINT_4: "l4p_intertarsal_pulley",  # j4
         tids.I_JOINT_5: "l5_metatarsophalangeal",  # j5
         tids.I_JOINT_6: "l6_interphalangeal",  # j6
-        tids.I_JOINT_8: "TODO",  # TODO: Add to CAD j8
+        tids.I_JOINT_8: "l8_knee_flexor",  # j8
     },
     N_JOINTS,
 )
@@ -94,7 +97,7 @@ all_joint_names_right = [
     "r5_metatarsophalangeal",  # j5, not actuated but affected by tendon                       "s23_assyv18_1" -> "s34_foot_connector_assyv20_1"
     "r6_interphalangeal",  # j6, not actuated but affected by tendon                           "s34_foot_connector_assyv20_1" -> "s45_digit_assyv2_1"
     "virtual_s23_assyv18_1_anchor",  # necessary for the urdf exporter but not actuated        "s23_assyv18_1" -> "s23_assyv18_1_virtual"
-    # TODO: ADD j8
+    "r8_knee_flexor",  # j8, position/torque control
 ]
 
 
@@ -124,7 +127,7 @@ class TendonConstants:
                         tids.I_JOINT_4: 225.931,
                         tids.I_JOINT_5: 180.0,
                         tids.I_JOINT_6: 270.0,
-                        tids.I_JOINT_8: 0.0,
+                        tids.I_JOINT_8: 180.0,
                     },
                     N_JOINTS,
                 ),
@@ -139,7 +142,7 @@ class TendonConstants:
                 tids.I_JOINT_4: +1.0,
                 tids.I_JOINT_5: -1.0,
                 tids.I_JOINT_6: -1.0,
-                tids.I_JOINT_8: 0.0,
+                tids.I_JOINT_8: -1.0,
             },
             N_JOINTS,
         ),
@@ -168,7 +171,7 @@ class TendonConstants:
         list_from_dict(
             {
                 tids.I_CHAIN_LINK_23: 0.33,
-                tids.I_CHAIN_LINK_83: 0.33,
+                tids.I_CHAIN_LINK_38: 0.33,
                 tids.I_CHAIN_LINK_34: 0.461,
                 tids.I_CHAIN_LINK_4prime5: 0.357,
                 tids.I_CHAIN_LINK_56: 0.165,
@@ -267,7 +270,7 @@ class TendonConstantRandomizationRanges:
         default_factory=lambda: list_from_dict(
             {
                 tids.I_CHAIN_LINK_23: (-0.001, 0.001),
-                tids.I_CHAIN_LINK_83: (-0.001, 0.001),
+                tids.I_CHAIN_LINK_38: (-0.001, 0.001),
                 tids.I_CHAIN_LINK_34: (-0.001, 0.001),
                 tids.I_CHAIN_LINK_4prime5: (-0.001, 0.001),
                 tids.I_CHAIN_LINK_56: (-0.001, 0.001),
@@ -348,7 +351,7 @@ dummy_randomization = TendonConstantRandomizationRanges(
     chain_link_lengths=list_from_dict(
         {
             tids.I_CHAIN_LINK_23: (0.0, 0.0),
-            tids.I_CHAIN_LINK_83: (0.0, 0.0),
+            tids.I_CHAIN_LINK_38: (0.0, 0.0),
             tids.I_CHAIN_LINK_34: (0.0, 0.0),
             tids.I_CHAIN_LINK_4prime5: (0.0, 0.0),
             tids.I_CHAIN_LINK_56: (0.0, 0.0),
