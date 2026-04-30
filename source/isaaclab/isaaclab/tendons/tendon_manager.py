@@ -757,7 +757,8 @@ class TendonManager:
         # 0) transform joint angles to thetas and qs
         joint_angles_signed = tendon_data.joint_directions * joint_angles
         thetas = torch.empty_like(tendon_data.tendon_offsets_theta)
-        thetas[:, 
+        thetas[
+            :,
             (
                 tids.I_THETA_GST_3,
                 tids.I_THETA_GST_4,
@@ -770,9 +771,10 @@ class TendonManager:
                 tids.I_THETA_EDT2_5,
                 tids.I_THETA_KFT_3,
                 tids.I_THETA_KFT_8,
-            )
+            ),
         ] = (
-            joint_angles_signed[:, 
+            joint_angles_signed[
+                :,
                 (
                     tids.I_JOINT_3,
                     tids.I_JOINT_4,
@@ -785,9 +787,10 @@ class TendonManager:
                     tids.I_JOINT_5,
                     tids.I_JOINT_3,
                     tids.I_JOINT_8,
-                )
+                ),
             ]
-            + tendon_data.tendon_offsets_theta[:, 
+            + tendon_data.tendon_offsets_theta[
+                :,
                 (
                     tids.I_THETA_GST_3,
                     tids.I_THETA_GST_4,
@@ -800,11 +803,12 @@ class TendonManager:
                     tids.I_THETA_EDT2_5,
                     tids.I_THETA_KFT_3,
                     tids.I_THETA_KFT_8,
-                )
+                ),
             ]
         )
         qs = torch.empty_like(tendon_data.tendon_offsets_q_theta)
-        qs[:, 
+        qs[
+            :,
             (
                 tids.I_Q_GST_3,
                 tids.I_Q_GST_4,
@@ -812,9 +816,10 @@ class TendonManager:
                 tids.I_Q_GST_6,
                 tids.I_Q_DFT_5,
                 tids.I_Q_DFT_6,
-            )
+            ),
         ] = (
-            thetas[:, 
+            thetas[
+                :,
                 (
                     tids.I_THETA_GST_3,
                     tids.I_THETA_GST_4,
@@ -822,9 +827,10 @@ class TendonManager:
                     tids.I_THETA_ALL_6,
                     tids.I_THETA_DFT_5,
                     tids.I_THETA_ALL_6,
-                )
+                ),
             ]
-            + tendon_data.tendon_offsets_q_theta[:, 
+            + tendon_data.tendon_offsets_q_theta[
+                :,
                 (
                     tids.I_Q_GST_3,
                     tids.I_Q_GST_4,
@@ -832,7 +838,7 @@ class TendonManager:
                     tids.I_Q_GST_6,
                     tids.I_Q_DFT_5,
                     tids.I_Q_DFT_6,
-                )
+                ),
             ]
         )
 
@@ -1660,7 +1666,7 @@ class TendonManager:
 
         return
 
-    def apply_debug(self):
+    def apply_debug(self, virtual_ground_height=None):
         print("Applying GST tendon model...")
 
         tendon_torques_left, tendon_torques_right, info = self.compute_torques_debug()
@@ -1679,10 +1685,33 @@ class TendonManager:
         ] = -tendon_torques_right
         tendon_torques_full[:, N_CHAIN_LINKS_PER_LEG + 1 :, 2] += tendon_torques_right
 
+        forces = torch.zeros(
+            (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
+        )
+        # Virtual ground contact forces
+        if virtual_ground_height is not None:
+            # 1) get foot position in world space
+            foot_heights = self.robot.data.body_com_pos_w[:, self.foot_link_indices, 2]
+            # 2) compute delta to ground plane
+            penetration_depths = virtual_ground_height - foot_heights
+            # 3) compute force vector proportional to penetration depth
+            weight = 400.0
+            forces_world = penetration_depths.clamp(min=0.0).unsqueeze(
+                -1
+            ) * torch.tensor([0.0, 0.0, weight * 20], device=self.device)
+            print("Virtual ground forces:", forces_world)
+            # 4) convert force to local coordinates and apply force at foot link
+            forces[
+                :,
+                [tids.I_CHAIN_LINK_67, tids.I_CHAIN_LINK_67 + N_CHAIN_LINKS_PER_LEG],
+                :,
+            ] = quat_apply_inverse(
+                self.robot.data.body_link_quat_w[:, self.foot_link_indices],
+                forces_world,
+            )
+
         self.robot.set_external_force_and_torque(
-            forces=torch.zeros(
-                (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
-            ),
+            forces=forces,
             torques=tendon_torques_full,
             body_ids=self.link_indices_left_right,
         )

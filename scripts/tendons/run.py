@@ -145,7 +145,9 @@ def get_leg_cfg() -> ArticulationCfg:
                 "l5_metatarsophalangeal": np.deg2rad(-19.9, dtype=np.float32),
                 "r6_interphalangeal": np.deg2rad(25.0, dtype=np.float32),
                 "l6_interphalangeal": np.deg2rad(25.0, dtype=np.float32),
-            }
+            },
+            pos=(0, 0, 1.5),
+            rot=(0.707, 0.707, 0.0, 0.0),
         ),
     )
 
@@ -181,7 +183,7 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # IsaacLab simulation setup
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
-    sim_cfg.dt = 0.0032
+    sim_cfg.dt = 0.0024
     t_total = 2.0
     sim = SimulationContext(sim_cfg)
     sim.set_camera_view(  # pyright: ignore[reportAttributeAccessIssue]
@@ -286,7 +288,7 @@ def main():
             t = iteration * sim.get_physics_dt()
 
             if not args_cli.jit:
-                info = tendon_manager.apply_debug()
+                info = tendon_manager.apply_debug(virtual_ground_height=0.38)
                 data_left, data_right = leg_tensordict_to_python_dict(info)
 
             robot.set_joint_position_target(
