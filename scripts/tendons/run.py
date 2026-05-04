@@ -103,7 +103,7 @@ def get_leg_cfg() -> ArticulationCfg:
                     "r2_pseudo_acetabulofemoral_flexion",
                     "l2_pseudo_acetabulofemoral_flexion",
                 ],
-                effort_limit_sim=1.0e9,
+                effort_limit_sim=10.0e9,
                 velocity_limit_sim=100.0,
                 stiffness=10000.0,
                 damping=10.0,
@@ -113,7 +113,7 @@ def get_leg_cfg() -> ArticulationCfg:
                     "r0_acetabulofemoral_roll",
                     "l0_acetabulofemoral_roll",
                 ],
-                effort_limit_sim=1.0e9,
+                effort_limit_sim=10.0e9,
                 velocity_limit_sim=100.0,
                 stiffness=10000.0,
                 damping=10.0,
@@ -123,7 +123,7 @@ def get_leg_cfg() -> ArticulationCfg:
                     "r1_acetabulofemoral_lateral",
                     "l1_acetabulofemoral_lateral",
                 ],
-                effort_limit_sim=1.0e9,
+                effort_limit_sim=10.0e9,
                 velocity_limit_sim=100.0,
                 stiffness=10000.0,
                 damping=10.0,
@@ -133,7 +133,7 @@ def get_leg_cfg() -> ArticulationCfg:
                     "r8_knee_flexor",
                     "l8_knee_flexor",
                 ],
-                effort_limit_sim=1.0e9,
+                effort_limit_sim=10.0,
                 velocity_limit_sim=100.0,
                 stiffness=10000.0,
                 damping=10.0,
@@ -184,7 +184,7 @@ def main():
     # IsaacLab simulation setup
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
     sim_cfg.dt = 0.0024
-    t_total = 2.0
+    t_total = 1.0  # 0.5  # 2.0
     sim = SimulationContext(sim_cfg)
     sim.set_camera_view(  # pyright: ignore[reportAttributeAccessIssue]
         [2.0, 2.0, 2.0], [0.0, 0.0, 0.5]
@@ -288,7 +288,7 @@ def main():
             t = iteration * sim.get_physics_dt()
 
             if not args_cli.jit:
-                info = tendon_manager.apply_debug(virtual_ground_height=0.38)
+                info = tendon_manager.apply_debug(virtual_ground_height=0.0)
                 data_left, data_right = leg_tensordict_to_python_dict(info)
 
             robot.set_joint_position_target(
@@ -296,9 +296,9 @@ def main():
                     [
                         [
                             cpg_leg_left.hip_flex(t)[0],
-                            cpg_leg_left.knee(t)[0],
+                            -cpg_leg_left.knee(t)[0],
                             cpg_leg_right.hip_flex(t)[0],
-                            cpg_leg_right.knee(t)[0],
+                            -cpg_leg_right.knee(t)[0],
                         ]
                     ],
                     dtype=torch.float32,
@@ -306,9 +306,34 @@ def main():
                 ),
                 joint_ids=actuated_joint_indices,
             )
+            # print(f"Set left knee to {cpg_leg_left.knee(t)[0]:.3f}")
 
+            # my_link_indices, _ = robot.find_bodies(
+            #     [
+            #         link_names_left[tids.I_CHAIN_LINK_23],
+            #         link_names_left[tids.I_CHAIN_LINK_34],
+            #     ],
+            #     preserve_order=True,
+            # )
+
+            # robot.set_external_force_and_torque(
+            #     forces=torch.tensor(
+            #         [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]],
+            #         device=device,
+            #         dtype=torch.float32,
+            #     ),
+            #     torques=torch.tensor(
+            #         [[[10.0, 0.0, 0.0], [-10.0, 0.0, 0.0]]],
+            #         device=device,
+            #         dtype=torch.float32,
+            #     ),
+            #     body_ids=my_link_indices,
+            # )
             robot.write_data_to_sim()
             sim.step()
+            # print(
+            #     f"Left knee is now at {robot.data.joint_pos[0, joint_indices_left[4]].item():.3f}"
+            # )
             robot.update(sim.get_physics_dt())
 
             # Record video frame if enabled

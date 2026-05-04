@@ -1668,22 +1668,109 @@ class TendonManager:
 
     def apply_debug(self, virtual_ground_height=None):
         print("Applying GST tendon model...")
-
-        tendon_torques_left, tendon_torques_right, info = self.compute_torques_debug()
         batch_size = self.robot.num_instances
+
+        tendon_torques_joints_left, tendon_torques_joints_right, info = (
+            self.compute_torques_debug()
+        )
+        # adjust torque direction for j3, j4
+        tendon_torques_joints_left[:, tids.I_JOINT_3] *= -1.0
+        tendon_torques_joints_right[:, tids.I_JOINT_3] *= -1.0
+        tendon_torques_joints_left[:, tids.I_JOINT_4] *= -1.0
+        tendon_torques_joints_right[:, tids.I_JOINT_4] *= -1.0
         # 4) apply torques: with axis [0 -1 0], to each link
-        tendon_torques_full = torch.zeros(
+        tendon_torques_links = torch.zeros(
             (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
         )
         # print("Tendon torques left shape:", tendon_torques_left.shape)
         # print("Tendon torques right shape:", tendon_torques_right.shape)
 
-        tendon_torques_full[:, : N_CHAIN_LINKS_PER_LEG - 1, 2] = -tendon_torques_left
-        tendon_torques_full[:, 1:N_CHAIN_LINKS_PER_LEG, 2] += tendon_torques_left
-        tendon_torques_full[
-            :, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, 2
-        ] = -tendon_torques_right
-        tendon_torques_full[:, N_CHAIN_LINKS_PER_LEG + 1 :, 2] += tendon_torques_right
+        # Add to parent link
+        tendon_torques_links[
+            :,
+            (
+                tids.I_CHAIN_LINK_23,
+                tids.I_CHAIN_LINK_34,
+                tids.I_CHAIN_LINK_4prime5,
+                tids.I_CHAIN_LINK_56,
+            ),
+            JOINT_AXIS_IDX,
+        ] = tendon_torques_joints_left[
+            :, (tids.I_JOINT_3, tids.I_JOINT_4, tids.I_JOINT_5, tids.I_JOINT_6)
+        ]
+        tendon_torques_links[
+            :,
+            (
+                tids.I_CHAIN_LINK_23 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_34 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_4prime5 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_56 + N_CHAIN_LINKS_PER_LEG,
+            ),
+            JOINT_AXIS_IDX,
+        ] = tendon_torques_joints_right[
+            :, (tids.I_JOINT_3, tids.I_JOINT_4, tids.I_JOINT_5, tids.I_JOINT_6)
+        ]
+        tendon_torques_links[
+            :, (tids.I_CHAIN_LINK_23,), JOINT_AXIS_IDX
+        ] += tendon_torques_joints_left[:, (tids.I_JOINT_8,)]
+        tendon_torques_links[
+            :, (tids.I_CHAIN_LINK_23 + N_CHAIN_LINKS_PER_LEG,), JOINT_AXIS_IDX
+        ] += tendon_torques_joints_right[:, (tids.I_JOINT_8,)]
+
+        # Subtract from child link
+        tendon_torques_links[
+            :,
+            (
+                tids.I_CHAIN_LINK_34,
+                tids.I_CHAIN_LINK_4prime5,
+                tids.I_CHAIN_LINK_56,
+                tids.I_CHAIN_LINK_67,
+                tids.I_CHAIN_LINK_38,
+            ),
+            JOINT_AXIS_IDX,
+        ] -= tendon_torques_joints_left[
+            :,
+            (
+                tids.I_JOINT_3,
+                tids.I_JOINT_4,
+                tids.I_JOINT_5,
+                tids.I_JOINT_6,
+                tids.I_JOINT_8,
+            ),
+        ]
+        tendon_torques_links[
+            :,
+            (
+                tids.I_CHAIN_LINK_34 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_4prime5 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_56 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_67 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_38 + N_CHAIN_LINKS_PER_LEG,
+            ),
+            JOINT_AXIS_IDX,
+        ] -= tendon_torques_joints_right[
+            :,
+            (
+                tids.I_JOINT_3,
+                tids.I_JOINT_4,
+                tids.I_JOINT_5,
+                tids.I_JOINT_6,
+                tids.I_JOINT_8,
+            ),
+        ]
+
+        # tendon_torques_links[:, : N_CHAIN_LINKS_PER_LEG - 1, 2] = (
+        #     -tendon_torques_joints_left
+        # )
+        # tendon_torques_links[
+        #     :, 1:N_CHAIN_LINKS_PER_LEG, 2
+        # ] += tendon_torques_joints_left
+        # tendon_torques_links[
+        #     :, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, 2
+        # ] = -tendon_torques_joints_right
+        # tendon_torques_links[
+        #     :, N_CHAIN_LINKS_PER_LEG + 1 :, 2
+        # ] += tendon_torques_joints_right
 
         forces = torch.zeros(
             (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
@@ -1712,7 +1799,7 @@ class TendonManager:
 
         self.robot.set_external_force_and_torque(
             forces=forces,
-            torques=tendon_torques_full,
+            torques=tendon_torques_links,
             body_ids=self.link_indices_left_right,
         )
 

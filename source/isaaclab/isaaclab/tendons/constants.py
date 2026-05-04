@@ -106,18 +106,18 @@ all_joint_names_right = [
 class TendonConstants:
     """Fixed baseline mathematical constants for our tendon model: link lengths and pulley radii etc."""
 
-    gst_stiffness: float = 128e2  # FIXME: Reduced for simulation stability by 10x
+    gst_stiffness: float = 128e3  # FIXME: Reduced for simulation stability by 10x
     gst_spring_rest_length: float = 0.06
     dft_stiffness: float = 20e4  # FIXME: find out real value
     edt1_stiffness: float = 20e3  # FIXME: find out real value
     edt2_stiffness: float = 20e3  # FIXME: find out real value
-    kft_stiffness: float = 20e3  # FIXME: find out real value
-    upper_gst_length: float = 0.6867  # FIXME: measure correct value
-    lower_gst_length: float = 1.0314  # FIXME: measure correct value
-    dft_length: float = 0.095  # FIXME: measure correct value
+    kft_stiffness: float = 20e4  # FIXME: find out real value
+    upper_gst_length: float = 0.6367  # FIXME: measure correct value
+    lower_gst_length: float = 0.6314  # FIXME: measure correct value
+    dft_length: float = 0.335  # FIXME: measure correct value
     edt1_length: float = 0.55  # FIXME: measure correct value
     edt2_length: float = 0.66  # FIXME: measure correct value
-    kft_length: float = 0.382  # FIXME: measure correct value
+    kft_length: float = 0.402  # FIXME: measure correct value
     joint_offsets_theta: torch.Tensor = (
         torch.deg2rad(  # between joint-to-joint links, offsets to raw joint angles
             torch.tensor(
