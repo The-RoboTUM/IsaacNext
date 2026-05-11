@@ -114,7 +114,7 @@ class TendonConstants:
     kft_stiffness: float = 20e4  # FIXME: find out real value
     upper_gst_length: float = 0.6367  # FIXME: measure correct value
     lower_gst_length: float = 0.6314  # FIXME: measure correct value
-    dft_length: float = 0.335  # FIXME: measure correct value
+    dft_length: float = 0.35  # FIXME: measure correct value
     edt1_length: float = 0.55  # FIXME: measure correct value
     edt2_length: float = 0.66  # FIXME: measure correct value
     kft_length: float = 0.402  # FIXME: measure correct value

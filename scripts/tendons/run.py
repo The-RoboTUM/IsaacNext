@@ -288,7 +288,7 @@ def main():
             t = iteration * sim.get_physics_dt()
 
             if not args_cli.jit:
-                info = tendon_manager.apply_debug(virtual_ground_height=0.0)
+                info = tendon_manager.apply_debug(virtual_ground_height=0.38)
                 data_left, data_right = leg_tensordict_to_python_dict(info)
 
             robot.set_joint_position_target(
