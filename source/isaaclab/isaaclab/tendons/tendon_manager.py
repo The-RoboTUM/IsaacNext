@@ -36,71 +36,91 @@ def compute_delta_l_s_jit(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     # 0) transform joint angles to thetas and qs
     joint_angles_signed = tendon_data.joint_directions * joint_angles
-
-    theta_idx = [
-        tids.I_THETA_GST_3,
-        tids.I_THETA_GST_4,
-        tids.I_THETA_GST_5,
-        tids.I_THETA_ALL_6,
-        tids.I_THETA_DFT_5,
-        tids.I_THETA_EDT1_4,
-        tids.I_THETA_EDT1_5,
-        tids.I_THETA_EDT2_4,
-        tids.I_THETA_EDT2_5,
-        tids.I_THETA_KFT_3,
-        tids.I_THETA_KFT_8,
-    ]
-
-    joint_idx = [
-        tids.I_JOINT_3,
-        tids.I_JOINT_4,
-        tids.I_JOINT_5,
-        tids.I_JOINT_6,
-        tids.I_JOINT_5,
-        tids.I_JOINT_4,
-        tids.I_JOINT_5,
-        tids.I_JOINT_4,
-        tids.I_JOINT_5,
-        tids.I_JOINT_3,
-        tids.I_JOINT_8,
-    ]
-
     thetas = torch.empty_like(tendon_data.tendon_offsets_theta)
-    thetas[:, theta_idx] = (
-        joint_angles_signed[:, joint_idx]
-        + tendon_data.tendon_offsets_theta[:, theta_idx]
+    thetas[
+        (
+            tids.I_THETA_GST_3,
+            tids.I_THETA_GST_4,
+            tids.I_THETA_GST_5,
+            tids.I_THETA_ALL_6,
+            tids.I_THETA_DFT_5,
+            tids.I_THETA_EDT1_4,
+            tids.I_THETA_EDT1_5,
+            tids.I_THETA_EDT2_4,
+            tids.I_THETA_EDT2_5,
+            tids.I_THETA_KFT_3,
+            tids.I_THETA_KFT_8,
+        )
+    ] = (
+        joint_angles_signed[
+            (
+                tids.I_JOINT_3,
+                tids.I_JOINT_4,
+                tids.I_JOINT_5,
+                tids.I_JOINT_6,
+                tids.I_JOINT_5,
+                tids.I_JOINT_4,
+                tids.I_JOINT_5,
+                tids.I_JOINT_4,
+                tids.I_JOINT_5,
+                tids.I_JOINT_3,
+                tids.I_JOINT_8,
+            )
+        ]
+        + tendon_data.tendon_offsets_theta[
+            (
+                tids.I_THETA_GST_3,
+                tids.I_THETA_GST_4,
+                tids.I_THETA_GST_5,
+                tids.I_THETA_ALL_6,
+                tids.I_THETA_DFT_5,
+                tids.I_THETA_EDT1_4,
+                tids.I_THETA_EDT1_5,
+                tids.I_THETA_EDT2_4,
+                tids.I_THETA_EDT2_5,
+                tids.I_THETA_KFT_3,
+                tids.I_THETA_KFT_8,
+            )
+        ]
     )
-
-    q_idx = [
-        tids.I_Q_GST_3,
-        tids.I_Q_GST_4,
-        tids.I_Q_GST_5,
-        tids.I_Q_GST_6,
-        tids.I_Q_DFT_5,
-        tids.I_Q_DFT_6,
-    ]
-
-    q_theta_idx = [
-        tids.I_THETA_GST_3,
-        tids.I_THETA_GST_4,
-        tids.I_THETA_GST_5,
-        tids.I_THETA_ALL_6,
-        tids.I_THETA_DFT_5,
-        tids.I_THETA_ALL_6,
-    ]
-
     qs = torch.empty_like(tendon_data.tendon_offsets_q_theta)
-    qs[:, q_idx] = (
-        thetas[:, q_theta_idx]
-        + tendon_data.tendon_offsets_q_theta[:, q_idx]
+    qs[
+        (
+            tids.I_Q_GST_3,
+            tids.I_Q_GST_4,
+            tids.I_Q_GST_5,
+            tids.I_Q_GST_6,
+            tids.I_Q_DFT_5,
+            tids.I_Q_DFT_6,
+        )
+    ] = (
+        thetas[
+            (
+                tids.I_THETA_GST_3,
+                tids.I_THETA_GST_4,
+                tids.I_THETA_GST_5,
+                tids.I_THETA_ALL_6,
+                tids.I_THETA_DFT_5,
+                tids.I_THETA_ALL_6,
+            )
+        ]
+        + tendon_data.tendon_offsets_q_theta[
+            (
+                tids.I_Q_GST_3,
+                tids.I_Q_GST_4,
+                tids.I_Q_GST_5,
+                tids.I_Q_GST_6,
+                tids.I_Q_DFT_5,
+                tids.I_Q_DFT_6,
+            )
+        ]
     )
 
     theta_hats = -thetas + 2 * torch.pi
-
     qhats = torch.empty_like(tendon_data.tendon_offsets_qhat_thetahat)
-    qhats[:, [tids.I_QHAT_EDT2_6]] = (
-            theta_hats[:, [tids.I_THETA_ALL_6]]
-            + tendon_data.tendon_offsets_qhat_thetahat[:, [tids.I_QHAT_EDT2_6]]
+    qhats[(tids.I_QHAT_EDT2_6,)] = (
+        theta_hats[(tids.I_THETA_ALL_6,)]
+        + tendon_data.tendon_offsets_qhat_thetahat[[(tids.I_QHAT_EDT2_6,)]]
     )
 
     ### --------------- GST --------------- ###
@@ -354,10 +374,10 @@ def compute_delta_l_s_jit(
 
     ### --------- KFT ---------- ###
     KFT_l_8c_j_squared = (
-        tendon_data.link_lengths_squared[:, tids.I_LINK_83]
+        tendon_data.link_lengths_squared[:, tids.I_LINK_38]
         + tendon_data.link_lengths_squared[:, tids.I_LINK_KFT_3C]
         - 2
-        * tendon_data.link_lengths[:, tids.I_LINK_83]
+        * tendon_data.link_lengths[:, tids.I_LINK_38]
         * tendon_data.link_lengths[:, tids.I_LINK_KFT_3C]
         * torch.cos(theta_hats[:, tids.I_THETA_KFT_3])
     )
@@ -366,7 +386,7 @@ def compute_delta_l_s_jit(
     )
     KFT_phi_8 = torch.atan2(KFT_l_8c, tendon_data.pulley_radii[:, tids.I_RADIUS_KFT_8])
     KFT_phi_8_a = angle_from_sws(
-        tendon_data.link_lengths[:, tids.I_LINK_83],
+        tendon_data.link_lengths[:, tids.I_LINK_38],
         tendon_data.link_lengths[:, tids.I_LINK_KFT_3C],
         theta_hats[:, tids.I_THETA_KFT_3],
     )
@@ -736,67 +756,97 @@ class TendonManager:
     ):
         # 0) transform joint angles to thetas and qs
         joint_angles_signed = tendon_data.joint_directions * joint_angles
-        theta_idx = [
-            tids.I_THETA_GST_3,
-            tids.I_THETA_GST_4,
-            tids.I_THETA_GST_5,
-            tids.I_THETA_ALL_6,
-            tids.I_THETA_DFT_5,
-            tids.I_THETA_EDT1_4,
-            tids.I_THETA_EDT1_5,
-            tids.I_THETA_EDT2_4,
-            tids.I_THETA_EDT2_5,
-            tids.I_THETA_KFT_3,
-            tids.I_THETA_KFT_8,
-        ]
-        joint_idx = [
-            tids.I_JOINT_3,
-            tids.I_JOINT_4,
-            tids.I_JOINT_5,
-            tids.I_JOINT_6,
-            tids.I_JOINT_5,
-            tids.I_JOINT_4,
-            tids.I_JOINT_5,
-            tids.I_JOINT_4,
-            tids.I_JOINT_5,
-            tids.I_JOINT_3,
-            tids.I_JOINT_8,
-        ]
-
         thetas = torch.empty_like(tendon_data.tendon_offsets_theta)
-        thetas[:, theta_idx] = (
-                joint_angles_signed[:, joint_idx]
-                + tendon_data.tendon_offsets_theta[:, theta_idx]
+        thetas[
+            :,
+            (
+                tids.I_THETA_GST_3,
+                tids.I_THETA_GST_4,
+                tids.I_THETA_GST_5,
+                tids.I_THETA_ALL_6,
+                tids.I_THETA_DFT_5,
+                tids.I_THETA_EDT1_4,
+                tids.I_THETA_EDT1_5,
+                tids.I_THETA_EDT2_4,
+                tids.I_THETA_EDT2_5,
+                tids.I_THETA_KFT_3,
+                tids.I_THETA_KFT_8,
+            ),
+        ] = (
+            joint_angles_signed[
+                :,
+                (
+                    tids.I_JOINT_3,
+                    tids.I_JOINT_4,
+                    tids.I_JOINT_5,
+                    tids.I_JOINT_6,
+                    tids.I_JOINT_5,
+                    tids.I_JOINT_4,
+                    tids.I_JOINT_5,
+                    tids.I_JOINT_4,
+                    tids.I_JOINT_5,
+                    tids.I_JOINT_3,
+                    tids.I_JOINT_8,
+                ),
+            ]
+            + tendon_data.tendon_offsets_theta[
+                :,
+                (
+                    tids.I_THETA_GST_3,
+                    tids.I_THETA_GST_4,
+                    tids.I_THETA_GST_5,
+                    tids.I_THETA_ALL_6,
+                    tids.I_THETA_DFT_5,
+                    tids.I_THETA_EDT1_4,
+                    tids.I_THETA_EDT1_5,
+                    tids.I_THETA_EDT2_4,
+                    tids.I_THETA_EDT2_5,
+                    tids.I_THETA_KFT_3,
+                    tids.I_THETA_KFT_8,
+                ),
+            ]
         )
-
-        q_idx = [
-            tids.I_Q_GST_3,
-            tids.I_Q_GST_4,
-            tids.I_Q_GST_5,
-            tids.I_Q_GST_6,
-            tids.I_Q_DFT_5,
-            tids.I_Q_DFT_6,
-        ]
-        q_theta_idx = [
-            tids.I_THETA_GST_3,
-            tids.I_THETA_GST_4,
-            tids.I_THETA_GST_5,
-            tids.I_THETA_ALL_6,
-            tids.I_THETA_DFT_5,
-            tids.I_THETA_ALL_6,
-        ]
-
         qs = torch.empty_like(tendon_data.tendon_offsets_q_theta)
-        qs[:, q_idx] = (
-                thetas[:, q_theta_idx]
-                + tendon_data.tendon_offsets_q_theta[:, q_idx]
+        qs[
+            :,
+            (
+                tids.I_Q_GST_3,
+                tids.I_Q_GST_4,
+                tids.I_Q_GST_5,
+                tids.I_Q_GST_6,
+                tids.I_Q_DFT_5,
+                tids.I_Q_DFT_6,
+            ),
+        ] = (
+            thetas[
+                :,
+                (
+                    tids.I_THETA_GST_3,
+                    tids.I_THETA_GST_4,
+                    tids.I_THETA_GST_5,
+                    tids.I_THETA_ALL_6,
+                    tids.I_THETA_DFT_5,
+                    tids.I_THETA_ALL_6,
+                ),
+            ]
+            + tendon_data.tendon_offsets_q_theta[
+                :,
+                (
+                    tids.I_Q_GST_3,
+                    tids.I_Q_GST_4,
+                    tids.I_Q_GST_5,
+                    tids.I_Q_GST_6,
+                    tids.I_Q_DFT_5,
+                    tids.I_Q_DFT_6,
+                ),
+            ]
         )
 
         theta_hats = -thetas + 2 * torch.pi
         qhats = torch.empty_like(tendon_data.tendon_offsets_qhat_thetahat)
-        qhats[:, [tids.I_QHAT_EDT2_6]] = (
-                theta_hats[:, [tids.I_THETA_ALL_6]]
-                + tendon_data.tendon_offsets_qhat_thetahat[:, [tids.I_QHAT_EDT2_6]]
+        qhats[:, (tids.I_QHAT_EDT2_6,)] = (
+            theta_hats[:, (tids.I_THETA_ALL_6,)]
+            + tendon_data.tendon_offsets_qhat_thetahat[:, (tids.I_QHAT_EDT2_6,)]
         )
 
         ### --------------- GST --------------- ###
@@ -1066,10 +1116,10 @@ class TendonManager:
 
         ### --------- KFT ---------- ###
         KFT_l_8c_j_squared = (
-            tendon_data.link_lengths_squared[:, tids.I_LINK_83]
+            tendon_data.link_lengths_squared[:, tids.I_LINK_38]
             + tendon_data.link_lengths_squared[:, tids.I_LINK_KFT_3C]
             - 2
-            * tendon_data.link_lengths[:, tids.I_LINK_83]
+            * tendon_data.link_lengths[:, tids.I_LINK_38]
             * tendon_data.link_lengths[:, tids.I_LINK_KFT_3C]
             * torch.cos(theta_hats[:, tids.I_THETA_KFT_3])
         )
@@ -1081,7 +1131,7 @@ class TendonManager:
             KFT_l_8c, tendon_data.pulley_radii[:, tids.I_RADIUS_KFT_8]
         )
         KFT_phi_8_a = angle_from_sws(
-            tendon_data.link_lengths[:, tids.I_LINK_83],
+            tendon_data.link_lengths[:, tids.I_LINK_38],
             tendon_data.link_lengths[:, tids.I_LINK_KFT_3C],
             theta_hats[:, tids.I_THETA_KFT_3],
         )
@@ -1448,6 +1498,7 @@ class TendonManager:
                 "KFT_phi_8_a": KFT_phi_8_a,
                 "KFT_q8": KFT_q8,
                 "EDT1_x_c5": EDT1_x_c5,
+                "EDT1_x_c5": EDT1_x_c5,
                 "EDT1_phi_4_a": EDT1_phi_4_a,
                 "EDT1_thetahat_5_a": EDT1_thetahat_5_a,
                 "EDT1_l_c5_A": EDT1_l_c5_A,
@@ -1510,7 +1561,7 @@ class TendonManager:
                 .requires_grad_(True),
             ),
             dim=0,
-        )  # q3, q4, q5, q6, q8 (2*N_envs) x 5 joints
+        )  # q3, q4, q5, q6, (2*N_envs) x 4 joints
 
         (
             GST_delta_L_s,
@@ -1568,51 +1619,20 @@ class TendonManager:
                 .requires_grad_(True),
             ),
             dim=0,
-        )
+        )  # q3, q4, q5, q6, (2*N_envs) x 4 joints
 
-        (
-            GST_delta_L_s,
-            DFT_delta_L_s,
-            KFT_delta_L_s,
-            EDT1_delta_L_s,
-            EDT2_delta_L_s,
-        ) = compute_delta_l_s_jit(joint_angles, self.tendon_data_jit)
+        delta_L_s = compute_delta_l_s_jit(joint_angles, self.tendon_data_jit)
 
-        GST_not_slack = GST_delta_L_s <= 0.0
-        DFT_not_slack = DFT_delta_L_s <= 0.0
-        KFT_not_slack = KFT_delta_L_s <= 0.0
-        EDT1_not_slack = EDT1_delta_L_s <= 0.0
-        EDT2_not_slack = EDT2_delta_L_s <= 0.0
+        not_slack = delta_L_s <= 0.0
 
-        GST_energy = 0.5 * self.tendon_data_jit.gst_stiffness * GST_delta_L_s**2
-        DFT_energy = 0.5 * self.tendon_data_jit.dft_stiffness * DFT_delta_L_s**2
-        KFT_energy = 0.5 * self.tendon_data_jit.kft_stiffness * KFT_delta_L_s**2
-        EDT1_energy = 0.5 * self.tendon_data_jit.edt1_stiffness * EDT1_delta_L_s**2
-        EDT2_energy = 0.5 * self.tendon_data_jit.edt2_stiffness * EDT2_delta_L_s**2
-
-        # total_energy = (
-        #     GST_energy[GST_not_slack].sum()
-        #     + DFT_energy[DFT_not_slack].sum()
-        #     + KFT_energy[KFT_not_slack].sum()
-        #     + EDT1_energy[EDT1_not_slack].sum()
-        #     + EDT2_energy[EDT2_not_slack].sum()
-        # )
-
-        total_energy = (
-            GST_energy[GST_not_slack].sum()
-            + DFT_energy[DFT_not_slack].sum()
-            + KFT_energy[KFT_not_slack].sum()
-            + EDT1_energy[EDT1_not_slack].sum()
-            + EDT2_energy[EDT2_not_slack].sum()
-        )
+        energy = 0.5 * self.tendon_data.gst_stiffness * delta_L_s**2
 
         tendon_torques = torch.autograd.grad(
-            outputs=total_energy,
+            outputs=energy[not_slack].sum(),
             inputs=joint_angles,
             create_graph=False,
             allow_unused=True,
         )[0]
-
         tendon_torques_left = tendon_torques[:batch_size]
         tendon_torques_right = tendon_torques[batch_size:]
         return tendon_torques_left, tendon_torques_right
@@ -1645,30 +1665,140 @@ class TendonManager:
 
         return
 
-    def apply_debug(self):
+    def apply_debug(self, virtual_ground_height=None):
         print("Applying GST tendon model...")
-
-        tendon_torques_left, tendon_torques_right, info = self.compute_torques_debug()
         batch_size = self.robot.num_instances
+
+        tendon_torques_joints_left, tendon_torques_joints_right, info = (
+            self.compute_torques_debug()
+        )
+        # adjust torque direction for j3, j4
+        tendon_torques_joints_left[:, tids.I_JOINT_3] *= -1.0
+        tendon_torques_joints_right[:, tids.I_JOINT_3] *= -1.0
+        tendon_torques_joints_left[:, tids.I_JOINT_4] *= -1.0
+        tendon_torques_joints_right[:, tids.I_JOINT_4] *= -1.0
         # 4) apply torques: with axis [0 -1 0], to each link
-        tendon_torques_full = torch.zeros(
+        tendon_torques_links = torch.zeros(
             (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
         )
         # print("Tendon torques left shape:", tendon_torques_left.shape)
         # print("Tendon torques right shape:", tendon_torques_right.shape)
 
-        tendon_torques_full[:, : N_CHAIN_LINKS_PER_LEG - 1, 2] = -tendon_torques_left
-        tendon_torques_full[:, 1:N_CHAIN_LINKS_PER_LEG, 2] += tendon_torques_left
-        tendon_torques_full[
-            :, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, 2
-        ] = -tendon_torques_right
-        tendon_torques_full[:, N_CHAIN_LINKS_PER_LEG + 1 :, 2] += tendon_torques_right
+        # Add to parent link
+        tendon_torques_links[
+            :,
+            (
+                tids.I_CHAIN_LINK_23,
+                tids.I_CHAIN_LINK_34,
+                tids.I_CHAIN_LINK_4prime5,
+                tids.I_CHAIN_LINK_56,
+            ),
+            JOINT_AXIS_IDX,
+        ] = tendon_torques_joints_left[
+            :, (tids.I_JOINT_3, tids.I_JOINT_4, tids.I_JOINT_5, tids.I_JOINT_6)
+        ]
+        tendon_torques_links[
+            :,
+            (
+                tids.I_CHAIN_LINK_23 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_34 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_4prime5 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_56 + N_CHAIN_LINKS_PER_LEG,
+            ),
+            JOINT_AXIS_IDX,
+        ] = tendon_torques_joints_right[
+            :, (tids.I_JOINT_3, tids.I_JOINT_4, tids.I_JOINT_5, tids.I_JOINT_6)
+        ]
+        tendon_torques_links[
+            :, (tids.I_CHAIN_LINK_23,), JOINT_AXIS_IDX
+        ] += tendon_torques_joints_left[:, (tids.I_JOINT_8,)]
+        tendon_torques_links[
+            :, (tids.I_CHAIN_LINK_23 + N_CHAIN_LINKS_PER_LEG,), JOINT_AXIS_IDX
+        ] += tendon_torques_joints_right[:, (tids.I_JOINT_8,)]
+
+        # Subtract from child link
+        tendon_torques_links[
+            :,
+            (
+                tids.I_CHAIN_LINK_34,
+                tids.I_CHAIN_LINK_4prime5,
+                tids.I_CHAIN_LINK_56,
+                tids.I_CHAIN_LINK_67,
+                tids.I_CHAIN_LINK_38,
+            ),
+            JOINT_AXIS_IDX,
+        ] -= tendon_torques_joints_left[
+            :,
+            (
+                tids.I_JOINT_3,
+                tids.I_JOINT_4,
+                tids.I_JOINT_5,
+                tids.I_JOINT_6,
+                tids.I_JOINT_8,
+            ),
+        ]
+        tendon_torques_links[
+            :,
+            (
+                tids.I_CHAIN_LINK_34 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_4prime5 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_56 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_67 + N_CHAIN_LINKS_PER_LEG,
+                tids.I_CHAIN_LINK_38 + N_CHAIN_LINKS_PER_LEG,
+            ),
+            JOINT_AXIS_IDX,
+        ] -= tendon_torques_joints_right[
+            :,
+            (
+                tids.I_JOINT_3,
+                tids.I_JOINT_4,
+                tids.I_JOINT_5,
+                tids.I_JOINT_6,
+                tids.I_JOINT_8,
+            ),
+        ]
+
+        # tendon_torques_links[:, : N_CHAIN_LINKS_PER_LEG - 1, 2] = (
+        #     -tendon_torques_joints_left
+        # )
+        # tendon_torques_links[
+        #     :, 1:N_CHAIN_LINKS_PER_LEG, 2
+        # ] += tendon_torques_joints_left
+        # tendon_torques_links[
+        #     :, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, 2
+        # ] = -tendon_torques_joints_right
+        # tendon_torques_links[
+        #     :, N_CHAIN_LINKS_PER_LEG + 1 :, 2
+        # ] += tendon_torques_joints_right
+
+        forces = torch.zeros(
+            (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
+        )
+        # Virtual ground contact forces
+        if virtual_ground_height is not None:
+            # 1) get foot position in world space
+            foot_heights = self.robot.data.body_com_pos_w[:, self.foot_link_indices, 2]
+            # 2) compute delta to ground plane
+            penetration_depths = virtual_ground_height - foot_heights
+            # 3) compute force vector proportional to penetration depth
+            weight = 400.0
+            forces_world = penetration_depths.clamp(min=0.0).unsqueeze(
+                -1
+            ) * torch.tensor([0.0, 0.0, weight * 20], device=self.device)
+            print("Virtual ground forces:", forces_world)
+            # 4) convert force to local coordinates and apply force at foot link
+            forces[
+                :,
+                [tids.I_CHAIN_LINK_67, tids.I_CHAIN_LINK_67 + N_CHAIN_LINKS_PER_LEG],
+                :,
+            ] = quat_apply_inverse(
+                self.robot.data.body_link_quat_w[:, self.foot_link_indices],
+                forces_world,
+            )
 
         self.robot.set_external_force_and_torque(
-            forces=torch.zeros(
-                (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
-            ),
-            torques=tendon_torques_full,
+            forces=forces,
+            torques=tendon_torques_links,
             body_ids=self.link_indices_left_right,
         )
 

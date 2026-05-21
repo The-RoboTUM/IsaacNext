@@ -165,7 +165,7 @@ def main():
             tids.I_LINK_34,
             tids.I_LINK_4prime5,
             tids.I_LINK_56,
-            tids.GST_I_LINK_67,
+            tids.I_LINK_67,
         ]:
             carb.log_warn(f"Link id {link_id}")
             for iteration in range(int(t_total / sim.get_physics_dt())):

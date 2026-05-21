@@ -61,130 +61,132 @@ from isaaclab_assets.robots.forrest import FORREST_CFG
 usd_path = "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"
 # usd_path = "/home/linus/IsaacNext/assets/Leg_free_v2/leg.usd"
 
-
 # throw error on NaN in backprop
 # torch.autograd.set_detect_anomaly(True)
 
 # todo: measure torque output and other leg
 
 
-# def get_leg_cfg() -> ArticulationCfg:
-#     """Returns an ArticulationCfg for the leg."""
-#     return ArticulationCfg(
-#         prim_path="/World/Bot",
-#         spawn=sim_utils.UsdFileCfg(
-#             usd_path=usd_path,
-#             rigid_props=sim_utils.RigidBodyPropertiesCfg(
-#                 rigid_body_enabled=True,
-#                 max_linear_velocity=1000.0,
-#                 max_angular_velocity=1000.0,
-#                 max_depenetration_velocity=100.0,
-#                 enable_gyroscopic_forces=True,
-#             ),
-#             articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-#                 enabled_self_collisions=False,
-#                 solver_position_iteration_count=4,
-#                 solver_velocity_iteration_count=0,
-#                 sleep_threshold=0.005,
-#                 stabilization_threshold=0.001,
-#             ),
-#         ),
-#         actuators={
-#             # Spring: Rest 63,5mm, Compressed 20mm, => travel 43,5mm 128 N/mm
-#             "pantograph": ImplicitActuatorCfg(
-#                 joint_names_expr=[
-#                     "rp1_pantograph",
-#                     "rp2_pantograph",
-#                 ],
-#                 effort_limit_sim=1e9,
-#                 velocity_limit_sim=1000.0,
-#                 stiffness=128e3,
-#                 damping=10.0,
-#             ),
-#             "hip_swing": ImplicitActuatorCfg(
-#                 joint_names_expr=[
-#                     "r2_pseudo_acetabulofemoral_flexion",
-#                     "l2_pseudo_acetabulofemoral_flexion",
-#                 ],
-#                 effort_limit_sim=1.0e9,
-#                 velocity_limit_sim=100.0,
-#                 stiffness=10000.0,
-#                 damping=10.0,
-#             ),
-#             "hip_roll": ImplicitActuatorCfg(
-#                 joint_names_expr=[
-#                     "r0_acetabulofemoral_roll",
-#                     "l0_acetabulofemoral_roll",
-#                 ],
-#                 effort_limit_sim=1.0e9,
-#                 velocity_limit_sim=100.0,
-#                 stiffness=10000.0,
-#                 damping=10.0,
-#             ),
-#             "hip_lateral": ImplicitActuatorCfg(
-#                 joint_names_expr=[
-#                     "r1_acetabulofemoral_lateral",
-#                     "l1_acetabulofemoral_lateral",
-#                 ],
-#                 effort_limit_sim=1.0e9,
-#                 velocity_limit_sim=100.0,
-#                 stiffness=10000.0,
-#                 damping=10.0,
-#             ),
-#         },
-#         init_state=ArticulationCfg.InitialStateCfg(
-#             pos=(0.0, 0.0, 1.6),
-#             joint_pos={
-#                 "r5_metatarsophalangeal": np.deg2rad(-19.9, dtype=np.float32),
-#                 "l5_metatarsophalangeal": np.deg2rad(-19.9, dtype=np.float32),
-#                 "r6_interphalangeal": np.deg2rad(25.0, dtype=np.float32),
-#                 "l6_interphalangeal": np.deg2rad(25.0, dtype=np.float32),
-#             }
-#         ),
-#     )
+def get_leg_cfg() -> ArticulationCfg:
+    """Returns an ArticulationCfg for the leg."""
+    return ArticulationCfg(
+        prim_path="/World/Bot",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=usd_path,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                rigid_body_enabled=True,
+                max_linear_velocity=1000.0,
+                max_angular_velocity=1000.0,
+                max_depenetration_velocity=100.0,
+                enable_gyroscopic_forces=True,
+            ),
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+                enabled_self_collisions=False,
+                solver_position_iteration_count=4,
+                solver_velocity_iteration_count=0,
+                sleep_threshold=0.005,
+                stabilization_threshold=0.001,
+            ),
+        ),
+        actuators={
+            # Spring: Rest 63,5mm, Compressed 20mm, => travel 43,5mm 128 N/mm
+            "pantograph": ImplicitActuatorCfg(
+                joint_names_expr=[
+                    "rp1_pantograph",
+                    "lp1_pantograph",
+                ],
+                effort_limit_sim=1e9,
+                velocity_limit_sim=1000.0,
+                stiffness=128e3,
+                damping=10.0,
+            ),
+            "hip_swing": ImplicitActuatorCfg(
+                joint_names_expr=[
+                    "r2_pseudo_acetabulofemoral_flexion",
+                    "l2_pseudo_acetabulofemoral_flexion",
+                ],
+                effort_limit_sim=10.0e9,
+                velocity_limit_sim=100.0,
+                stiffness=10000.0,
+                damping=10.0,
+            ),
+            "hip_roll": ImplicitActuatorCfg(
+                joint_names_expr=[
+                    "r0_acetabulofemoral_roll",
+                    "l0_acetabulofemoral_roll",
+                ],
+                effort_limit_sim=10.0e9,
+                velocity_limit_sim=100.0,
+                stiffness=10000.0,
+                damping=10.0,
+            ),
+            "hip_lateral": ImplicitActuatorCfg(
+                joint_names_expr=[
+                    "r1_acetabulofemoral_lateral",
+                    "l1_acetabulofemoral_lateral",
+                ],
+                effort_limit_sim=10.0e9,
+                velocity_limit_sim=100.0,
+                stiffness=10000.0,
+                damping=10.0,
+            ),
+            "knee_flex": ImplicitActuatorCfg(
+                joint_names_expr=[
+                    "r8_knee_flexor",
+                    "l8_knee_flexor",
+                ],
+                effort_limit_sim=10.0,
+                velocity_limit_sim=100.0,
+                stiffness=10000.0,
+                damping=10.0,
+            ),
+        },
+        init_state=ArticulationCfg.InitialStateCfg(
+            joint_pos={
+                "r5_metatarsophalangeal": np.deg2rad(-19.9, dtype=np.float32),
+                "l5_metatarsophalangeal": np.deg2rad(-19.9, dtype=np.float32),
+                "r6_interphalangeal": np.deg2rad(25.0, dtype=np.float32),
+                "l6_interphalangeal": np.deg2rad(25.0, dtype=np.float32),
+            },
+            pos=(0, 0, 1.5),
+            rot=(0.707, 0.707, 0.0, 0.0),
+        ),
+    )
 
 
 def leg_tensordict_to_python_dict(tensordict):
+    """Converts a tensordict to a python dict for easier logging."""
     data_left = {}
     data_right = {}
-
-    for key, value in tensordict.items():
-        if not torch.is_tensor(value):
-            data_left[key] = value
-            data_right[key] = value
+    for key in tensordict.keys():
+        value = tensordict[key]
+        if key == "tendon_torques_left":
+            data_left["tendon_torques"] = value.detach().cpu().numpy().tolist()
             continue
-
-        if value.ndim == 0:
-            data_left[key] = value.item()
-            data_right[key] = value.item()
+        if key == "tendon_torques_right":
+            data_right["tendon_torques"] = value.detach().cpu().numpy().tolist()
             continue
-
-        if value.shape[0] == 2:
-            value_left = value[0]
-            value_right = value[1]
-        elif value.shape[0] == 1:
-            value_left = value[0]
-            value_right = value[0]
-        else:
-            raise ValueError(f"Unsupported batch size {value.shape[0]} for key {key}")
-
-        if value_left.ndim == 0:
+        value_left = value[0]
+        value_right = value[1]
+        if len(value_left.shape) == 1:
+            data_left[key] = value_left.detach().cpu().numpy().tolist()
+            data_right[key] = value_right.detach().cpu().numpy().tolist()
+        elif len(value_left.shape) == 0:
             data_left[key] = value_left.item()
             data_right[key] = value_right.item()
         else:
-            data_left[key] = value_left.detach().cpu().numpy().tolist()
-            data_right[key] = value_right.detach().cpu().numpy().tolist()
-
+            raise ValueError(
+                f"Unsupported value shape {value_left.shape} for key {key}"
+            )
     return data_left, data_right
 
 
 def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # IsaacLab simulation setup
-    # sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
-    sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, 0.0))
-    sim_cfg.dt = 0.032
-    t_total = 2.0
+    sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
+    sim_cfg.dt = 0.0024
+    t_total = 1.0  # 0.5  # 2.0
     sim = SimulationContext(sim_cfg)
     sim.set_camera_view(  # pyright: ignore[reportAttributeAccessIssue]
         [2.0, 2.0, 2.0], [0.0, 0.0, 0.5]
@@ -266,6 +268,16 @@ def main():
     joint_indices_right, _ = robot.find_joints(joint_names_right, preserve_order=True)
     joint_indices_left, _ = robot.find_joints(joint_names_left, preserve_order=True)
 
+    actuated_joint_indices, _ = robot.find_joints(
+        [
+            "l2_pseudo_acetabulofemoral_flexion",
+            "l8_knee_flexor",
+            "r2_pseudo_acetabulofemoral_flexion",
+            "r8_knee_flexor",
+        ],
+        preserve_order=True,
+    )
+
     # Tendon manager setup
     tendon_manager = TendonManager(robot)
     phi_0_combined_offset = np.pi / 2  # np.pi / 2
@@ -277,33 +289,54 @@ def main():
     try:
         for iteration in range(int(t_total / sim.get_physics_dt())):
             t = iteration * sim.get_physics_dt()
-            kwargs = dict(
-                hip_position=torch.tensor(
-                    [
-                        cpg_leg_left.hip_flex(t)[0],
-                        cpg_leg_right.hip_flex(t)[0],
-                    ],
-                    dtype=torch.float32,
-                ),
-                knee_torque=torch.tensor(
-                    [
-                        cpg_leg_left.knee(t)[0] * 20.0,
-                        cpg_leg_right.knee(t)[0] * 20.0,
-                    ],  # TODO: better torque computation
-                    dtype=torch.float32,
-                ),
-                virtual_ground_height=0.38,
-                apply_tendons=True,
-            )
+
             if not args_cli.jit:
-                info = tendon_manager.apply_debug()
-                # info = {}
+                info = tendon_manager.apply_debug(virtual_ground_height=0.38)
                 data_left, data_right = leg_tensordict_to_python_dict(info)
 
-            # TODO: target for j8 knee motor
+            robot.set_joint_position_target(
+                torch.tensor(
+                    [
+                        [
+                            cpg_leg_left.hip_flex(t)[0],
+                            -cpg_leg_left.knee(t)[0],
+                            cpg_leg_right.hip_flex(t)[0],
+                            -cpg_leg_right.knee(t)[0],
+                        ]
+                    ],
+                    dtype=torch.float32,
+                    device=device,
+                ),
+                joint_ids=actuated_joint_indices,
+            )
+            # print(f"Set left knee to {cpg_leg_left.knee(t)[0]:.3f}")
 
+            # my_link_indices, _ = robot.find_bodies(
+            #     [
+            #         link_names_left[tids.I_CHAIN_LINK_23],
+            #         link_names_left[tids.I_CHAIN_LINK_34],
+            #     ],
+            #     preserve_order=True,
+            # )
+
+            # robot.set_external_force_and_torque(
+            #     forces=torch.tensor(
+            #         [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]],
+            #         device=device,
+            #         dtype=torch.float32,
+            #     ),
+            #     torques=torch.tensor(
+            #         [[[10.0, 0.0, 0.0], [-10.0, 0.0, 0.0]]],
+            #         device=device,
+            #         dtype=torch.float32,
+            #     ),
+            #     body_ids=my_link_indices,
+            # )
             robot.write_data_to_sim()
             sim.step()
+            # print(
+            #     f"Left knee is now at {robot.data.joint_pos[0, joint_indices_left[4]].item():.3f}"
+            # )
             robot.update(sim.get_physics_dt())
 
             # Record video frame if enabled

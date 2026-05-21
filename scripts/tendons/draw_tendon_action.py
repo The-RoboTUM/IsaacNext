@@ -21,14 +21,15 @@ import numpy as np
 from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Circle
 
-from isaaclab.tendons.constants_old import (
-    TendonData,
+from isaaclab.tendons.constants import (
     tids,
     TendonConstants,
     dummy_randomization,
 )
+from isaaclab.tendons.tendon_data import TendonData
 
 tc = TendonConstants()
+td = TendonData(1, dummy_randomization)
 
 all_data = []
 with open("outputs/gst_data_left.jsonl", "r") as f:
@@ -38,16 +39,22 @@ with open("outputs/gst_data_left.jsonl", "r") as f:
 
 # draw the leg, starting at joint 2
 alpha_2 = np.deg2rad(300)
-tendon_data = TendonData(1, dummy_randomization)
 
 
 def compute_alphas(alpha_2, thetas):
-    theta_3, theta_4, theta_5, theta_6 = thetas
+    theta_3, theta_4, theta_5, theta_6, theta_8 = (
+        thetas[tids.I_THETA_GST_3],
+        thetas[tids.I_THETA_GST_4],
+        thetas[tids.I_THETA_GST_5],
+        thetas[tids.I_THETA_ALL_6],
+        thetas[tids.I_THETA_KFT_8],
+    )
     alpha_3 = np.pi + alpha_2 - theta_3
     alpha_4 = alpha_3 + theta_4 - np.pi
     alpha_5 = alpha_4 + theta_5 - np.pi
     alpha_6 = alpha_5 + theta_6 - np.pi
-    return [alpha_2, alpha_3, alpha_4, alpha_5, alpha_6]
+    alpha_8 = alpha_2 + theta_8 - 2 * np.pi
+    return [alpha_2, alpha_3, alpha_4, alpha_5, alpha_6, alpha_8]
 
 
 def rotate_by(angle, vector):
@@ -56,41 +63,42 @@ def rotate_by(angle, vector):
 
 
 def compute_joint_locations(alphas):
-    alpha_2, alpha_3, alpha_4, alpha_5, alpha_6 = alphas
+    alpha_2, alpha_3, alpha_4, alpha_5, alpha_6, alpha_8 = alphas
     j2 = np.zeros(2)
     j3 = j2 + rotate_by(
-        alpha_2, np.array([tc.link_lengths[tids.I_CONNECTOR_LINK_GST_23].item(), 0.0])
+        alpha_2,
+        np.array([td.link_lengths[0, tids.I_CONNECTOR_LINK_GST_23].item(), 0.0]),
     )
     j4 = j3 + rotate_by(
-        alpha_3, np.array([tc.link_lengths[tids.I_LINK_34].item(), 0.0])
+        alpha_3, np.array([td.link_lengths[0, tids.I_LINK_34].item(), 0.0])
     )
     j5 = j4 + rotate_by(
-        alpha_4, np.array([tc.link_lengths[tids.I_LINK_4prime5].item(), 0.0])
+        alpha_4, np.array([td.link_lengths[0, tids.I_LINK_4prime5].item(), 0.0])
     )
     j6 = j5 + rotate_by(
-        alpha_5, np.array([tc.link_lengths[tids.I_LINK_56].item(), 0.0])
+        alpha_5, np.array([td.link_lengths[0, tids.I_LINK_56].item(), 0.0])
     )
     p7 = j6 + rotate_by(
-        alpha_6, np.array([tc.link_lengths[tids.GST_I_LINK_67].item(), 0.0])
+        alpha_6, np.array([td.link_lengths[0, tids.I_LINK_67].item(), 0.0])
     )
 
     return [j2, j3, j4, j5, j6, p7]
 
 
 # takes alpha_2, beta_2, assumes starting point at r(49.5°) @ [0.059407 0]
-def compute_tendon_attachment_points(alpha_2, joint_locations, data):
+def compute_gst_attachment_points(alpha_2, joint_locations, data):
     [j2, j3, j4, j5, j6, _] = joint_locations
-    state = data["state"]
-    q3 = data["qs"][0]
-    q4 = data["q4"]
-    q4prime = data["q4prime"]
-    q5 = data["qs"][-2]
-    q6 = data["qs"][-1]
-    l4prime6 = data["l_4prime6"]
-    l4prime7 = data["l_4prime7"]
-    l57 = data["l_57"]
-    q6_B = data["q6_B"]
-    q5_D = data["q5_D"]
+    state = get_gst_state(data)
+    q3 = data["qs"][tids.I_Q_GST_3]
+    q4 = data["GST_q4"]
+    q4prime = data["GST_q4prime"]
+    q5 = data["qs"][tids.I_Q_GST_5]
+    q6 = data["qs"][tids.I_Q_GST_6]
+    l4prime6 = data["GST_l_4prime6"]
+    l4prime7 = data["GST_l_4prime7"]
+    l57 = data["GST_l_57"]
+    q6_B = data["GST_q6_B"]
+    q5_D = data["GST_q5_D"]
     direction_angle = alpha_2 - np.deg2rad(8.86)  # computed manually
     starting_point = (
         rotate_by(
@@ -104,8 +112,8 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
         direction_angle,
         np.array(
             [
-                tendon_data.gst_tendon_section_lengths[
-                    0, tids.I_CONNECTOR_LINK_GST_23
+                td.tendon_section_lengths[
+                    0, tids.I_TENDON_SECTION_LENGTH_GST_23
                 ].item(),
                 0.0,
             ]
@@ -116,14 +124,19 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
     p4_i = p3_o + rotate_by(
         direction_angle,
         np.array(
-            [tendon_data.gst_tendon_section_lengths[0, tids.I_LINK_34].item(), 0.0]
+            [
+                td.tendon_section_lengths[
+                    0, tids.I_TENDON_SECTION_LENGTH_GST_34
+                ].item(),
+                0.0,
+            ]
         ),
     )
     p4_o = (
         rotate_by(
             q4
             + np.deg2rad(
-                30
+                45
             ),  # note: added extra angle to avoid issues with negative values
             p4_i - j4,
         )
@@ -132,17 +145,17 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
     direction_angle += q4
     radius_4 = np.linalg.norm(p4_o - j4)
     assert (
-        abs(radius_4 - tendon_data.pulley_radii[0, tids.GST_I_RADIUS_4].item()) < 0.001
-    ), f"Expected radius at 4 {tendon_data.pulley_radii[0, tids.GST_I_RADIUS_4].item()}, got {radius_4}"
+        abs(radius_4 - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()) < 0.001
+    ), f"Expected radius at 4 {td.pulley_radii[0, tids.I_RADIUS_GST_4].item()}, got {radius_4}"
     p4prime_i = (
         rotate_by(
-            np.deg2rad(-30),  # note: to compensate for extended upper tendon drawing
+            np.deg2rad(-45),  # note: to compensate for extended upper tendon drawing
             (
                 (p4_o - j4)
                 * (
                     radius_4
-                    - tendon_data.pulley_radii[0, tids.GST_I_RADIUS_4].item()
-                    + tendon_data.pulley_radii[0, tids.GST_I_RADIUS_4prime].item()
+                    - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()
+                    + td.pulley_radii[0, tids.I_RADIUS_GST_4prime].item()
                 )
                 / radius_4
             ),
@@ -162,8 +175,8 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
             direction_angle,
             np.array(
                 [
-                    tendon_data.gst_tendon_section_lengths[
-                        0, tids.I_LINK_4prime5
+                    td.tendon_section_lengths[
+                        0, tids.I_TENDON_SECTION_LENGTH_GST_4PRIME5
                     ].item(),
                     0.0,
                 ]
@@ -175,7 +188,9 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
             direction_angle,
             np.array(
                 [
-                    tendon_data.gst_tendon_section_lengths[0, tids.I_LINK_56].item(),
+                    td.tendon_section_lengths[
+                        0, tids.I_TENDON_SECTION_LENGTH_GST_56
+                    ].item(),
                     0.0,
                 ]
             ),
@@ -186,8 +201,8 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
             direction_angle,
             np.array(
                 [
-                    tendon_data.gst_tendon_section_lengths[
-                        0, tids.GST_I_LINK_67
+                    td.tendon_section_lengths[
+                        0, tids.I_TENDON_SECTION_LENGTH_GST_67
                     ].item(),
                     0.0,
                 ]
@@ -203,8 +218,8 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
             direction_angle,
             np.array(
                 [
-                    tendon_data.gst_tendon_section_lengths[
-                        0, tids.GST_I_LINK_67
+                    td.tendon_section_lengths[
+                        0, tids.I_TENDON_SECTION_LENGTH_GST_67
                     ].item(),
                     0.0,
                 ]
@@ -222,8 +237,8 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
             direction_angle,
             np.array(
                 [
-                    tendon_data.gst_tendon_section_lengths[
-                        0, tids.I_LINK_4prime5
+                    td.tendon_section_lengths[
+                        0, tids.I_TENDON_SECTION_LENGTH_GST_4PRIME5
                     ].item(),
                     0.0,
                 ]
@@ -243,6 +258,37 @@ def compute_tendon_attachment_points(alpha_2, joint_locations, data):
         lower_tendon_points,
         lower_tendon_joints,
     )
+
+
+def compute_kft_points(alpha_8, joint_locations, data, r8):
+    [j2, j3, j4, j5, j6, _] = joint_locations
+    q8 = data["KFT_q8"]
+    p8_i = (
+        rotate_by(
+            alpha_8,
+            np.array([r8, 0.0]),
+        )
+        + j2
+    )
+    p8_o = j2 + rotate_by(
+        alpha_8 - q8,
+        np.array([r8, 0.0]),
+    )
+    direction_angle = alpha_8 - q8 - np.pi / 2
+    p3_c = p8_o + rotate_by(
+        direction_angle,
+        np.array(
+            [
+                data["KFT_l_8c"],
+                0.0,
+            ]
+        ),
+    )
+
+    tendon_points = [p8_i, p8_o, p3_c]
+    tendon_joints = [j2]
+
+    return tendon_points, tendon_joints
 
 
 # for state A: none, state B: x4'6 with h5B, state C: x4'6, x4'7, h5C, h6C, state D: x57, h6D; draw using phis
@@ -266,8 +312,8 @@ def validate_ls(joint_locations, l4prime6, l4prime7, l57):
         x46_inf**2
         - (
             (
-                tc.pulley_radii[tids.GST_I_RADIUS_4prime]
-                - tc.pulley_radii[tids.GST_I_RADIUS_6]
+                tc.pulley_radii[tids.I_RADIUS_GST_4prime]
+                - tc.pulley_radii[tids.I_RADIUS_GST_6]
             )
             ** 2
         ).item()
@@ -276,12 +322,12 @@ def validate_ls(joint_locations, l4prime6, l4prime7, l57):
 
     x47_inf = np.linalg.norm(p7 - j4)
     l47_inf = np.sqrt(
-        x47_inf**2 - (tc.pulley_radii[tids.GST_I_RADIUS_4prime] ** 2).item()
+        x47_inf**2 - (tc.pulley_radii[tids.I_RADIUS_GST_4prime] ** 2).item()
     )
     assert abs(l47_inf - l4prime7) < 0.001, f"Expected l4'7={l47_inf}, got {l4prime7}"
 
     x57_inf = np.linalg.norm(p7 - j5)
-    l57_inf = np.sqrt(x57_inf**2 - (tc.pulley_radii[tids.GST_I_RADIUS_5] ** 2).item())
+    l57_inf = np.sqrt(x57_inf**2 - (tc.pulley_radii[tids.I_RADIUS_GST_5] ** 2).item())
     assert abs(l57_inf - l57) < 0.001, f"Expected l57={l57_inf}, got {l57}"
 
 
@@ -334,6 +380,23 @@ def compute_h_end_point(tendon_start, tendon_end, joint, height):
     return projected
 
 
+def get_gst_state(data):
+    state_a = data["GST_state_a"]
+    state_b = data["GST_state_b"]
+    state_c = data["GST_state_c"]
+    state_d = data["GST_state_d"]
+    if state_a:
+        return "a"
+    elif state_b:
+        return "b"
+    elif state_c:
+        return "c"
+    elif state_d:
+        return "d"
+    else:
+        raise ValueError(f"GST: no state is true")
+
+
 class KinematicChainAnimator:
     def __init__(self, all_data, alpha_2=np.deg2rad(300)):
         all_thetas = [d["thetas"] for d in all_data]
@@ -344,29 +407,80 @@ class KinematicChainAnimator:
         self.is_playing = True
 
         # Set up the figure
-        self.fig, self.ax = plt.subplots(figsize=(10, 10))
-        self.ax.set_aspect("equal")
-        self.ax.grid(True, alpha=0.3)
-        self.ax.set_xlabel("X (m)")
-        self.ax.set_ylabel("Y (m)")
+        self.fig, self.ax = plt.subplots(2, 2, figsize=(11, 11))
+        self.n_ax = 4
+        for ax in self.ax.flat:
+            ax.set_aspect("equal")
+            ax.grid(True, alpha=0.3)
+            ax.set_xlabel("X (m)")
+            ax.set_ylabel("Y (m)")
 
         # Initialize plot elements
-        (self.skeleton_line,) = self.ax.plot([], [], "b-", linewidth=2, label="Links")
-        self.joints_scatter = self.ax.scatter(
-            [], [], s=25, c="red", zorder=5, label="Joints"
-        )
-        (self.end_effector,) = self.ax.plot(
-            [], [], "go", markersize=5, label="End effector"
-        )
+        self.skeleton_lines = []
+        self.joints_scatters = []
+        self.end_effectors = []
+        for ax in self.ax.flat:
+            (skeleton_line,) = ax.plot([], [], "b-", linewidth=2, label="Links")
+            self.skeleton_lines.append(skeleton_line)
+            joints_scatter = ax.scatter([], [], s=5, c="red", zorder=5, label="Joints")
+            self.joints_scatters.append(joints_scatter)
+            (end_effector,) = ax.plot([], [], "go", markersize=4, label="End effector")
+            self.end_effectors.append(end_effector)
 
-        (self.upper_tendon_line,) = self.ax.plot(
+        helper_line_alpha = 0.7
+
+        current_data = all_data[0]
+        gst_state = get_gst_state(current_data)
+        thetas = self.all_thetas[0]
+        alphas = compute_alphas(self.alpha_2, thetas)
+        joints = compute_joint_locations(alphas)
+        j2, j3, j4, j5, j6, p7 = joints
+
+        # Pulley circles (created once and reused)
+        self.gst_pulley_circles = {}
+        self.kft_dft_pulley_circles = {}
+        gst_pulley_configs = [
+            (j3, tc.pulley_radii[tids.I_RADIUS_GST_3].item(), "orange", "3"),
+            (j4, tc.pulley_radii[tids.I_RADIUS_GST_4].item(), "purple", "4"),
+            (j4, tc.pulley_radii[tids.I_RADIUS_GST_4prime].item(), "magenta", "4prime"),
+            (j5, tc.pulley_radii[tids.I_RADIUS_GST_5].item(), "cyan", "5"),
+            (j6, tc.pulley_radii[tids.I_RADIUS_GST_6].item(), "yellow", "6"),
+        ]
+        kft_pulley_configs = [
+            (j2, tc.pulley_radii[tids.I_RADIUS_KFT_8].item(), "brown", "8"),
+        ]
+        dft_pulley_configs = [
+            (j5, tc.pulley_radii[tids.I_RADIUS_DFT_5].item(), "cyan", "5"),
+            (j6, tc.pulley_radii[tids.I_RADIUS_DFT_6].item(), "yellow", "6"),
+        ]
+        for center, radius, color, label in gst_pulley_configs:
+            circle = Circle(
+                center, radius, fill=False, edgecolor=color, linewidth=1.5, alpha=0.7
+            )
+            self.ax[0, 0].add_patch(circle)
+            self.gst_pulley_circles[label] = circle
+        for center, radius, color, label in kft_pulley_configs + dft_pulley_configs:
+            circle = Circle(
+                center, radius, fill=False, edgecolor=color, linewidth=1.5, alpha=0.7
+            )
+            self.ax[0, 1].add_patch(circle)
+            self.kft_dft_pulley_circles[label] = circle
+
+        # GST-specific lines
+        (self.gst_upper_tendon_line,) = self.ax[0, 0].plot(
             [], [], "r-", linewidth=2, label="Upper Tendon"
         )
-        (self.lower_tendon_line,) = self.ax.plot(
+        (self.gst_lower_tendon_line,) = self.ax[0, 0].plot(
             [], [], "y-", linewidth=2, label="Lower Tendon"
         )
-        helper_line_alpha = 0.7
-        (self.x_4prime6_line,) = self.ax.plot(
+        (self.kft_tendon_line,) = self.ax[0, 1].plot(
+            [], [], "r-", linewidth=2, label="Upper Tendon"
+        )
+        (self.dft_tendon_line,) = self.ax[0, 1].plot(
+            [], [], "y-", linewidth=2, label="Lower Tendon"
+        )
+
+        (self.gst_x_4prime6_line,) = self.ax[0, 0].plot(
             [],
             [],
             linestyle="solid",
@@ -375,7 +489,7 @@ class KinematicChainAnimator:
             label="x4'6",
             alpha=helper_line_alpha,
         )
-        (self.x_4prime7_line,) = self.ax.plot(
+        (self.gst_x_4prime7_line,) = self.ax[0, 0].plot(
             [],
             [],
             linestyle="solid",
@@ -384,7 +498,7 @@ class KinematicChainAnimator:
             label="x4'7",
             alpha=helper_line_alpha,
         )
-        (self.x_57_line,) = self.ax.plot(
+        (self.gst_x_57_line,) = self.ax[0, 0].plot(
             [],
             [],
             linestyle="solid",
@@ -393,7 +507,7 @@ class KinematicChainAnimator:
             label="x57",
             alpha=helper_line_alpha,
         )
-        (self.h_5_line,) = self.ax.plot(
+        (self.gst_h_5_line,) = self.ax[0, 0].plot(
             [],
             [],
             linestyle="solid",
@@ -402,7 +516,7 @@ class KinematicChainAnimator:
             label="h5",
             alpha=helper_line_alpha,
         )
-        (self.h_6_line,) = self.ax.plot(
+        (self.gst_h_6_line,) = self.ax[0, 0].plot(
             [],
             [],
             linestyle="solid",
@@ -412,26 +526,43 @@ class KinematicChainAnimator:
             alpha=helper_line_alpha,
         )
 
-        # Pulley circles (will be updated each frame)
-        self.pulley_circles = []
-
         # Title and info text
-        self.title = self.ax.set_title("")
-        self.info_text = self.ax.text(
+        self.gst_title = self.ax[0, 0].set_title("")
+        self.gst_info_text = self.ax[0, 0].text(
             0.02,
             0.98,
             "",
-            transform=self.ax.transAxes,
+            transform=self.ax[0, 0].transAxes,
             verticalalignment="top",
             fontfamily="monospace",
             bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
         )
         # Delta l text in top center with larger font
-        self.delta_l_text = self.ax.text(
+        self.gst_delta_l_text = self.ax[0, 0].text(
             0.5,
             0.98,
             "",
-            transform=self.ax.transAxes,
+            transform=self.ax[0, 0].transAxes,
+            verticalalignment="top",
+            horizontalalignment="center",
+            fontfamily="monospace",
+            fontsize=16,
+        )
+        self.kft_delta_l_text = self.ax[0, 1].text(
+            0.5,
+            0.98,
+            "",
+            transform=self.ax[0, 1].transAxes,
+            verticalalignment="top",
+            horizontalalignment="center",
+            fontfamily="monospace",
+            fontsize=16,
+        )
+        self.dft_delta_l_text = self.ax[0, 1].text(
+            0.5,
+            0.90,
+            "",
+            transform=self.ax[0, 1].transAxes,
             verticalalignment="top",
             horizontalalignment="center",
             fontfamily="monospace",
@@ -447,14 +578,16 @@ class KinematicChainAnimator:
             self._update,
             frames=self._frame_generator,
             interval=50,
-            blit=False,
+            blit=True,
             save_count=self.num_frames,
         )
 
         # Connect keyboard events
         self.fig.canvas.mpl_connect("key_press_event", self._on_key)
 
-        self.ax.legend(loc="upper right")
+        for ax in self.ax.flat:
+            ax.legend(loc="upper right")
+        self.fig.tight_layout()
 
     def _compute_axis_limits(self):
         """Pre-compute axis limits based on all frames."""
@@ -466,11 +599,12 @@ class KinematicChainAnimator:
                 all_x.append(j[0])
                 all_y.append(j[1])
 
-        margin = 0.05
+        margin = 0.15
         x_range = max(all_x) - min(all_x)
         y_range = max(all_y) - min(all_y)
-        self.ax.set_xlim(min(all_x) - margin * x_range, max(all_x) + margin * x_range)
-        self.ax.set_ylim(min(all_y) - margin * y_range, max(all_y) + margin * y_range)
+        for ax in self.ax.flat:
+            ax.set_xlim(min(all_x) - margin * x_range, max(all_x) + margin * x_range)
+            ax.set_ylim(min(all_y) - margin * y_range, max(all_y) + margin * y_range)
 
     def _frame_generator(self):
         """Generator that yields frame indices, respecting pause state."""
@@ -506,12 +640,46 @@ class KinematicChainAnimator:
 
         return xs, ys
 
+    def tendon_path_general(
+        self,
+        tendon_points: list,
+        tendon_joints: list,
+        joint_ccws: list,
+        start_with_arc=False,
+    ):
+        arc = start_with_arc
+        last_point = tendon_points.pop(0)
+        xs = [last_point[0]]
+        ys = [last_point[1]]
+        while len(tendon_points) > 0:
+            current_point = tendon_points.pop(0)
+            if not arc:
+                xs.append(current_point[0])
+                ys.append(current_point[1])
+                arc = True
+            else:
+                current_joint = tendon_joints.pop(0)
+                current_joint_ccw = joint_ccws.pop(0)
+
+                new_xs, new_ys = arc_from_3_points(
+                    current_joint,
+                    last_point,
+                    current_point,
+                    ccw=current_joint_ccw,
+                )
+                xs.extend(new_xs)
+                ys.extend(new_ys)
+                arc = False
+            last_point = current_point
+
+        return xs, ys
+
     def _update(self, frame_idx):
         """Update function for animation."""
         if frame_idx % 100 == 0:
             print(f"frame {frame_idx}")
         current_data = all_data[frame_idx]
-        state = current_data["state"][-1]
+        gst_state = get_gst_state(current_data)
         thetas = self.all_thetas[frame_idx]
         alphas = compute_alphas(self.alpha_2, thetas)
         joints = compute_joint_locations(alphas)
@@ -520,41 +688,33 @@ class KinematicChainAnimator:
             upper_tendon_joints,
             lower_tendon_points,
             lower_tendon_joints,
-        ) = compute_tendon_attachment_points(alpha_2, joints, current_data)
+        ) = compute_gst_attachment_points(alpha_2, joints, current_data)
         j2, j3, j4, j5, j6, p7 = joints
 
         # Update skeleton line (connecting all joints)
         x_coords = [j2[0], j3[0], j4[0], j5[0], j6[0], p7[0]]
         y_coords = [j2[1], j3[1], j4[1], j5[1], j6[1], p7[1]]
-        self.skeleton_line.set_data(x_coords, y_coords)
-
-        # Update joint positions
+        for skeleton_line in self.skeleton_lines:
+            skeleton_line.set_data(x_coords, y_coords)
         joint_x = [j[0] for j in joints[:-1]]  # Exclude end effector
         joint_y = [j[1] for j in joints[:-1]]
-        self.joints_scatter.set_offsets(np.c_[joint_x, joint_y])
+        for joints_scatter in self.joints_scatters:
+            # Update joint positions
+            joints_scatter.set_offsets(np.c_[joint_x, joint_y])
 
         # Update end effector
-        self.end_effector.set_data([p7[0]], [p7[1]])
+        for end_effector in self.end_effectors:
+            end_effector.set_data([p7[0]], [p7[1]])
 
-        # Remove old pulley circles
-        for circle in self.pulley_circles:
-            circle.remove()
-        self.pulley_circles = []
-
-        # Draw pulley circles
-        pulley_configs = [
-            (j3, tc.pulley_radii[tids.GST_I_RADIUS_3].item(), "orange"),
-            (j4, tc.pulley_radii[tids.GST_I_RADIUS_4].item(), "purple"),
-            (j4, tc.pulley_radii[tids.GST_I_RADIUS_4prime].item(), "magenta"),
-            (j5, tc.pulley_radii[tids.GST_I_RADIUS_5].item(), "cyan"),
-            (j6, tc.pulley_radii[tids.GST_I_RADIUS_6].item(), "yellow"),
-        ]
-        for center, radius, color in pulley_configs:
-            circle = Circle(
-                center, radius, fill=False, edgecolor=color, linewidth=1.5, alpha=0.7
-            )
-            self.ax.add_patch(circle)
-            self.pulley_circles.append(circle)
+        # Update pulley circle positions
+        self.gst_pulley_circles["3"].center = j3
+        self.gst_pulley_circles["4"].center = j4
+        self.gst_pulley_circles["4prime"].center = j4
+        self.gst_pulley_circles["5"].center = j5
+        self.gst_pulley_circles["6"].center = j6
+        self.kft_dft_pulley_circles["8"].center = j2
+        self.kft_dft_pulley_circles["5"].center = j5
+        self.kft_dft_pulley_circles["6"].center = j6
 
         # Draw tendons
         upper_gst_xs, upper_gst_ys = self.tendon_path(
@@ -563,109 +723,163 @@ class KinematicChainAnimator:
         lower_gst_xs, lower_gst_ys = self.tendon_path(
             copy.copy(lower_tendon_points), lower_tendon_joints, upper_tendon=False
         )
-        self.upper_tendon_line.set_data(upper_gst_xs, upper_gst_ys)
-        self.lower_tendon_line.set_data(lower_gst_xs, lower_gst_ys)
+        self.gst_upper_tendon_line.set_data(upper_gst_xs, upper_gst_ys)
+        self.gst_lower_tendon_line.set_data(lower_gst_xs, lower_gst_ys)
+
+        kft_points, kft_joints = compute_kft_points(
+            alphas[5], joints, current_data, tc.pulley_radii[tids.I_RADIUS_KFT_8].item()
+        )
+        kft_xs, kft_ys = self.tendon_path_general(
+            kft_points, kft_joints, [False], start_with_arc=True
+        )
+        self.kft_tendon_line.set_data(kft_xs, kft_ys)
+        self.dft_tendon_line.set_data([], [])
 
         # depending on the state, draw xs and hs
         validate_xs(
             joints,
-            current_data["x_4prime6"],
-            current_data["x_4prime7"],
-            current_data["x_57"],
+            current_data["GST_x_4prime6"],
+            current_data["GST_x_4prime7"],
+            current_data["GST_x_57"],
         )
         validate_ls(
             joints,
-            current_data["l_4prime6"],
-            current_data["l_4prime7"],
-            current_data["l_57"],
+            current_data["GST_l_4prime6"],
+            current_data["GST_l_4prime7"],
+            current_data["GST_l_57"],
         )
-        self.x_4prime6_line.set_data([], [])
-        self.x_4prime7_line.set_data([], [])
-        self.x_57_line.set_data([], [])
-        self.h_5_line.set_data([], [])
-        self.h_6_line.set_data([], [])
-        if state == "b":
+        self.gst_x_4prime6_line.set_data([], [])
+        self.gst_x_4prime7_line.set_data([], [])
+        self.gst_x_57_line.set_data([], [])
+        self.gst_h_5_line.set_data([], [])
+        self.gst_h_6_line.set_data([], [])
+        if gst_state == "b":
             x_4prime6_end_point = compute_x_end_point(
                 j4,
                 j5,
-                -current_data["phi_4prime_a"],
-                current_data["x_4prime6"],
+                -current_data["GST_phi_4prime_a"],
+                current_data["GST_x_4prime6"],
                 goal_point=j6,
             )  # rotate 4'5 by -phi_4'a and scale
-            self.x_4prime6_line.set_data(
+            self.gst_x_4prime6_line.set_data(
                 [j4[0], x_4prime6_end_point[0]], [j4[1], x_4prime6_end_point[1]]
             )
             h5_end_point = compute_h_end_point(
-                lower_tendon_points[1], lower_tendon_points[2], j5, current_data["h5_B"]
+                lower_tendon_points[1],
+                lower_tendon_points[2],
+                j5,
+                current_data["GST_h5_B"],
             )  # project j5 onto according line segment, assert distance is equal to h5B
-            self.h_5_line.set_data([j5[0], h5_end_point[0]], [j5[1], h5_end_point[1]])
-        elif state == "c":
+            self.gst_h_5_line.set_data(
+                [j5[0], h5_end_point[0]], [j5[1], h5_end_point[1]]
+            )
+        elif gst_state == "c":
             x_4prime6_end_point = compute_x_end_point(
                 j4,
                 j5,
-                -current_data["phi_4prime_a"],
-                current_data["x_4prime6"],
+                -current_data["GST_phi_4prime_a"],
+                current_data["GST_x_4prime6"],
                 goal_point=j6,
             )  # rotate 4'5 by -phi_4'a and scale
-            self.x_4prime6_line.set_data(
+            self.gst_x_4prime6_line.set_data(
                 [j4[0], x_4prime6_end_point[0]], [j4[1], x_4prime6_end_point[1]]
             )
             h5_end_point = compute_h_end_point(
-                lower_tendon_points[1], lower_tendon_points[2], j5, current_data["h5_C"]
+                lower_tendon_points[1],
+                lower_tendon_points[2],
+                j5,
+                current_data["GST_h5_C"],
             )  # project j5 onto according line segment, assert distance is equal to h5C
-            self.h_5_line.set_data([j5[0], h5_end_point[0]], [j5[1], h5_end_point[1]])
+            self.gst_h_5_line.set_data(
+                [j5[0], h5_end_point[0]], [j5[1], h5_end_point[1]]
+            )
 
             x_4prime7_end_point = compute_x_end_point(
                 j4,
                 j5,
-                -current_data["phi_4prime_a"] - current_data["phi_4prime_d"],
-                current_data["x_4prime7"],
+                -current_data["GST_phi_4prime_a"] - current_data["GST_phi_4prime_d"],
+                current_data["GST_x_4prime7"],
                 goal_point=p7,
             )  # rotate 4'5 by -phi_4'a-phi_4'd and scale
-            self.x_4prime7_line.set_data(
+            self.gst_x_4prime7_line.set_data(
                 [j4[0], x_4prime7_end_point[0]], [j4[1], x_4prime7_end_point[1]]
             )
             h6_end_point = compute_h_end_point(
-                lower_tendon_points[1], lower_tendon_points[2], j6, current_data["h6_C"]
+                lower_tendon_points[1],
+                lower_tendon_points[2],
+                j6,
+                current_data["GST_h6_C"],
             )  # project j6 onto according line segment, assert distance is equal to h6C
-            self.h_6_line.set_data([j6[0], h6_end_point[0]], [j6[1], h6_end_point[1]])
+            self.gst_h_6_line.set_data(
+                [j6[0], h6_end_point[0]], [j6[1], h6_end_point[1]]
+            )
 
-        elif state == "d":
+        elif gst_state == "d":
             x_57_end_point = compute_x_end_point(
-                j5, j6, -current_data["phi_5_a"], current_data["x_57"], goal_point=p7
+                j5,
+                j6,
+                -current_data["GST_phi_5_a"],
+                current_data["GST_x_57"],
+                goal_point=p7,
             )  # rotate 56 by -phi_5a and scale
-            self.x_57_line.set_data(
+            self.gst_x_57_line.set_data(
                 [j5[0], x_57_end_point[0]], [j5[1], x_57_end_point[1]]
             )
             h6_end_point = compute_h_end_point(
                 lower_tendon_points[-2],
                 lower_tendon_points[-1],
                 j6,
-                current_data["h6_D"],
+                current_data["GST_h6_D"],
             )  # project j6 onto according line segment, assert distance is equal to h6B
-            self.h_6_line.set_data([j6[0], h6_end_point[0]], [j6[1], h6_end_point[1]])
+            self.gst_h_6_line.set_data(
+                [j6[0], h6_end_point[0]], [j6[1], h6_end_point[1]]
+            )
 
         # Update title and info
         status = "▶ Playing" if self.is_playing else "⏸ Paused"
-        state = all_data[frame_idx]["state"]
-        self.title.set_text(
+        gst_state = get_gst_state(all_data[frame_idx])
+        self.gst_title.set_text(
             f"Kinematic Chain Animation - Frame {frame_idx + 1}/{self.num_frames}"
         )
-        self.info_text.set_text(
+        self.gst_info_text.set_text(
             f"{status}\n"
-            f"State: {state}\n"
+            f"GST State: {gst_state}\n"
             f"θ₃: {np.rad2deg(thetas[0]):.1f}°\n"
             f"θ₄: {np.rad2deg(thetas[1]):.1f}°\n"
             f"θ₅: {np.rad2deg(thetas[2]):.1f}°\n"
             f"θ₆: {np.rad2deg(thetas[3]):.1f}°"
         )
         # Update delta l text with conditional coloring
-        delta_l = all_data[frame_idx]["delta_l"]
+        delta_l = all_data[frame_idx]["GST_delta_L_s"]
         delta_l_color = "grey" if delta_l > 0 else "green"
-        self.delta_l_text.set_text(f"$\\Delta L={delta_l * 1000:02.3f}$ mm")
-        self.delta_l_text.set_color(delta_l_color)
+        self.gst_delta_l_text.set_text(f"$\\Delta L={delta_l * 1000:02.3f}$ mm")
+        self.gst_delta_l_text.set_color(delta_l_color)
 
-        return self.skeleton_line, self.joints_scatter, self.end_effector
+        kft_delta_l = all_data[frame_idx]["KFT_delta_L_s"]
+        kft_delta_l_color = "grey" if kft_delta_l > 0 else "green"
+        self.kft_delta_l_text.set_text(f"KFT $\\Delta L={kft_delta_l * 1000:02.3f}$ mm")
+        self.kft_delta_l_text.set_color(kft_delta_l_color)
+
+        dft_delta_l = all_data[frame_idx]["DFT_delta_L_s"]
+        dft_delta_l_color = "grey" if dft_delta_l > 0 else "green"
+        self.dft_delta_l_text.set_text(f"DFT $\\Delta L={dft_delta_l * 1000:02.3f}$ mm")
+        self.dft_delta_l_text.set_color(dft_delta_l_color)
+
+        # Return all artists for blitting
+        artists = (
+            self.skeleton_lines
+            + self.joints_scatters
+            + self.end_effectors
+            + [self.gst_upper_tendon_line, self.gst_lower_tendon_line]
+            + [self.gst_x_4prime6_line, self.gst_x_4prime7_line, self.gst_x_57_line]
+            + [self.gst_h_5_line, self.gst_h_6_line]
+            + [self.kft_tendon_line, self.dft_tendon_line]
+            + list(self.gst_pulley_circles.values())
+            + list(self.kft_dft_pulley_circles.values())
+            + [self.gst_title, self.gst_info_text, self.gst_delta_l_text]
+            + [self.kft_delta_l_text, self.dft_delta_l_text]
+        )
+        return artists
 
     def _on_key(self, event):
         """Handle keyboard events."""
