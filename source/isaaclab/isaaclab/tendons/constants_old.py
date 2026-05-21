@@ -99,7 +99,7 @@ link_names_left = list_from_dict(
 joint_names_right = list_from_dict(
     {
         tids.GST_I_Q_OFFSET_3: "r3f_femorotibial_front",  # j3
-        tids.GST_I_Q_OFFSET_4: "r4p_intertarsal_pulley",  # j4
+        tids.GST_I_Q_OFFSET_4: "r4f_intertarsal_front",  # j4
         tids.GST_I_Q_OFFSET_5: "r5_metatarsophalangeal",  # j5
         tids.GST_I_Q_OFFSET_6: "r6_interphalangeal",  # j6
     },
@@ -108,7 +108,7 @@ joint_names_right = list_from_dict(
 joint_names_left = list_from_dict(
     {
         tids.GST_I_Q_OFFSET_3: "l3f_femorotibial_front",  # j3
-        tids.GST_I_Q_OFFSET_4: "l4p_intertarsal_pulley",  # j4
+        tids.GST_I_Q_OFFSET_4: "l4f_intertarsal_front",  # j4
         tids.GST_I_Q_OFFSET_5: "l5_metatarsophalangeal",  # j5
         tids.GST_I_Q_OFFSET_6: "l6_interphalangeal",  # j6
     },

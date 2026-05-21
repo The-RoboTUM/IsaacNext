@@ -5,7 +5,7 @@ from typing import Sequence
 from isaaclab.envs.manager_based_env import ManagerBasedEnv
 from isaaclab.managers.action_manager import ActionTerm
 from isaaclab.tendons.action_term_cfg import TendonActionTermCfg
-from isaaclab.tendons.constants_old import (
+from isaaclab.tendons.constants import (
     N_LINKS_PER_LEG,
     TendonData,
     tids,

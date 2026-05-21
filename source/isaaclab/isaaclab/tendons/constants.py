@@ -41,24 +41,24 @@ dev = "cuda"
 
 link_names_right = list_from_dict(
     {
-        tids.I_CHAIN_LINK_23: "outside_hip_v2_assy_axialv7_1",
-        tids.I_CHAIN_LINK_34: "s12_front_assyv16_1",
-        tids.I_CHAIN_LINK_4prime5: "s23_assyv23_1",
-        tids.I_CHAIN_LINK_56: "s34_foot_connector_assyv23_1",
-        tids.I_CHAIN_LINK_67: "s45_digit_assyv4_1",
-        tids.I_CHAIN_LINK_83: "knee_motor_winch_big_motorv12_1",
+        tids.I_CHAIN_LINK_23: "outside_hip_v2_assy_axial_1",
+        tids.I_CHAIN_LINK_34: "s12_front_assy_1",
+        tids.I_CHAIN_LINK_4prime5: "s23_assy_1",
+        tids.I_CHAIN_LINK_56: "s34_foot_connector_assy_1",
+        tids.I_CHAIN_LINK_67: "s45_digit_assy_1",
+        tids.I_CHAIN_LINK_83: "knee_motor_winch_big_motor_1",
     },
     N_CHAIN_LINKS_PER_LEG,
 )
 
 link_names_left = list_from_dict(
     {
-        tids.I_CHAIN_LINK_23: "outside_hip_v2_assy_axial_leftv4_1",
-        tids.I_CHAIN_LINK_34: "s12_front_assyv16_2",
-        tids.I_CHAIN_LINK_4prime5: "s23_assyv23_2",
-        tids.I_CHAIN_LINK_56: "s34_foot_connector_assyv23_2",
-        tids.I_CHAIN_LINK_67: "s45_digit_assyv4_2",
-        tids.I_CHAIN_LINK_83: "knee_motor_winch_big_motorv12_2",
+        tids.I_CHAIN_LINK_23: "outside_hip_v2_assy_axial_left_1",
+        tids.I_CHAIN_LINK_34: "s12_front_assy_2",
+        tids.I_CHAIN_LINK_4prime5: "s23_assy_2",
+        tids.I_CHAIN_LINK_56: "s34_foot_connector_assy_2",
+        tids.I_CHAIN_LINK_67: "s45_digit_assy_2",
+        tids.I_CHAIN_LINK_83: "knee_motor_winch_big_motor_2",
     },
     N_CHAIN_LINKS_PER_LEG,
 )

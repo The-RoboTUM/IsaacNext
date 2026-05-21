@@ -54,6 +54,8 @@ from isaaclab.tendons.constants import (
 from isaaclab.tendons.tendon_data import TendonData
 from isaaclab.tendons.tendon_manager import TendonManager
 
+from isaaclab_assets.robots.forrest import FORREST_CFG
+
 # usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"
 # usd_path = "/media/C/Programmieren/RoboTUM/forrest_full_static.usd"
 usd_path = "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"
@@ -66,80 +68,80 @@ usd_path = "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"
 # todo: measure torque output and other leg
 
 
-def get_leg_cfg() -> ArticulationCfg:
-    """Returns an ArticulationCfg for the leg."""
-    return ArticulationCfg(
-        prim_path="/World/Bot",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=usd_path,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                rigid_body_enabled=True,
-                max_linear_velocity=1000.0,
-                max_angular_velocity=1000.0,
-                max_depenetration_velocity=100.0,
-                enable_gyroscopic_forces=True,
-            ),
-            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-                enabled_self_collisions=False,
-                solver_position_iteration_count=4,
-                solver_velocity_iteration_count=0,
-                sleep_threshold=0.005,
-                stabilization_threshold=0.001,
-            ),
-        ),
-        actuators={
-            # Spring: Rest 63,5mm, Compressed 20mm, => travel 43,5mm 128 N/mm
-            "pantograph": ImplicitActuatorCfg(
-                joint_names_expr=[
-                    "rp1_pantograph",
-                    "lp1_pantograph",
-                ],
-                effort_limit_sim=1e9,
-                velocity_limit_sim=1000.0,
-                stiffness=128e3,
-                damping=10.0,
-            ),
-            "hip_swing": ImplicitActuatorCfg(
-                joint_names_expr=[
-                    "r2_pseudo_acetabulofemoral_flexion",
-                    "l2_pseudo_acetabulofemoral_flexion",
-                ],
-                effort_limit_sim=1.0e9,
-                velocity_limit_sim=100.0,
-                stiffness=10000.0,
-                damping=10.0,
-            ),
-            "hip_roll": ImplicitActuatorCfg(
-                joint_names_expr=[
-                    "r0_acetabulofemoral_roll",
-                    "l0_acetabulofemoral_roll",
-                ],
-                effort_limit_sim=1.0e9,
-                velocity_limit_sim=100.0,
-                stiffness=10000.0,
-                damping=10.0,
-            ),
-            "hip_lateral": ImplicitActuatorCfg(
-                joint_names_expr=[
-                    "r1_acetabulofemoral_lateral",
-                    "l1_acetabulofemoral_lateral",
-                ],
-                effort_limit_sim=1.0e9,
-                velocity_limit_sim=100.0,
-                stiffness=10000.0,
-                damping=10.0,
-            ),
-        },
-        init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.0, 0.0, 1.6),
-            joint_pos={
-                "r5_metatarsophalangeal": np.deg2rad(-19.9, dtype=np.float32),
-                "l5_metatarsophalangeal": np.deg2rad(-19.9, dtype=np.float32),
-                "r6_interphalangeal": np.deg2rad(25.0, dtype=np.float32),
-                "l6_interphalangeal": np.deg2rad(25.0, dtype=np.float32),
-            }
-        ),
-    )
+# def get_leg_cfg() -> ArticulationCfg:
+#     """Returns an ArticulationCfg for the leg."""
+#     return ArticulationCfg(
+#         prim_path="/World/Bot",
+#         spawn=sim_utils.UsdFileCfg(
+#             usd_path=usd_path,
+#             rigid_props=sim_utils.RigidBodyPropertiesCfg(
+#                 rigid_body_enabled=True,
+#                 max_linear_velocity=1000.0,
+#                 max_angular_velocity=1000.0,
+#                 max_depenetration_velocity=100.0,
+#                 enable_gyroscopic_forces=True,
+#             ),
+#             articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+#                 enabled_self_collisions=False,
+#                 solver_position_iteration_count=4,
+#                 solver_velocity_iteration_count=0,
+#                 sleep_threshold=0.005,
+#                 stabilization_threshold=0.001,
+#             ),
+#         ),
+#         actuators={
+#             # Spring: Rest 63,5mm, Compressed 20mm, => travel 43,5mm 128 N/mm
+#             "pantograph": ImplicitActuatorCfg(
+#                 joint_names_expr=[
+#                     "rp1_pantograph",
+#                     "rp2_pantograph",
+#                 ],
+#                 effort_limit_sim=1e9,
+#                 velocity_limit_sim=1000.0,
+#                 stiffness=128e3,
+#                 damping=10.0,
+#             ),
+#             "hip_swing": ImplicitActuatorCfg(
+#                 joint_names_expr=[
+#                     "r2_pseudo_acetabulofemoral_flexion",
+#                     "l2_pseudo_acetabulofemoral_flexion",
+#                 ],
+#                 effort_limit_sim=1.0e9,
+#                 velocity_limit_sim=100.0,
+#                 stiffness=10000.0,
+#                 damping=10.0,
+#             ),
+#             "hip_roll": ImplicitActuatorCfg(
+#                 joint_names_expr=[
+#                     "r0_acetabulofemoral_roll",
+#                     "l0_acetabulofemoral_roll",
+#                 ],
+#                 effort_limit_sim=1.0e9,
+#                 velocity_limit_sim=100.0,
+#                 stiffness=10000.0,
+#                 damping=10.0,
+#             ),
+#             "hip_lateral": ImplicitActuatorCfg(
+#                 joint_names_expr=[
+#                     "r1_acetabulofemoral_lateral",
+#                     "l1_acetabulofemoral_lateral",
+#                 ],
+#                 effort_limit_sim=1.0e9,
+#                 velocity_limit_sim=100.0,
+#                 stiffness=10000.0,
+#                 damping=10.0,
+#             ),
+#         },
+#         init_state=ArticulationCfg.InitialStateCfg(
+#             pos=(0.0, 0.0, 1.6),
+#             joint_pos={
+#                 "r5_metatarsophalangeal": np.deg2rad(-19.9, dtype=np.float32),
+#                 "l5_metatarsophalangeal": np.deg2rad(-19.9, dtype=np.float32),
+#                 "r6_interphalangeal": np.deg2rad(25.0, dtype=np.float32),
+#                 "l6_interphalangeal": np.deg2rad(25.0, dtype=np.float32),
+#             }
+#         ),
+#     )
 
 
 def leg_tensordict_to_python_dict(tensordict):
@@ -179,7 +181,8 @@ def leg_tensordict_to_python_dict(tensordict):
 def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # IsaacLab simulation setup
-    sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
+    # sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
+    sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, 0.0))
     sim_cfg.dt = 0.032
     t_total = 2.0
     sim = SimulationContext(sim_cfg)
@@ -195,7 +198,8 @@ def main():
         "/World/Light", sim_utils.DomeLightCfg()
     )
 
-    robot = Articulation(cfg=get_leg_cfg())
+    robot_cfg = FORREST_CFG.replace(prim_path="/World/Bot")
+    robot = Articulation(robot_cfg)
 
     os.makedirs("outputs", exist_ok=True)
     if not args_cli.jit:

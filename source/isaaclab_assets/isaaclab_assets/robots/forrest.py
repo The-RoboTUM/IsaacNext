@@ -20,14 +20,15 @@ from isaaclab.assets import ArticulationCfg
 # Configuration
 ##
 
+"""Configuration for RoboTUM's Forrest robot."""
+
 FORREST_CFG = ArticulationCfg(
-    prim_path="{ENV_REGEX_NS}/Forrest_URDF",
+    prim_path="{ENV_REGEX_NS}/forrest_urdf_latest",
     spawn=sim_utils.UsdFileCfg(
-    usd_path=os.path.join(os.getcwd(), "symlinks/Forrest_URDF/Forrest_URDF.usd"),
-        # usd_path="symlinks/tron/robot.usd",
+    usd_path=os.path.join(os.getcwd(), "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"),
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
-            disable_gravity=False,
+            disable_gravity=True,
             retain_accelerations=False,
             linear_damping=0.0,
             angular_damping=0.0,
@@ -44,29 +45,31 @@ FORREST_CFG = ArticulationCfg(
         pos=(0.0, 0.0, 1.5),
         joint_pos={
             # Left leg
-            "lp1_pantograph": 0.0,
+            "rp2_pantograph": 0.0,
             "l0_acetabulofemoral_roll": 0.0,
             "l1_acetabulofemoral_lateral": 0.0,
             "l2_pseudo_acetabulofemoral_flexion": 0.0,
-            # "l3b_femorotibial_back": 0.0,
+            "l3b_femorotibial_back": 0.0,
             "l4b_intertarsal_back": 0.0,
             "l3f_femorotibial_front": 0.0,
             "l4f_intertarsal_front": 0.0,
             "l4p_intertarsal_pulley": 0.0,
             "l5_metatarsophalangeal": float(np.deg2rad(-19.9)),
             "l6_interphalangeal": float(np.deg2rad(25.0)),
+            "l8_knee_flexor": 0.0,
             # Right leg
             "rp1_pantograph": 0.0,
             "r0_acetabulofemoral_roll": 0.0,
             "r1_acetabulofemoral_lateral": 0.0,
             "r2_pseudo_acetabulofemoral_flexion": 0.0,
-            # "r3b_femorotibial_back": 0.0,
+            "r3b_femorotibial_back": 0.0,
             "r4b_intertarsal_back": 0.0,
             "r3f_femorotibial_front": 0.0,
             "r4f_intertarsal_front": 0.0,
             "r4p_intertarsal_pulley": 0.0,
             "r5_metatarsophalangeal": float(np.deg2rad(-19.9)),
             "r6_interphalangeal": float(np.deg2rad(25.0)),
+            "r8_knee_flexor": 0.0,
         },
         joint_vel={".*": 0.0},
     ),
@@ -89,7 +92,7 @@ FORREST_CFG = ArticulationCfg(
                 "pantograph": ImplicitActuatorCfg(
                     joint_names_expr=[
                         "rp1_pantograph",
-                        "lp1_pantograph",
+                        "rp2_pantograph", # TODO: rename and create a new URDF
                     ],
                     effort_limit_sim=1e9,
                     velocity_limit_sim=1000.0,
@@ -98,6 +101,8 @@ FORREST_CFG = ArticulationCfg(
                 ),
                 "hip": ImplicitActuatorCfg(
                     joint_names_expr=[
+                        "r8_knee_flexor",
+                        "l8_knee_flexor",
                         "r2_pseudo_acetabulofemoral_flexion",
                         "l2_pseudo_acetabulofemoral_flexion",
                         "r0_acetabulofemoral_roll",
@@ -105,10 +110,9 @@ FORREST_CFG = ArticulationCfg(
                         "r1_acetabulofemoral_lateral",
                         "l1_acetabulofemoral_lateral",
                     ],
-                    effort_limit_sim=100.0,
+                    effort_limit_sim=1.0e6,
                     stiffness=100.0,
                     damping=1.0,
                 ),
             },
 )
-"""Configuration for RoboTUM's Forrest robot."""
