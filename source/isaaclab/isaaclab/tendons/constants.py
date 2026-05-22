@@ -134,7 +134,7 @@ class TendonConstants:
     kft_stiffness: float = 20e4  # FIXME: find out real value
     upper_gst_length: float = 0.6367  # FIXME: measure correct value
     lower_gst_length: float = 0.6314  # FIXME: measure correct value
-    dft_length: float = 0.35  # FIXME: measure correct value
+    dft_length: float = 0.345  # FIXME: measure correct value
     edt1_length: float = 0.55  # FIXME: measure correct value
     edt2_length: float = 0.66  # FIXME: measure correct value
     kft_length: float = 0.402  # FIXME: measure correct value
@@ -180,7 +180,7 @@ class TendonConstants:
                 tids.I_RADIUS_DFT_6: 0.01,
                 tids.I_RADIUS_EDT1_5: 0.04,
                 tids.I_RADIUS_EDT2_5: 0.04,
-                tids.I_RADIUS_EDT2_6: 0.04,
+                tids.I_RADIUS_EDT2_6: 0.01,
                 tids.I_RADIUS_KFT_8: 0.035,
             },
             N_RADII,

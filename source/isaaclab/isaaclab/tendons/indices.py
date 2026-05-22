@@ -17,11 +17,11 @@ I_CONNECTOR_LINK_EDT2_C4: int = 4
 I_CONNECTOR_LINK_KFT_3C: int = 5
 
 # indices for connector offsets => custom thetas for every connector
-I_CONNECTOR_OFFSET_DFT_C5: int = 0
-I_CONNECTOR_OFFSET_EDT1_C4: int = 1
-I_CONNECTOR_OFFSET_EDT1_5C: int = 2
-I_CONNECTOR_OFFSET_EDT2_C4: int = 3
-I_CONNECTOR_OFFSET_KFT_3C: int = 4
+# I_CONNECTOR_OFFSET_DFT_C5: int = 0
+# I_CONNECTOR_OFFSET_EDT1_C4: int = 1
+# I_CONNECTOR_OFFSET_EDT1_5C: int = 2
+# I_CONNECTOR_OFFSET_EDT2_C4: int = 3
+# I_CONNECTOR_OFFSET_KFT_3C: int = 4
 
 
 # link indices for the robot, including virtual links for tendon attachment points
