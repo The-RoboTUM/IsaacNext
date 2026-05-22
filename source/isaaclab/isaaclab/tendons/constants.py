@@ -100,6 +100,8 @@ actuated_joint_names = [
     "r0_acetabulofemoral_roll",
     "r1_acetabulofemoral_lateral",
     "r2_pseudo_acetabulofemoral_flexion",
+    "l8_knee_flexor",
+    "r8_knee_flexor"
 ]
 
 all_joint_names_right = [

@@ -1,14 +1,14 @@
+from __future__ import annotations
 """Tendon-based action term implementation."""
 
 from abc import abstractmethod
 from typing import Sequence
 from isaaclab.envs.manager_based_env import ManagerBasedEnv
 from isaaclab.managers.action_manager import ActionTerm
-from isaaclab.tendons.action_term_cfg import TendonActionTermCfg
+# from isaaclab.tendons.action_term_cfg import TendonActionTermCfg
 from isaaclab.tendons.constants import (
-    N_LINKS_PER_LEG,
-    TendonData,
     tids,
+    N_CHAIN_LINKS_PER_LEG, # NOTE: Changed from N_LINKS_PER_LEG
     JOINT_AXIS_IDX,
     link_names_left,
     link_names_right,
@@ -16,24 +16,26 @@ from isaaclab.tendons.constants import (
     joint_names_right,
     hip_joint_names,
 )
-from isaaclab.tendons.gst_manager import GSTTendonManager
+from isaaclab.tendons.tendon_manager import TendonManager
+from isaaclab.tendons.tendon_data import TendonData
 from isaaclab.utils import configclass
 import torch
+
 
 class TendonActionTermHybrid(ActionTerm):
     """Tendon-based action term for controlling tendon actuators."""
 
-    def __init__(self, cfg, env: ManagerBasedEnv):
+    def __init__(self, cfg: "TendonActionTermCfg", env: ManagerBasedEnv):
         super().__init__(cfg, env)
         # Additional initialization for tendon actions can be added here
 
         self.robot = env.scene.articulations[cfg.asset_name]
 
-        self.gst_tendon_manager = GSTTendonManager(
+        self.tendon_manager = TendonManager(
             robot=self.robot,
             tendon_data=TendonData(
                 batch_size=env.num_envs,
-                randomization_ranges=cfg.randomization_ranges,
+                randomization_ranges=cfg.randomization_ranges, # FIXME
             ),
         )
 
@@ -92,37 +94,37 @@ class TendonActionTermHybrid(ActionTerm):
             This is called at every simulation step by the manager.
         """
         (
-            gst_tendon_torques_left,
-            gst_tendon_torques_right,
+            tendon_torques_left,
+            tendon_torques_right,
         ) = (  # pyright: ignore[reportAssignmentType]
-            self.gst_tendon_manager.compute_torques_jit()
+            self.tendon_manager.compute_torques_jit()
         )
 
         batch_size = self.robot.num_instances
         # 4) apply torques: with axis [0 -1 0], to each link
         tendon_torques_full = torch.zeros(
-            (batch_size, N_LINKS_PER_LEG * 2, 3), device=self.device
+            (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
         )
 
         # Fix coordinate system inversion for joint 3 and 4
-        gst_tendon_torques_left[:, tids.I_JOINT_3] *= -1.0
-        gst_tendon_torques_right[:, tids.I_JOINT_3] *= -1.0
-        gst_tendon_torques_left[:, tids.I_JOINT_4] *= -1.0
-        gst_tendon_torques_right[:, tids.I_JOINT_4] *= -1.0
+        tendon_torques_left[:, tids.I_JOINT_3] *= -1.0
+        tendon_torques_right[:, tids.I_JOINT_3] *= -1.0
+        tendon_torques_left[:, tids.I_JOINT_4] *= -1.0
+        tendon_torques_right[:, tids.I_JOINT_4] *= -1.0
 
         # Apply GST torques
-        tendon_torques_full[:, : N_LINKS_PER_LEG - 1, JOINT_AXIS_IDX] = (
-            -gst_tendon_torques_left
+        tendon_torques_full[:, : N_CHAIN_LINKS_PER_LEG - 1, JOINT_AXIS_IDX] = (
+            -tendon_torques_left
         )
         tendon_torques_full[
-            :, 1:N_LINKS_PER_LEG, JOINT_AXIS_IDX
-        ] += gst_tendon_torques_left
+            :, 1:N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX
+        ] += tendon_torques_left
         tendon_torques_full[
-            :, N_LINKS_PER_LEG : N_LINKS_PER_LEG * 2 - 1, JOINT_AXIS_IDX
-        ] = -gst_tendon_torques_right
+            :, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, JOINT_AXIS_IDX
+        ] = -tendon_torques_right
         tendon_torques_full[
-            :, N_LINKS_PER_LEG + 1 :, JOINT_AXIS_IDX
-        ] += gst_tendon_torques_right
+            :, N_CHAIN_LINKS_PER_LEG + 1 :, JOINT_AXIS_IDX
+        ] += tendon_torques_right
 
         # Apply other tendons
 
@@ -135,18 +137,18 @@ class TendonActionTermHybrid(ActionTerm):
         # ] += self._processed_actions[:, 0]
         # tendon_torques_full[
         #     :,
-        #     self.link_indices_left_right[tids.I_LINK_23 + N_LINKS_PER_LEG],
+        #     self.link_indices_left_right[tids.I_LINK_23 + N_CHAIN_LINKS_PER_LEG],
         #     JOINT_AXIS_IDX,
         # ] = -self._processed_actions[:, 1]
         # tendon_torques_full[
         #     :,
-        #     self.link_indices_left_right[tids.I_LINK_34 + N_LINKS_PER_LEG],
+        #     self.link_indices_left_right[tids.I_LINK_34 + N_CHAIN_LINKS_PER_LEG],
         #     JOINT_AXIS_IDX,
         # ] += self._processed_actions[:, 1]
 
         self.robot.set_external_force_and_torque(
             forces=torch.zeros(
-                (batch_size, N_LINKS_PER_LEG * 2, 3), device=self.device
+                (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
             ),
             torques=tendon_torques_full,
             body_ids=self.link_indices_left_right,
@@ -161,19 +163,19 @@ class TendonActionTermHybrid(ActionTerm):
             env_ids: The environment ids. Defaults to None, in which case
                 all environments are considered.
         """
-        # self.gst_tendon_manager.tendon_data.reset(env_ids)
+        # self.tendon_manager.tendon_data.reset(env_ids)
 
 
 class TendonActionTerm(ActionTerm):
     """Tendon-based action term for controlling tendon actuators."""
 
-    def __init__(self, cfg: TendonActionTermCfg, env: ManagerBasedEnv):
+    def __init__(self, cfg: "TendonActionTermCfg", env: ManagerBasedEnv):
         super().__init__(cfg, env)
         # Additional initialization for tendon actions can be added here
 
         self.robot = env.scene.articulations[cfg.asset_name]
 
-        self.gst_tendon_manager = GSTTendonManager(
+        self.tendon_manager = TendonManager(
             robot=self.robot,
             tendon_data=TendonData(
                 batch_size=env.num_envs,
@@ -233,37 +235,37 @@ class TendonActionTerm(ActionTerm):
             This is called at every simulation step by the manager.
         """
         (
-            gst_tendon_torques_left,
-            gst_tendon_torques_right,
+            tendon_torques_left,
+            tendon_torques_right,
         ) = (  # pyright: ignore[reportAssignmentType]
-            self.gst_tendon_manager.compute_torques_jit()
+            self.tendon_manager.compute_torques_jit()
         )
 
         batch_size = self.robot.num_instances
         # 4) apply torques: with axis [0 -1 0], to each link
         tendon_torques_full = torch.zeros(
-            (batch_size, N_LINKS_PER_LEG * 2, 3), device=self.device
+            (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
         )
 
         # Fix coordinate system inversion for joint 3 and 4
-        gst_tendon_torques_left[:, tids.GST_I_Q_OFFSET_3] *= -1.0
-        gst_tendon_torques_right[:, tids.GST_I_Q_OFFSET_3] *= -1.0
-        gst_tendon_torques_left[:, tids.GST_I_Q_OFFSET_4] *= -1.0
-        gst_tendon_torques_right[:, tids.GST_I_Q_OFFSET_4] *= -1.0
+        tendon_torques_left[:, tids.I_Q_GST_3] *= -1.0
+        tendon_torques_right[:, tids.I_Q_GST_3] *= -1.0
+        tendon_torques_left[:, tids.I_Q_GST_4] *= -1.0
+        tendon_torques_right[:, tids.I_Q_GST_4] *= -1.0
 
         # Apply GST torques
-        tendon_torques_full[:, : N_LINKS_PER_LEG - 1, JOINT_AXIS_IDX] = (
-            -gst_tendon_torques_left
+        tendon_torques_full[:, : N_CHAIN_LINKS_PER_LEG - 1, JOINT_AXIS_IDX] = (
+            -tendon_torques_left
         )
         tendon_torques_full[
-            :, 1:N_LINKS_PER_LEG, JOINT_AXIS_IDX
-        ] += gst_tendon_torques_left
+            :, 1:N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX
+        ] += tendon_torques_left
         tendon_torques_full[
-            :, N_LINKS_PER_LEG : N_LINKS_PER_LEG * 2 - 1, JOINT_AXIS_IDX
-        ] = -gst_tendon_torques_right
+            :, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, JOINT_AXIS_IDX
+        ] = -tendon_torques_right
         tendon_torques_full[
-            :, N_LINKS_PER_LEG + 1 :, JOINT_AXIS_IDX
-        ] += gst_tendon_torques_right
+            :, N_CHAIN_LINKS_PER_LEG + 1 :, JOINT_AXIS_IDX
+        ] += tendon_torques_right
 
         # Apply knee motor torques from actions
         tendon_torques_full[
@@ -277,19 +279,19 @@ class TendonActionTerm(ActionTerm):
         tendon_torques_full[
             :,
             self.link_indices_left_right[
-                tids.I_CONNECTOR_LINK_GST_23 + N_LINKS_PER_LEG
+                tids.I_CONNECTOR_LINK_GST_23 + N_CHAIN_LINKS_PER_LEG
             ],
             JOINT_AXIS_IDX,
         ] = -self._processed_actions[:, 1]
         tendon_torques_full[
             :,
-            self.link_indices_left_right[tids.I_LINK_34 + N_LINKS_PER_LEG],
+            self.link_indices_left_right[tids.I_LINK_34 + N_CHAIN_LINKS_PER_LEG],
             JOINT_AXIS_IDX,
         ] += self._processed_actions[:, 1]
 
         self.robot.set_external_force_and_torque(
             forces=torch.zeros(
-                (batch_size, N_LINKS_PER_LEG * 2, 3), device=self.device
+                (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
             ),
             torques=tendon_torques_full,
             body_ids=self.link_indices_left_right,
@@ -302,4 +304,4 @@ class TendonActionTerm(ActionTerm):
             env_ids: The environment ids. Defaults to None, in which case
                 all environments are considered.
         """
-        # self.gst_tendon_manager.tendon_data.reset(env_ids)
+        # self.tendon_manager.tendon_data.reset(env_ids)

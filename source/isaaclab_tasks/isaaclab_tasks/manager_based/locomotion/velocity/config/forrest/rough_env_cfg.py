@@ -27,7 +27,7 @@ from isaaclab.tendons.constants import TendonConstantRandomizationRanges, actuat
 
 FEET_CFG = SceneEntityCfg(
     "robot",
-    body_names=("s45_digit_assyv2_1", "s45_digit_assyv2_2"),
+    body_names=("s45_digit_assy_1", "s45_digit_assy_2"),
 )
 
 import torch
@@ -178,17 +178,12 @@ class ForrestRewards(RewardsCfg):
 
 @configclass
 class ForrestActionsCfg:
-    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=actuated_joint_names, scale=0.5,
+    joint_pos = mdp.JointPositionActionCfg(asset_name="robot",
+                                           joint_names=actuated_joint_names, scale=0.5,
                                            use_default_offset=True)
     tendon = TendonActionTermHybridCfg(
         asset_name="robot",
         randomization_ranges=TendonConstantRandomizationRanges(
-            gst_stiffness=(-2e3, 2e3),
-            dft_stiffness=(-2e3, 2e3),
-            gst_spring_rest_length=(-0.002, 0.002),
-            dft_length=(-0.002, 0.002),
-            upper_tendon_length=(-0.005, 0.005),
-            lower_tendon_length=(-0.005, 0.005),
         ),
     )
 
@@ -201,8 +196,8 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # post init of parent
         super().__post_init__()
         # Scene
-        self.scene.robot = FORREST_CFG.replace(prim_path="{ENV_REGEX_NS}/Forrest_URDF")
-        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Forrest_URDF/world_corrected"
+        self.scene.robot = FORREST_CFG.replace(prim_path="{ENV_REGEX_NS}/forrest_urdf_latest")
+        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/forrest_urdf_latest/world_corrected"
 
 
         # TEMP (Used only to make flat env model work)
@@ -223,7 +218,7 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         #     track_air_time=True,
         # )
         self.scene.contact_forces = ContactSensorCfg(
-            prim_path="{ENV_REGEX_NS}/Forrest_URDF/(s45_digit_assyv2_1|s45_digit_assyv2_2|world_corrected|outside_hip_v2_assy_axialv21_2|outside_hip_v2_assy_axialv21_1)",
+            prim_path="{ENV_REGEX_NS}/forrest_urdf_latest/(s45_digit_assy_1|s45_digit_assy_2|world_corrected|outside_hip_v2_assy_axial_left_1|outside_hip_v2_assy_axial_1)",
             update_period=0.0,  # update every sim step
             history_length=6,
             debug_vis=False,
@@ -265,11 +260,11 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "l0_acetabulofemoral_roll",
                 "l1_acetabulofemoral_lateral",
                 "l2_pseudo_acetabulofemoral_flexion",
-                "l3f_femorotibial_front",
+                # "l3f_femorotibial_front",
                 "r0_acetabulofemoral_roll",
                 "r1_acetabulofemoral_lateral",
                 "r2_pseudo_acetabulofemoral_flexion",
-                "r3f_femorotibial_front",
+                # "r3f_femorotibial_front",
             ],
         )
 
@@ -295,8 +290,8 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = ("world_corrected",
-                                                                          "outside_hip_v2_assy_axialv21_1",
-                                                                          "outside_hip_v2_assy_axialv21_2"
+                                                                          "outside_hip_v2_assy_axial_1",
+                                                                          "outside_hip_v2_assy_axial_left_1"
                                                                           )
 
         # # DEBUG

@@ -1,4 +1,7 @@
-"""Tendon manager implementation for all tendons."""
+"""Tendon manager implementation for all tendons.
+
+PATCHED_BOOL_MASKS_V3: boolean masks use direct comparisons.
+"""
 
 from isaaclab.utils.math import quat_apply_inverse, quat_rotate_inverse
 import numpy as np
@@ -37,90 +40,63 @@ def compute_delta_l_s_jit(
     # 0) transform joint angles to thetas and qs
     joint_angles_signed = tendon_data.joint_directions * joint_angles
     thetas = torch.empty_like(tendon_data.tendon_offsets_theta)
-    thetas[
-        (
-            tids.I_THETA_GST_3,
-            tids.I_THETA_GST_4,
-            tids.I_THETA_GST_5,
-            tids.I_THETA_ALL_6,
-            tids.I_THETA_DFT_5,
-            tids.I_THETA_EDT1_4,
-            tids.I_THETA_EDT1_5,
-            tids.I_THETA_EDT2_4,
-            tids.I_THETA_EDT2_5,
-            tids.I_THETA_KFT_3,
-            tids.I_THETA_KFT_8,
-        )
-    ] = (
-        joint_angles_signed[
-            (
-                tids.I_JOINT_3,
-                tids.I_JOINT_4,
-                tids.I_JOINT_5,
-                tids.I_JOINT_6,
-                tids.I_JOINT_5,
-                tids.I_JOINT_4,
-                tids.I_JOINT_5,
-                tids.I_JOINT_4,
-                tids.I_JOINT_5,
-                tids.I_JOINT_3,
-                tids.I_JOINT_8,
-            )
-        ]
-        + tendon_data.tendon_offsets_theta[
-            (
-                tids.I_THETA_GST_3,
-                tids.I_THETA_GST_4,
-                tids.I_THETA_GST_5,
-                tids.I_THETA_ALL_6,
-                tids.I_THETA_DFT_5,
-                tids.I_THETA_EDT1_4,
-                tids.I_THETA_EDT1_5,
-                tids.I_THETA_EDT2_4,
-                tids.I_THETA_EDT2_5,
-                tids.I_THETA_KFT_3,
-                tids.I_THETA_KFT_8,
-            )
-        ]
+    theta_ids = [
+        tids.I_THETA_GST_3,
+        tids.I_THETA_GST_4,
+        tids.I_THETA_GST_5,
+        tids.I_THETA_ALL_6,
+        tids.I_THETA_DFT_5,
+        tids.I_THETA_EDT1_4,
+        tids.I_THETA_EDT1_5,
+        tids.I_THETA_EDT2_4,
+        tids.I_THETA_EDT2_5,
+        tids.I_THETA_KFT_3,
+        tids.I_THETA_KFT_8,
+    ]
+    joint_ids = [
+        tids.I_JOINT_3,
+        tids.I_JOINT_4,
+        tids.I_JOINT_5,
+        tids.I_JOINT_6,
+        tids.I_JOINT_5,
+        tids.I_JOINT_4,
+        tids.I_JOINT_5,
+        tids.I_JOINT_4,
+        tids.I_JOINT_5,
+        tids.I_JOINT_3,
+        tids.I_JOINT_8,
+    ]
+    thetas[:, theta_ids] = (
+        joint_angles_signed[:, joint_ids]
+        + tendon_data.tendon_offsets_theta[:, theta_ids]
     )
     qs = torch.empty_like(tendon_data.tendon_offsets_q_theta)
-    qs[
-        (
-            tids.I_Q_GST_3,
-            tids.I_Q_GST_4,
-            tids.I_Q_GST_5,
-            tids.I_Q_GST_6,
-            tids.I_Q_DFT_5,
-            tids.I_Q_DFT_6,
-        )
-    ] = (
-        thetas[
-            (
-                tids.I_THETA_GST_3,
-                tids.I_THETA_GST_4,
-                tids.I_THETA_GST_5,
-                tids.I_THETA_ALL_6,
-                tids.I_THETA_DFT_5,
-                tids.I_THETA_ALL_6,
-            )
-        ]
-        + tendon_data.tendon_offsets_q_theta[
-            (
-                tids.I_Q_GST_3,
-                tids.I_Q_GST_4,
-                tids.I_Q_GST_5,
-                tids.I_Q_GST_6,
-                tids.I_Q_DFT_5,
-                tids.I_Q_DFT_6,
-            )
-        ]
+    q_ids = [
+        tids.I_Q_GST_3,
+        tids.I_Q_GST_4,
+        tids.I_Q_GST_5,
+        tids.I_Q_GST_6,
+        tids.I_Q_DFT_5,
+        tids.I_Q_DFT_6,
+    ]
+    theta_for_q_ids = [
+        tids.I_THETA_GST_3,
+        tids.I_THETA_GST_4,
+        tids.I_THETA_GST_5,
+        tids.I_THETA_ALL_6,
+        tids.I_THETA_DFT_5,
+        tids.I_THETA_ALL_6,
+    ]
+    qs[:, q_ids] = (
+        thetas[:, theta_for_q_ids]
+        + tendon_data.tendon_offsets_q_theta[:, q_ids]
     )
 
     theta_hats = -thetas + 2 * torch.pi
     qhats = torch.empty_like(tendon_data.tendon_offsets_qhat_thetahat)
-    qhats[(tids.I_QHAT_EDT2_6,)] = (
-        theta_hats[(tids.I_THETA_ALL_6,)]
-        + tendon_data.tendon_offsets_qhat_thetahat[[(tids.I_QHAT_EDT2_6,)]]
+    qhats[:, tids.I_QHAT_EDT2_6] = (
+        theta_hats[:, tids.I_THETA_ALL_6]
+        + tendon_data.tendon_offsets_qhat_thetahat[:, tids.I_QHAT_EDT2_6]
     )
 
     ### --------------- GST --------------- ###
@@ -225,27 +201,11 @@ def compute_delta_l_s_jit(
         :, tids.I_RADIUS_GST_5
     ] - tendon_data.link_lengths[:, tids.I_LINK_56] * torch.cos(GST_phi_5_D)
 
-    GST_h5_B_disengaged = torch.where(
-        GST_h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_5],
-        True,
-        False,
-    )
-    GST_h5_C_disengaged = torch.where(
-        GST_h5_C > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_5],
-        True,
-        False,
-    )
-    GST_h6_C_disengaged = torch.where(
-        GST_h6_C > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_6],
-        True,
-        False,
-    )
+    GST_h5_B_disengaged = GST_h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_5]
+    GST_h5_C_disengaged = GST_h5_C > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_5]
+    GST_h6_C_disengaged = GST_h6_C > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_6]
 
-    GST_h6_D_disengaged = torch.where(
-        GST_h6_D > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_6],
-        True,
-        False,
-    )
+    GST_h6_D_disengaged = GST_h6_D > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_6]
     GST_state_C = (GST_h5_B_disengaged & GST_h6_C_disengaged) | (
         GST_h6_D_disengaged & GST_h5_C_disengaged
     )
@@ -642,38 +602,17 @@ def compute_delta_l_s_jit(
     )
 
     # state decision logic
-    EDT2_h5_B_disengaged = torch.where(
-        EDT2_h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_5],
-        True,
-        False,
-    )
-    EDT2_h5_C_disengaged = torch.where(
-        EDT2_h5_C > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_5],
-        True,
-        False,
-    )
-    EDT2_h6_C_disengaged = torch.where(
-        EDT2_h6_C > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_6],
-        True,
-        False,
-    )
+    EDT2_h5_B_disengaged = EDT2_h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_5]
+    EDT2_h5_C_disengaged = EDT2_h5_C > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_5]
+    EDT2_h6_C_disengaged = EDT2_h6_C > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_6]
 
-    EDT2_h6_D_disengaged = torch.where(
-        EDT2_h6_D > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_6],
-        True,
-        False,
-    )
+    EDT2_h6_D_disengaged = EDT2_h6_D > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_6]
     EDT2_state_C = (EDT2_h5_B_disengaged & EDT2_h6_C_disengaged) | (
         EDT2_h6_D_disengaged & EDT2_h5_C_disengaged
     )
     EDT2_state_B = ~EDT2_state_C & EDT2_h5_B_disengaged
     EDT2_state_D = ~EDT2_state_C & EDT2_h6_D_disengaged
     EDT2_state_A = ~(EDT2_state_B | EDT2_state_C | EDT2_state_D)
-    EDT2_state_A = EDT2_state_A.to(torch.bool)
-    EDT2_state_B = EDT2_state_B.to(torch.bool)
-    EDT2_state_C = EDT2_state_C.to(torch.bool)
-    EDT2_state_D = EDT2_state_D.to(torch.bool)
-
     EDT2_L_s = torch.where(
         EDT2_state_A,
         EDT2_L_s_A,
@@ -959,27 +898,11 @@ class TendonManager:
             :, tids.I_RADIUS_GST_5
         ] - tendon_data.link_lengths[:, tids.I_LINK_56] * torch.cos(GST_phi_5_D)
 
-        GST_h5_B_disengaged = torch.where(
-            GST_h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_5],
-            True,
-            False,
-        )
-        GST_h5_C_disengaged = torch.where(
-            GST_h5_C > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_5],
-            True,
-            False,
-        )
-        GST_h6_C_disengaged = torch.where(
-            GST_h6_C > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_6],
-            True,
-            False,
-        )
+        GST_h5_B_disengaged = GST_h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_5]
+        GST_h5_C_disengaged = GST_h5_C > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_5]
+        GST_h6_C_disengaged = GST_h6_C > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_6]
 
-        GST_h6_D_disengaged = torch.where(
-            GST_h6_D > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_6],
-            True,
-            False,
-        )
+        GST_h6_D_disengaged = GST_h6_D > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_6]
         GST_state_C = (GST_h5_B_disengaged & GST_h6_C_disengaged) | (
             GST_h6_D_disengaged & GST_h5_C_disengaged
         )
@@ -1405,38 +1328,17 @@ class TendonManager:
         )
 
         # state decision logic
-        EDT2_h5_B_disengaged = torch.where(
-            EDT2_h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_5],
-            True,
-            False,
-        )
-        EDT2_h5_C_disengaged = torch.where(
-            EDT2_h5_C > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_5],
-            True,
-            False,
-        )
-        EDT2_h6_C_disengaged = torch.where(
-            EDT2_h6_C > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_6],
-            True,
-            False,
-        )
+        EDT2_h5_B_disengaged = EDT2_h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_5]
+        EDT2_h5_C_disengaged = EDT2_h5_C > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_5]
+        EDT2_h6_C_disengaged = EDT2_h6_C > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_6]
 
-        EDT2_h6_D_disengaged = torch.where(
-            EDT2_h6_D > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_6],
-            True,
-            False,
-        )
+        EDT2_h6_D_disengaged = EDT2_h6_D > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_6]
         EDT2_state_C = (EDT2_h5_B_disengaged & EDT2_h6_C_disengaged) | (
             EDT2_h6_D_disengaged & EDT2_h5_C_disengaged
         )
         EDT2_state_B = ~EDT2_state_C & EDT2_h5_B_disengaged
         EDT2_state_D = ~EDT2_state_C & EDT2_h6_D_disengaged
         EDT2_state_A = ~(EDT2_state_B | EDT2_state_C | EDT2_state_D)
-        EDT2_state_A = EDT2_state_A.to(torch.bool)
-        EDT2_state_B = EDT2_state_B.to(torch.bool)
-        EDT2_state_C = EDT2_state_C.to(torch.bool)
-        EDT2_state_D = EDT2_state_D.to(torch.bool)
-
         EDT2_L_s = torch.where(
             EDT2_state_A,
             EDT2_L_s_A,
@@ -1592,6 +1494,11 @@ class TendonManager:
             + EDT2_energy[EDT2_not_slack].sum()
         )
 
+        print("joint_angles requires_grad:", joint_angles.requires_grad)
+        print("GST_delta_L_s requires_grad:", GST_delta_L_s.requires_grad)
+        print("total_energy requires_grad:", total_energy.requires_grad)
+        print("total_energy grad_fn:", total_energy.grad_fn)
+
         tendon_torques = torch.autograd.grad(
             outputs=total_energy,
             inputs=joint_angles,
@@ -1621,14 +1528,36 @@ class TendonManager:
             dim=0,
         )  # q3, q4, q5, q6, (2*N_envs) x 4 joints
 
-        delta_L_s = compute_delta_l_s_jit(joint_angles, self.tendon_data_jit)
+        (
+            GST_delta_L_s,
+            DFT_delta_L_s,
+            KFT_delta_L_s,
+            EDT1_delta_L_s,
+            EDT2_delta_L_s,
+        ) = compute_delta_l_s_jit(joint_angles, self.tendon_data_jit)
 
-        not_slack = delta_L_s <= 0.0
+        GST_not_slack = GST_delta_L_s <= 0.0
+        DFT_not_slack = DFT_delta_L_s <= 0.0
+        KFT_not_slack = KFT_delta_L_s <= 0.0
+        EDT1_not_slack = EDT1_delta_L_s <= 0.0
+        EDT2_not_slack = EDT2_delta_L_s <= 0.0
 
-        energy = 0.5 * self.tendon_data.gst_stiffness * delta_L_s**2
+        GST_energy = 0.5 * self.tendon_data.gst_stiffness * GST_delta_L_s**2
+        DFT_energy = 0.5 * self.tendon_data.dft_stiffness * DFT_delta_L_s**2
+        KFT_energy = 0.5 * self.tendon_data.kft_stiffness * KFT_delta_L_s**2
+        EDT1_energy = 0.5 * self.tendon_data.edt1_stiffness * EDT1_delta_L_s**2
+        EDT2_energy = 0.5 * self.tendon_data.edt2_stiffness * EDT2_delta_L_s**2
+
+        total_energy = (
+            GST_energy[GST_not_slack].sum()
+            + DFT_energy[DFT_not_slack].sum()
+            + KFT_energy[KFT_not_slack].sum()
+            + EDT1_energy[EDT1_not_slack].sum()
+            + EDT2_energy[EDT2_not_slack].sum()
+        )
 
         tendon_torques = torch.autograd.grad(
-            outputs=energy[not_slack].sum(),
+            outputs=total_energy,
             inputs=joint_angles,
             create_graph=False,
             allow_unused=True,
