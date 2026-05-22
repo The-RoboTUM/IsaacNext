@@ -186,11 +186,14 @@ def main():
     # IsaacLab simulation setup
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
     sim_cfg.dt = 0.0024
-    t_total = 1.0  # 0.5  # 2.0
+    t_total = 4.0  # 0.5  # 2.0
     sim = SimulationContext(sim_cfg)
     sim.set_camera_view(  # pyright: ignore[reportAttributeAccessIssue]
         [2.0, 2.0, 2.0], [0.0, 0.0, 0.5]
     )  # Set camera view for recording
+
+    robot_cfg = FORREST_CFG.replace(prim_path="/World/Bot")
+    robot = Articulation(robot_cfg)
 
     # Add ground and light
     sim_utils.GroundPlaneCfg().func(
@@ -199,9 +202,6 @@ def main():
     sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func(
         "/World/Light", sim_utils.DomeLightCfg()
     )
-
-    robot_cfg = FORREST_CFG.replace(prim_path="/World/Bot")
-    robot = Articulation(robot_cfg)
 
     os.makedirs("outputs", exist_ok=True)
     if not args_cli.jit:
@@ -264,6 +264,32 @@ def main():
     robot.write_data_to_sim()
     sim.step()  # step once to load the robot
     robot.update(sim.get_physics_dt())
+
+    #
+    from pxr import UsdPhysics, Sdf, Gf
+    # Lock world_corrected rigid body to the world
+    stage = sim.stage  # SimulationContext stage
+
+    body_path = Sdf.Path("/World/Bot/world_corrected")
+    joint_path = Sdf.Path("/World/Bot/world_corrected_fixed_joint")
+
+    fixed_joint = UsdPhysics.FixedJoint.Define(stage, joint_path)
+
+    # Empty body0 = world
+    fixed_joint.CreateBody1Rel().SetTargets([body_path])
+
+    # world frame of the constraint
+    fixed_joint.CreateLocalPos0Attr(Gf.Vec3f(0.0, 0.0, 1.5))
+    fixed_joint.CreateLocalRot0Attr(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+
+    # local frame on world_corrected
+    fixed_joint.CreateLocalPos1Attr(Gf.Vec3f(0.0, 0.0, 0.0))
+    fixed_joint.CreateLocalRot1Attr(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+
+    # Optional: make sure collision between joined bodies is disabled
+    fixed_joint.CreateCollisionEnabledAttr(False)
+    #
+
     time.sleep(1)
     joint_indices_right, _ = robot.find_joints(joint_names_right, preserve_order=True)
     joint_indices_left, _ = robot.find_joints(joint_names_left, preserve_order=True)
