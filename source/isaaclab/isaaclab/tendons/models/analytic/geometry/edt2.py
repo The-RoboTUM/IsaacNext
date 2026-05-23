@@ -1,12 +1,36 @@
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import torch
 
 import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.tendons.models.analytic.geometry.common import TendonLengthOutput
+from isaaclab.tendons.models.analytic.geometry.kinematics import TendonCoordinates
+from isaaclab.tendons.models.analytic.geometry.shared import SharedTendonGeometry
+from isaaclab.tendons.models.analytic.tendon_data import TendonDataJIT
 
 
-def compute_edt2_delta_l(coords, geom, tendon_data, *, debug: bool = False) -> TendonLengthOutput:
+class EDT2DeltaCoreOutput(NamedTuple):
+    delta_l: torch.Tensor
+    EDT2_L_s: torch.Tensor
+    EDT2_state_A: torch.Tensor
+    EDT2_state_B: torch.Tensor
+    EDT2_state_C: torch.Tensor
+    EDT2_state_D: torch.Tensor
+    EDT2_L_s_A: torch.Tensor
+    EDT2_L_s_B: torch.Tensor
+    EDT2_L_s_C: torch.Tensor
+    EDT2_L_s_D: torch.Tensor
+
+
+@torch.jit.script
+def compute_edt2_delta_l_core(
+    coords: TendonCoordinates,
+    geom: SharedTendonGeometry,
+    tendon_data: TendonDataJIT,
+) -> EDT2DeltaCoreOutput:
+    """EDT2 spring-length delta shared by debug and JIT paths."""
     qhats = coords.qhats
 
     EDT2_L_s_A = (
@@ -45,11 +69,27 @@ def compute_edt2_delta_l(coords, geom, tendon_data, *, debug: bool = False) -> T
     )
     EDT2_delta_L_s = tendon_data.edt2_length - EDT2_L_s
 
+    return EDT2DeltaCoreOutput(
+        delta_l=EDT2_delta_L_s,
+        EDT2_L_s=EDT2_L_s,
+        EDT2_state_A=EDT2_state_A,
+        EDT2_state_B=EDT2_state_B,
+        EDT2_state_C=EDT2_state_C,
+        EDT2_state_D=EDT2_state_D,
+        EDT2_L_s_A=EDT2_L_s_A,
+        EDT2_L_s_B=EDT2_L_s_B,
+        EDT2_L_s_C=EDT2_L_s_C,
+        EDT2_L_s_D=EDT2_L_s_D,
+    )
+
+
+def compute_edt2_delta_l(coords, geom, tendon_data, *, debug: bool = False) -> TendonLengthOutput:
+    core = compute_edt2_delta_l_core(coords, geom, tendon_data)
     state = {
-        "EDT2_state_a": EDT2_state_A,
-        "EDT2_state_b": EDT2_state_B,
-        "EDT2_state_c": EDT2_state_C,
-        "EDT2_state_d": EDT2_state_D,
+        "EDT2_state_a": core.EDT2_state_A,
+        "EDT2_state_b": core.EDT2_state_B,
+        "EDT2_state_c": core.EDT2_state_C,
+        "EDT2_state_d": core.EDT2_state_D,
     }
     debug_info = None
     if debug:
@@ -93,11 +133,11 @@ def compute_edt2_delta_l(coords, geom, tendon_data, *, debug: bool = False) -> T
             "EDT2_q5_D": geom.EDT2_q5_D,
             "EDT2_phi_7_D": geom.EDT2_phi_7_D,
             "EDT2_h6_D": geom.EDT2_h6_D,
-            "EDT2_L_s_A": EDT2_L_s_A,
-            "EDT2_L_s_B": EDT2_L_s_B,
-            "EDT2_L_s_C": EDT2_L_s_C,
-            "EDT2_L_s_D": EDT2_L_s_D,
-            "EDT2_L_s": EDT2_L_s,
-            "EDT2_delta_L_s": EDT2_delta_L_s,
+            "EDT2_L_s_A": core.EDT2_L_s_A,
+            "EDT2_L_s_B": core.EDT2_L_s_B,
+            "EDT2_L_s_C": core.EDT2_L_s_C,
+            "EDT2_L_s_D": core.EDT2_L_s_D,
+            "EDT2_L_s": core.EDT2_L_s,
+            "EDT2_delta_L_s": core.delta_l,
         }
-    return TendonLengthOutput(delta_l=EDT2_delta_L_s, length=EDT2_L_s, state=state, debug=debug_info)
+    return TendonLengthOutput(delta_l=core.delta_l, length=core.EDT2_L_s, state=state, debug=debug_info)

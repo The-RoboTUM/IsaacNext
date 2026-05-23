@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from typing import NamedTuple
 
 import torch
 
 import isaaclab.tendons.models.analytic.indices as tids
+from isaaclab.tendons.models.analytic.tendon_data import TendonDataJIT
 
 
-@dataclass
-class TendonCoordinates:
-    """Coordinate tensors shared by all tendon length calculations."""
+class TendonCoordinates(NamedTuple):
+    """Coordinate tensors shared by all tendon length calculations.
+
+    NamedTuple keeps field access readable in eager debug code while remaining
+    usable from TorchScript.
+    """
 
     joint_angles: torch.Tensor
     joint_angles_signed: torch.Tensor
@@ -19,7 +23,8 @@ class TendonCoordinates:
     qhats: torch.Tensor
 
 
-def compute_tendon_coordinates(joint_angles: torch.Tensor, tendon_data) -> TendonCoordinates:
+@torch.jit.script
+def compute_tendon_coordinates(joint_angles: torch.Tensor, tendon_data: TendonDataJIT) -> TendonCoordinates:
     """Transform Isaac joint angles into the theta/q coordinates used by the tendon model."""
     joint_angles_signed = tendon_data.joint_directions * joint_angles
 

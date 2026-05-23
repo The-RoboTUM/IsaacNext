@@ -1,12 +1,33 @@
 from __future__ import annotations
 
+from typing import NamedTuple
+
+import torch
+
 import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.tendons.models.analytic.geometry.common import TendonLengthOutput
+from isaaclab.tendons.models.analytic.geometry.kinematics import TendonCoordinates
+from isaaclab.tendons.models.analytic.geometry.shared import SharedTendonGeometry
+from isaaclab.tendons.models.analytic.tendon_data import TendonDataJIT
+
+
+class KFTDeltaCoreOutput(NamedTuple):
+    delta_l: torch.Tensor
+
+
+@torch.jit.script
+def compute_kft_delta_l_core(
+    coords: TendonCoordinates,
+    geom: SharedTendonGeometry,
+    tendon_data: TendonDataJIT,
+) -> KFTDeltaCoreOutput:
+    """KFT spring-length delta shared by debug and JIT paths."""
+    KFT_delta_L_s = tendon_data.kft_length - geom.KFT_q8 * tendon_data.pulley_radii[:, tids.I_RADIUS_KFT_8] - geom.KFT_l_8c
+    return KFTDeltaCoreOutput(delta_l=KFT_delta_L_s)
 
 
 def compute_kft_delta_l(coords, geom, tendon_data, *, debug: bool = False) -> TendonLengthOutput:
-    del coords
-    KFT_delta_L_s = tendon_data.kft_length - geom.KFT_q8 * tendon_data.pulley_radii[:, tids.I_RADIUS_KFT_8] - geom.KFT_l_8c
+    core = compute_kft_delta_l_core(coords, geom, tendon_data)
     debug_info = None
     if debug:
         debug_info = {
@@ -14,6 +35,6 @@ def compute_kft_delta_l(coords, geom, tendon_data, *, debug: bool = False) -> Te
             "KFT_phi_8": geom.KFT_phi_8,
             "KFT_phi_8_a": geom.KFT_phi_8_a,
             "KFT_q8": geom.KFT_q8,
-            "KFT_delta_L_s": KFT_delta_L_s,
+            "KFT_delta_L_s": core.delta_l,
         }
-    return TendonLengthOutput(delta_l=KFT_delta_L_s, debug=debug_info)
+    return TendonLengthOutput(delta_l=core.delta_l, debug=debug_info)

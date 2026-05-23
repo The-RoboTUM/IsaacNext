@@ -15,7 +15,7 @@ from isaaclab.tendons.models.analytic.constants import (
     joint_names_right,
     hip_joint_names,
 )
-from isaaclab.tendons.legacy.tendon_manager import TendonManager
+from isaaclab.tendons.manager import TendonManager
 from isaaclab.tendons.models.analytic.tendon_data import TendonData
 import torch
 

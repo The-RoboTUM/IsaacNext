@@ -1,20 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from typing import NamedTuple
 
 import torch
 
 import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.tendons.models.analytic.geometry.common import angle_from_sws
 from isaaclab.tendons.models.analytic.geometry.kinematics import TendonCoordinates
+from isaaclab.tendons.models.analytic.tendon_data import TendonDataJIT
 
 
-@dataclass
-class SharedTendonGeometry:
+class SharedTendonGeometry(NamedTuple):
     """Intermediate geometric terms computed once and reused by tendon calculators.
 
-    The field names intentionally preserve the original variable names. This keeps the
-    refactor easy to validate against the old monolithic `compute_delta_l_s_jit`.
+    This NamedTuple is the single geometry payload used by both the eager debug
+    wrappers and the TorchScript path. Field names preserve the original
+    variable names to keep validation against old debug logs straightforward.
     """
 
     # GST shared terms
@@ -43,14 +44,12 @@ class SharedTendonGeometry:
     GST_phi_5_b: torch.Tensor
     GST_phi_5_D: torch.Tensor
     GST_h6_D: torch.Tensor
-
     # KFT shared terms
     KFT_l_8c_j_squared: torch.Tensor
     KFT_l_8c: torch.Tensor
     KFT_phi_8: torch.Tensor
     KFT_phi_8_a: torch.Tensor
     KFT_q8: torch.Tensor
-
     # EDT1 shared terms
     EDT1_x_c5_squared: torch.Tensor
     EDT1_x_c5: torch.Tensor
@@ -63,7 +62,6 @@ class SharedTendonGeometry:
     EDT1_phi_4_b: torch.Tensor
     EDT1_h5_B: torch.Tensor
     EDT1_l_cc: torch.Tensor
-
     # EDT2 shared terms
     EDT2_x_c5_squared: torch.Tensor
     EDT2_x_c5: torch.Tensor
@@ -111,11 +109,100 @@ class SharedTendonGeometry:
     EDT2_phi_7_D: torch.Tensor
     EDT2_h6_D: torch.Tensor
 
-    def as_debug_dict(self) -> dict[str, torch.Tensor]:
-        return self.__dict__.copy()
+
+def shared_geometry_as_debug_dict(geom: SharedTendonGeometry) -> dict[str, torch.Tensor]:
+    return {
+        "GST_x_4prime6_squared": geom.GST_x_4prime6_squared,
+        "GST_x_4prime6": geom.GST_x_4prime6,
+        "GST_l_4prime6_squared": geom.GST_l_4prime6_squared,
+        "GST_l_4prime6": geom.GST_l_4prime6,
+        "GST_phi_4prime_a": geom.GST_phi_4prime_a,
+        "GST_phi_4prime_b": geom.GST_phi_4prime_b,
+        "GST_phi_4prime_B": geom.GST_phi_4prime_B,
+        "GST_h5_B": geom.GST_h5_B,
+        "GST_theta_6_a": geom.GST_theta_6_a,
+        "GST_theta_6_b": geom.GST_theta_6_b,
+        "GST_x_4prime7_squared": geom.GST_x_4prime7_squared,
+        "GST_x_4prime7": geom.GST_x_4prime7,
+        "GST_phi_4prime_d": geom.GST_phi_4prime_d,
+        "GST_phi_4prime_c": geom.GST_phi_4prime_c,
+        "GST_phi_4prime_C": geom.GST_phi_4prime_C,
+        "GST_h5_C": geom.GST_h5_C,
+        "GST_h6_C": geom.GST_h6_C,
+        "GST_x_57_squared": geom.GST_x_57_squared,
+        "GST_x_57": geom.GST_x_57,
+        "GST_l_57_squared": geom.GST_l_57_squared,
+        "GST_l_57": geom.GST_l_57,
+        "GST_phi_5_a": geom.GST_phi_5_a,
+        "GST_phi_5_b": geom.GST_phi_5_b,
+        "GST_phi_5_D": geom.GST_phi_5_D,
+        "GST_h6_D": geom.GST_h6_D,
+        "KFT_l_8c_j_squared": geom.KFT_l_8c_j_squared,
+        "KFT_l_8c": geom.KFT_l_8c,
+        "KFT_phi_8": geom.KFT_phi_8,
+        "KFT_phi_8_a": geom.KFT_phi_8_a,
+        "KFT_q8": geom.KFT_q8,
+        "EDT1_x_c5_squared": geom.EDT1_x_c5_squared,
+        "EDT1_x_c5": geom.EDT1_x_c5,
+        "EDT1_phi_4_a": geom.EDT1_phi_4_a,
+        "EDT1_thetahat_5_a": geom.EDT1_thetahat_5_a,
+        "EDT1_l_c5_A": geom.EDT1_l_c5_A,
+        "EDT1_phi_45_A": geom.EDT1_phi_45_A,
+        "EDT1_q5_A": geom.EDT1_q5_A,
+        "EDT1_thetahat_5_b": geom.EDT1_thetahat_5_b,
+        "EDT1_phi_4_b": geom.EDT1_phi_4_b,
+        "EDT1_h5_B": geom.EDT1_h5_B,
+        "EDT1_l_cc": geom.EDT1_l_cc,
+        "EDT2_x_c5_squared": geom.EDT2_x_c5_squared,
+        "EDT2_x_c5": geom.EDT2_x_c5,
+        "EDT2_phi_4_a": geom.EDT2_phi_4_a,
+        "EDT2_thetahat_5_a": geom.EDT2_thetahat_5_a,
+        "EDT2_l_c5_A": geom.EDT2_l_c5_A,
+        "EDT2_phi_45_A": geom.EDT2_phi_45_A,
+        "EDT2_q5_A": geom.EDT2_q5_A,
+        "EDT2_x_64prime_squared": geom.EDT2_x_64prime_squared,
+        "EDT2_x_64prime": geom.EDT2_x_64prime,
+        "EDT2_phi_6_a": geom.EDT2_phi_6_a,
+        "EDT2_thetahat_4_a": geom.EDT2_thetahat_4_a,
+        "EDT2_thetahat_4_b": geom.EDT2_thetahat_4_b,
+        "EDT2_x_6c_squared": geom.EDT2_x_6c_squared,
+        "EDT2_x_6c": geom.EDT2_x_6c,
+        "EDT2_phi_6_d": geom.EDT2_phi_6_d,
+        "EDT2_l_c6_B": geom.EDT2_l_c6_B,
+        "EDT2_phi_6_c": geom.EDT2_phi_6_c,
+        "EDT2_phi_6_B": geom.EDT2_phi_6_B,
+        "EDT2_q6_B": geom.EDT2_q6_B,
+        "EDT2_h5_B": geom.EDT2_h5_B,
+        "EDT2_l_46_j_squared": geom.EDT2_l_46_j_squared,
+        "EDT2_l_46_j": geom.EDT2_l_46_j,
+        "EDT2_gamma_4": geom.EDT2_gamma_4,
+        "EDT2_gamma_6": geom.EDT2_gamma_6,
+        "EDT2_thetatilde_4": geom.EDT2_thetatilde_4,
+        "EDT2_x_c6_squared": geom.EDT2_x_c6_squared,
+        "EDT2_x_c6": geom.EDT2_x_c6,
+        "EDT2_phi_4_b": geom.EDT2_phi_4_b,
+        "EDT2_thetatilde_6": geom.EDT2_thetatilde_6,
+        "EDT2_thetatilde_6_a": geom.EDT2_thetatilde_6_a,
+        "EDT2_thetatilde_6_b": geom.EDT2_thetatilde_6_b,
+        "EDT2_l_cc_squared": geom.EDT2_l_cc_squared,
+        "EDT2_l_cc_C": geom.EDT2_l_cc_C,
+        "EDT2_phi_4_d": geom.EDT2_phi_4_d,
+        "EDT2_h6_C": geom.EDT2_h6_C,
+        "EDT2_h5_C": geom.EDT2_h5_C,
+        "EDT2_x_56_squared": geom.EDT2_x_56_squared,
+        "EDT2_x_56": geom.EDT2_x_56,
+        "EDT2_l_5c_D": geom.EDT2_l_5c_D,
+        "EDT2_phi_56_a": geom.EDT2_phi_56_a,
+        "EDT2_phi_56_b": geom.EDT2_phi_56_b,
+        "EDT2_phi_56": geom.EDT2_phi_56,
+        "EDT2_q5_D": geom.EDT2_q5_D,
+        "EDT2_phi_7_D": geom.EDT2_phi_7_D,
+        "EDT2_h6_D": geom.EDT2_h6_D,
+    }
 
 
-def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data) -> SharedTendonGeometry:
+@torch.jit.script
+def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: TendonDataJIT) -> SharedTendonGeometry:
     """Compute all reusable geometry terms once before tendon length calculations."""
     thetas = coords.thetas
     theta_hats = coords.theta_hats
@@ -344,5 +431,91 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data) -> Sh
     EDT2_phi_7_D = 1.5 * torch.pi - theta_hats[:, tids.I_THETA_ALL_6] - EDT2_phi_56
     EDT2_h6_D = tendon_data.link_lengths[:, tids.I_LINK_67] * torch.sin(EDT2_phi_7_D)
 
-    values = locals()
-    return SharedTendonGeometry(**{f.name: values[f.name] for f in fields(SharedTendonGeometry)})
+    return SharedTendonGeometry(
+        GST_x_4prime6_squared=GST_x_4prime6_squared,
+        GST_x_4prime6=GST_x_4prime6,
+        GST_l_4prime6_squared=GST_l_4prime6_squared,
+        GST_l_4prime6=GST_l_4prime6,
+        GST_phi_4prime_a=GST_phi_4prime_a,
+        GST_phi_4prime_b=GST_phi_4prime_b,
+        GST_phi_4prime_B=GST_phi_4prime_B,
+        GST_h5_B=GST_h5_B,
+        GST_theta_6_a=GST_theta_6_a,
+        GST_theta_6_b=GST_theta_6_b,
+        GST_x_4prime7_squared=GST_x_4prime7_squared,
+        GST_x_4prime7=GST_x_4prime7,
+        GST_phi_4prime_d=GST_phi_4prime_d,
+        GST_phi_4prime_c=GST_phi_4prime_c,
+        GST_phi_4prime_C=GST_phi_4prime_C,
+        GST_h5_C=GST_h5_C,
+        GST_h6_C=GST_h6_C,
+        GST_x_57_squared=GST_x_57_squared,
+        GST_x_57=GST_x_57,
+        GST_l_57_squared=GST_l_57_squared,
+        GST_l_57=GST_l_57,
+        GST_phi_5_a=GST_phi_5_a,
+        GST_phi_5_b=GST_phi_5_b,
+        GST_phi_5_D=GST_phi_5_D,
+        GST_h6_D=GST_h6_D,
+        KFT_l_8c_j_squared=KFT_l_8c_j_squared,
+        KFT_l_8c=KFT_l_8c,
+        KFT_phi_8=KFT_phi_8,
+        KFT_phi_8_a=KFT_phi_8_a,
+        KFT_q8=KFT_q8,
+        EDT1_x_c5_squared=EDT1_x_c5_squared,
+        EDT1_x_c5=EDT1_x_c5,
+        EDT1_phi_4_a=EDT1_phi_4_a,
+        EDT1_thetahat_5_a=EDT1_thetahat_5_a,
+        EDT1_l_c5_A=EDT1_l_c5_A,
+        EDT1_phi_45_A=EDT1_phi_45_A,
+        EDT1_q5_A=EDT1_q5_A,
+        EDT1_thetahat_5_b=EDT1_thetahat_5_b,
+        EDT1_phi_4_b=EDT1_phi_4_b,
+        EDT1_h5_B=EDT1_h5_B,
+        EDT1_l_cc=EDT1_l_cc,
+        EDT2_x_c5_squared=EDT2_x_c5_squared,
+        EDT2_x_c5=EDT2_x_c5,
+        EDT2_phi_4_a=EDT2_phi_4_a,
+        EDT2_thetahat_5_a=EDT2_thetahat_5_a,
+        EDT2_l_c5_A=EDT2_l_c5_A,
+        EDT2_phi_45_A=EDT2_phi_45_A,
+        EDT2_q5_A=EDT2_q5_A,
+        EDT2_x_64prime_squared=EDT2_x_64prime_squared,
+        EDT2_x_64prime=EDT2_x_64prime,
+        EDT2_phi_6_a=EDT2_phi_6_a,
+        EDT2_thetahat_4_a=EDT2_thetahat_4_a,
+        EDT2_thetahat_4_b=EDT2_thetahat_4_b,
+        EDT2_x_6c_squared=EDT2_x_6c_squared,
+        EDT2_x_6c=EDT2_x_6c,
+        EDT2_phi_6_d=EDT2_phi_6_d,
+        EDT2_l_c6_B=EDT2_l_c6_B,
+        EDT2_phi_6_c=EDT2_phi_6_c,
+        EDT2_phi_6_B=EDT2_phi_6_B,
+        EDT2_q6_B=EDT2_q6_B,
+        EDT2_h5_B=EDT2_h5_B,
+        EDT2_l_46_j_squared=EDT2_l_46_j_squared,
+        EDT2_l_46_j=EDT2_l_46_j,
+        EDT2_gamma_4=EDT2_gamma_4,
+        EDT2_gamma_6=EDT2_gamma_6,
+        EDT2_thetatilde_4=EDT2_thetatilde_4,
+        EDT2_x_c6_squared=EDT2_x_c6_squared,
+        EDT2_x_c6=EDT2_x_c6,
+        EDT2_phi_4_b=EDT2_phi_4_b,
+        EDT2_thetatilde_6=EDT2_thetatilde_6,
+        EDT2_thetatilde_6_a=EDT2_thetatilde_6_a,
+        EDT2_thetatilde_6_b=EDT2_thetatilde_6_b,
+        EDT2_l_cc_squared=EDT2_l_cc_squared,
+        EDT2_l_cc_C=EDT2_l_cc_C,
+        EDT2_phi_4_d=EDT2_phi_4_d,
+        EDT2_h6_C=EDT2_h6_C,
+        EDT2_h5_C=EDT2_h5_C,
+        EDT2_x_56_squared=EDT2_x_56_squared,
+        EDT2_x_56=EDT2_x_56,
+        EDT2_l_5c_D=EDT2_l_5c_D,
+        EDT2_phi_56_a=EDT2_phi_56_a,
+        EDT2_phi_56_b=EDT2_phi_56_b,
+        EDT2_phi_56=EDT2_phi_56,
+        EDT2_q5_D=EDT2_q5_D,
+        EDT2_phi_7_D=EDT2_phi_7_D,
+        EDT2_h6_D=EDT2_h6_D,
+    )

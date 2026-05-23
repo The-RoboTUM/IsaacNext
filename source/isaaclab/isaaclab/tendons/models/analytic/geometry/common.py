@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 import torch
 
@@ -40,8 +40,13 @@ class TendonDeltaLengths:
         return self.gst, self.dft, self.kft, self.edt1, self.edt2
 
 
+@torch.jit.script
 def angle_from_sws(a: torch.Tensor, b: torch.Tensor, theta: torch.Tensor) -> torch.Tensor:
-    """Angle helper used throughout the original tendon geometry equations."""
+    """Angle helper used throughout the tendon geometry equations.
+
+    This is deliberately TorchScript-compatible so the debug and JIT paths use
+    the exact same helper implementation.
+    """
     x = a - b * torch.cos(theta)
     y = b * torch.sin(theta)
     return torch.atan2(y, x)

@@ -1,12 +1,41 @@
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import torch
 
 import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.tendons.models.analytic.geometry.common import TendonLengthOutput
+from isaaclab.tendons.models.analytic.geometry.kinematics import TendonCoordinates
+from isaaclab.tendons.models.analytic.geometry.shared import SharedTendonGeometry
+from isaaclab.tendons.models.analytic.tendon_data import TendonDataJIT
 
 
-def compute_gst_delta_l(coords, geom, tendon_data, *, debug: bool = False) -> TendonLengthOutput:
+class GSTDeltaCoreOutput(NamedTuple):
+    delta_l: torch.Tensor
+    GST_state_A: torch.Tensor
+    GST_state_B: torch.Tensor
+    GST_state_C: torch.Tensor
+    GST_state_D: torch.Tensor
+    GST_q4: torch.Tensor
+    GST_q4prime: torch.Tensor
+    GST_q5_D: torch.Tensor
+    GST_q6_B: torch.Tensor
+    GST_l_4prime7: torch.Tensor
+    GST_lower_tendon_state_length_after_4prime: torch.Tensor
+
+
+@torch.jit.script
+def compute_gst_delta_l_core(
+    coords: TendonCoordinates,
+    geom: SharedTendonGeometry,
+    tendon_data: TendonDataJIT,
+) -> GSTDeltaCoreOutput:
+    """GST spring-length delta.
+
+    This tensor-only function is the single source of GST length math. The eager
+    debug wrapper below only packages its outputs into dictionaries.
+    """
     thetas = coords.thetas
     qs = coords.qs
 
@@ -90,23 +119,40 @@ def compute_gst_delta_l(coords, geom, tendon_data, *, debug: bool = False) -> Te
         - GST_q4 * tendon_data.pulley_radii[:, tids.I_RADIUS_GST_4]
     )
 
+    return GSTDeltaCoreOutput(
+        delta_l=GST_delta_L_s,
+        GST_state_A=GST_state_A,
+        GST_state_B=GST_state_B,
+        GST_state_C=GST_state_C,
+        GST_state_D=GST_state_D,
+        GST_q4=GST_q4,
+        GST_q4prime=GST_q4prime,
+        GST_q5_D=GST_q5_D,
+        GST_q6_B=GST_q6_B,
+        GST_l_4prime7=GST_l_4prime7,
+        GST_lower_tendon_state_length_after_4prime=GST_lower_tendon_state_length_after_4prime,
+    )
+
+
+def compute_gst_delta_l(coords, geom, tendon_data, *, debug: bool = False) -> TendonLengthOutput:
+    core = compute_gst_delta_l_core(coords, geom, tendon_data)
     state = {
-        "GST_state_a": GST_state_A,
-        "GST_state_b": GST_state_B,
-        "GST_state_c": GST_state_C,
-        "GST_state_d": GST_state_D,
+        "GST_state_a": core.GST_state_A,
+        "GST_state_b": core.GST_state_B,
+        "GST_state_c": core.GST_state_C,
+        "GST_state_d": core.GST_state_D,
     }
     debug_info = None
     if debug:
         debug_info = {
             **state,
-            "GST_delta_L_s": GST_delta_L_s,
-            "GST_q4": GST_q4,
-            "GST_q4prime": GST_q4prime,
-            "GST_q5_D": GST_q5_D,
-            "GST_q6_B": GST_q6_B,
-            "GST_l_4prime7": GST_l_4prime7,
-            "GST_lower_tendon_state_length_after_4prime": GST_lower_tendon_state_length_after_4prime,
+            "GST_delta_L_s": core.delta_l,
+            "GST_q4": core.GST_q4,
+            "GST_q4prime": core.GST_q4prime,
+            "GST_q5_D": core.GST_q5_D,
+            "GST_q6_B": core.GST_q6_B,
+            "GST_l_4prime7": core.GST_l_4prime7,
+            "GST_lower_tendon_state_length_after_4prime": core.GST_lower_tendon_state_length_after_4prime,
         }
 
-    return TendonLengthOutput(delta_l=GST_delta_L_s, state=state, debug=debug_info)
+    return TendonLengthOutput(delta_l=core.delta_l, state=state, debug=debug_info)

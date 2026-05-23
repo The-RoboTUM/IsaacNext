@@ -17,6 +17,11 @@ class TendonManager:
     The manager is intentionally model-agnostic: it can use the analytic model today
     and a neural-network energy model later, as long as the model implements
     `TendonEnergyModel.energy()`.
+
+    The public methods now make the execution mode explicit:
+      - ``compute_torques_debug`` / ``apply_debug``: eager path with debug info.
+      - ``compute_torques_jit`` / ``apply_jit``: TorchScript analytic path.
+      - ``compute_torques`` / ``apply``: preserves the previous eager behaviour.
     """
 
     def __init__(
@@ -30,7 +35,7 @@ class TendonManager:
     ):
         self.robot = robot
         self.device = robot.device
-        self.tendon_data = tendon_data if tendon_data is not None else TendonData(1, dummy_randomization)
+        self.tendon_data = tendon_data if tendon_data is not None else TendonData(robot.num_instances, dummy_randomization)
         self.model = model if model is not None else AnalyticTendonEnergyModel(self.tendon_data)
         self.robot_io = robot_io if robot_io is not None else TendonRobotIO(robot)
         self.torque_mapper = torque_mapper if torque_mapper is not None else TendonTorqueMapper(self.device)
@@ -43,20 +48,26 @@ class TendonManager:
         self.hip_static_joint_indices = self.robot_io.hip_static_joint_indices
         self.foot_link_indices = self.robot_io.foot_link_indices
 
-    def compute_torques(self, *, debug: bool = False):
-        batch_size = self.robot.num_instances
-        joint_angles = self.robot_io.get_leg_joint_angles(requires_grad=True)
-
-        output = self.model.energy(joint_angles, debug=debug)
+    def _compute_torques_from_energy(self, joint_angles: torch.Tensor, energy: torch.Tensor):
         tendon_torques = torch.autograd.grad(
-            outputs=output.energy,
+            outputs=energy,
             inputs=joint_angles,
             create_graph=False,
             allow_unused=False,
         )[0]
+        batch_size = self.robot.num_instances
+        return tendon_torques[:batch_size], tendon_torques[batch_size:]
 
-        left = tendon_torques[:batch_size]
-        right = tendon_torques[batch_size:]
+    def compute_torques(self, *, debug: bool = False):
+        """Eager torque computation.
+
+        Use this for validation and debugging.  Use ``compute_torques_jit`` for the
+        scripted simulation path.
+        """
+        joint_angles = self.robot_io.get_leg_joint_angles(requires_grad=True)
+
+        output = self.model.energy(joint_angles, debug=debug)
+        left, right = self._compute_torques_from_energy(joint_angles, output.energy)
 
         if debug:
             info = output.debug or {}
@@ -69,11 +80,23 @@ class TendonManager:
         return self.compute_torques(debug=True)
 
     def compute_torques_jit(self):
-        # Kept as a compatibility alias. The refactored implementation is eager
-        # PyTorch to allow the model interface to be swapped for a NN model.
-        return self.compute_torques(debug=False)
+        """TorchScript-backed torque computation.
+
+        The scripted part is the analytic energy/delta-length forward pass.  The
+        final gradient is intentionally left in eager PyTorch so autograd can
+        differentiate through the scripted graph.
+        """
+        joint_angles = self.robot_io.get_leg_joint_angles(requires_grad=True)
+        if hasattr(self.model, "energy_jit"):
+            energy = self.model.energy_jit(joint_angles)
+        else:
+            # Safe fallback for future non-analytic models that have not exposed
+            # a scripted forward path yet.
+            energy = self.model.energy(joint_angles, debug=False).energy
+        return self._compute_torques_from_energy(joint_angles, energy)
 
     def apply(self, *, debug: bool = False, virtual_ground_height: float | None = None):
+        """Eager apply path preserving the previous public behaviour."""
         batch_size = self.robot.num_instances
         if debug:
             left, right, info = self.compute_torques(debug=True)
@@ -94,5 +117,20 @@ class TendonManager:
     def apply_debug(self, virtual_ground_height: float | None = None):
         return self.apply(debug=True, virtual_ground_height=virtual_ground_height)
 
-    def apply_jit(self):
-        return self.apply(debug=False)
+    def apply_jit(self, *, virtual_ground_height: float | None = None):
+        """Apply torques using the JIT torque path.
+
+        External force construction remains in ``TendonRobotIO`` because it uses
+        Isaac Lab state and quaternion utilities.
+        """
+        batch_size = self.robot.num_instances
+        left, right = self.compute_torques_jit()
+        link_torques = self.torque_mapper.joint_to_link_torques_jit(left, right, batch_size=batch_size)
+        forces = self.robot_io.compute_external_forces(virtual_ground_height=virtual_ground_height)
+
+        self.robot.set_external_force_and_torque(
+            forces=forces,
+            torques=link_torques,
+            body_ids=self.link_indices_left_right,
+        )
+        return None
