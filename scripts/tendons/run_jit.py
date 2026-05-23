@@ -4,7 +4,6 @@
 print("Started")
 
 import argparse
-import json
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(
@@ -35,7 +34,7 @@ from isaaclab.assets import ArticulationCfg, Articulation
 from isaaclab.sim import SimulationContext
 
 
-from isaaclab.tendons.gst_manager import GSTTendonManager
+from isaaclab.tendons.legacy.gst_manager import GSTTendonManager
 
 # usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"
 usd_path = "symlinks/Forrest_URDF_no_self_collision/Forrest_URDF.usd"

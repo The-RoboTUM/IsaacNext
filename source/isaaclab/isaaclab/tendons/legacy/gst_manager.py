@@ -1,24 +1,20 @@
 """GST tendon manager implementation."""
-from math import isnan
 
-from isaaclab.utils.math import quat_apply_inverse, quat_rotate_inverse
-import numpy as np
+from isaaclab.utils.math import quat_apply_inverse
 import torch
 
 from isaaclab.assets.articulation import Articulation
-from isaaclab.tendons.constants import (
-    TendonConstantRandomizationRanges,
+from isaaclab.tendons.models.analytic.constants import (
     dummy_randomization,
     link_names_left,
     link_names_right,
     joint_names_left,
     joint_names_right,
-    N_CHAIN_LINKS_PER_LEG,
     JOINT_AXIS_IDX,
 )
-from isaaclab.tendons.tendon_data import TendonData, TendonDataJIT
+from isaaclab.tendons.models.analytic.tendon_data import TendonData, TendonDataJIT
 
-import isaaclab.tendons.indices as tids
+import isaaclab.tendons.models.analytic.indices as tids
 
 
 # todo comment

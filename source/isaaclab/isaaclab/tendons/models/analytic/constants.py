@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass, field
 
-import isaaclab.tendons.indices as tids
-from isaaclab.tendons.utils import list_from_dict
+import isaaclab.tendons.models.analytic.indices as tids
+from isaaclab.tendons.models.analytic.utils import list_from_dict
 import numpy as np
 import torch
 

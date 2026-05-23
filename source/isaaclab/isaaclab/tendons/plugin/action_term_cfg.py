@@ -1,10 +1,9 @@
 """Config class for the tendon action term."""
 
-from isaaclab.envs.manager_based_env import ManagerBasedEnv
 from isaaclab.managers.action_manager import ActionTerm
 from isaaclab.managers.manager_term_cfg import ActionTermCfg
-from isaaclab.tendons.constants import TendonConstantRandomizationRanges
-from isaaclab.tendons.action_term import TendonActionTerm, TendonActionTermHybrid
+from isaaclab.tendons.models.analytic.constants import TendonConstantRandomizationRanges
+from isaaclab.tendons.plugin.action_term import TendonActionTerm, TendonActionTermHybrid
 from isaaclab.utils import configclass
 
 @configclass

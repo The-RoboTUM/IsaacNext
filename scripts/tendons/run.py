@@ -26,7 +26,7 @@ args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
-from isaaclab.tendons.cpg import BirdBotCPGLeg, CPGParams
+from isaaclab.tendons.controllers.cpg import BirdBotCPGLeg, CPGParams
 import torch
 import numpy as np
 import cv2
@@ -34,25 +34,17 @@ import os
 import carb
 import time
 import isaaclab.sim as sim_utils
-from isaaclab.actuators.actuator_cfg import ImplicitActuatorCfg, IdealPDActuatorCfg
+from isaaclab.actuators.actuator_cfg import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg, Articulation
 from isaaclab.sim import SimulationContext
-from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
-from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
-from isaaclab.utils.math import quat_inv, quat_apply
 from isaaclab.sensors.camera import TiledCamera, TiledCameraCfg
 
-from isaaclab.tendons.constants import (
-    tids,
-    dummy_randomization,
-    link_names_left,
-    link_names_right,
+from isaaclab.tendons.models.analytic.constants import (
     joint_names_left,
     joint_names_right,
-    N_CHAIN_LINKS_PER_LEG,
 )
-from isaaclab.tendons.tendon_data import TendonData
-from isaaclab.tendons.tendon_manager import TendonManager
+# from isaaclab.tendons.tendon_manager import TendonManager
+from isaaclab.tendons.manager import TendonManager
 
 from isaaclab_assets.robots.forrest import FORREST_CFG
 

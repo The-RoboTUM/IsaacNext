@@ -15,18 +15,16 @@ import copy
 import json
 
 import matplotlib.pyplot as plt
-from matplotlib.path import Path
-from matplotlib import patches
 import numpy as np
 from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Circle
 
-from isaaclab.tendons.constants import (
+from isaaclab.tendons.models.analytic.constants import (
     tids,
     TendonConstants,
     dummy_randomization,
 )
-from isaaclab.tendons.tendon_data import TendonData
+from isaaclab.tendons.models.analytic.tendon_data import TendonData
 
 tc = TendonConstants()
 td = TendonData(1, dummy_randomization)

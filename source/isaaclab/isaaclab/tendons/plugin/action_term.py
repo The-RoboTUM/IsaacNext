@@ -1,12 +1,11 @@
 from __future__ import annotations
 """Tendon-based action term implementation."""
 
-from abc import abstractmethod
 from typing import Sequence
 from isaaclab.envs.manager_based_env import ManagerBasedEnv
 from isaaclab.managers.action_manager import ActionTerm
 # from isaaclab.tendons.action_term_cfg import TendonActionTermCfg
-from isaaclab.tendons.constants import (
+from isaaclab.tendons.models.analytic.constants import (
     tids,
     N_CHAIN_LINKS_PER_LEG, # NOTE: Changed from N_LINKS_PER_LEG
     JOINT_AXIS_IDX,
@@ -16,9 +15,8 @@ from isaaclab.tendons.constants import (
     joint_names_right,
     hip_joint_names,
 )
-from isaaclab.tendons.tendon_manager import TendonManager
-from isaaclab.tendons.tendon_data import TendonData
-from isaaclab.utils import configclass
+from isaaclab.tendons.legacy.tendon_manager import TendonManager
+from isaaclab.tendons.models.analytic.tendon_data import TendonData
 import torch
 
 

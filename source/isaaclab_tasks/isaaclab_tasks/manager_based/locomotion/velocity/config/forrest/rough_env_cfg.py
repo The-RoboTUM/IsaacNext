@@ -6,7 +6,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg, TerminationTermCfg
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
@@ -19,11 +19,10 @@ from isaaclab.sensors import ContactSensorCfg
 from isaaclab_assets import FORREST_CFG  # isort: skip
 
 from isaaclab.envs import ManagerBasedRLEnv
-from isaaclab.assets.articulation import Articulation
 
 # Experimental
-from isaaclab.tendons.action_term_cfg import TendonActionTermHybridCfg
-from isaaclab.tendons.constants import TendonConstantRandomizationRanges, actuated_joint_names
+from isaaclab.tendons.plugin.action_term_cfg import TendonActionTermHybridCfg
+from isaaclab.tendons.models.analytic.constants import TendonConstantRandomizationRanges, actuated_joint_names
 
 FEET_CFG = SceneEntityCfg(
     "robot",

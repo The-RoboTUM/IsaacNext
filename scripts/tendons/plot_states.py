@@ -8,7 +8,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-from isaaclab.tendons.constants_old import (
+from isaaclab.tendons.legacy.constants_old import (
     joint_names_left,
     joint_names_right,
 )

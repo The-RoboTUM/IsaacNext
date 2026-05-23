@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import torch
-import isaaclab.tendons.indices as tids
+import isaaclab.tendons.models.analytic.indices as tids
 
 dev = "cuda"
 

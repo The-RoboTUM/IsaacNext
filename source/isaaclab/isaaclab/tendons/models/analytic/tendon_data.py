@@ -1,9 +1,9 @@
 """Tendon data for parallel training."""
 
-from isaaclab.tendons.utils import list_from_dict
+from isaaclab.tendons.models.analytic.utils import list_from_dict
 import torch
 
-from isaaclab.tendons.constants import (
+from isaaclab.tendons.models.analytic.constants import (
     N_CHAIN_LINKS_PER_LEG,
     N_CONNECTOR_OFFSETS,
     N_Q_OFFSETS,
@@ -19,7 +19,7 @@ from isaaclab.tendons.constants import (
     dummy_randomization,
 )
 
-import isaaclab.tendons.indices as tids
+import isaaclab.tendons.models.analytic.indices as tids
 
 
 def same_sided_wrap(
@@ -113,6 +113,11 @@ class TendonDataJIT:
         self.tendon_tangency_angles = tendon_tangency_angles
 
 
+def as_tensor_on_device(x, device, dtype=torch.float32):
+    if torch.is_tensor(x):
+        return x.detach().clone().to(device=device, dtype=dtype)
+    return torch.tensor(x, device=device, dtype=dtype)
+
 # we compute theta offsets (all tendon thetas), q offsets, tendon section lengths, tendon tangency angles,
 # pulley radii,  link lengths (chain and connector)
 class TendonData:
@@ -144,7 +149,7 @@ class TendonData:
 
         pulley_radii = torch.stack(
             [
-                torch.tensor(tc.pulley_radii[i], device=dev)
+                as_tensor_on_device(tc.pulley_radii[i], dev)
                 + torch.empty(batch_size, device=dev).uniform_(
                     *randomization_ranges.pulley_radii[i]
                 )
@@ -156,7 +161,7 @@ class TendonData:
 
         chain_link_lengths = torch.stack(
             [
-                torch.tensor(tc.chain_link_lengths[i], device=dev)
+                as_tensor_on_device(tc.chain_link_lengths[i], dev)
                 + torch.empty(batch_size, device=dev).uniform_(
                     *randomization_ranges.chain_link_lengths[i]
                 )
@@ -168,7 +173,7 @@ class TendonData:
 
         connector_link_lengths_longitudinal = torch.stack(
             [
-                torch.tensor(tc.connector_link_lengths_longitudinal[i], device=dev)
+                as_tensor_on_device(tc.connector_link_lengths_longitudinal[i], dev)
                 + torch.empty(batch_size, device=dev).uniform_(
                     *randomization_ranges.connector_link_lengths_longitudinal[i]
                 )
@@ -183,7 +188,7 @@ class TendonData:
 
         connector_link_lengths_lateral = torch.stack(
             [
-                torch.tensor(tc.connector_link_lengths_lateral[i], device=dev)
+                as_tensor_on_device(tc.connector_link_lengths_lateral[i], dev)
                 + torch.empty(batch_size, device=dev).uniform_(
                     *randomization_ranges.connector_link_lengths_lateral[i]
                 )

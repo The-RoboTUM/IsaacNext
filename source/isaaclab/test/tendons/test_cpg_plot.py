@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from isaaclab.tendons.cpg import BirdBotCPGLeg, CPGParams
+from isaaclab.tendons.controllers.cpg import BirdBotCPGLeg, CPGParams
 
 
 def test_plot_cpg_angles_two_gait_cycles():
