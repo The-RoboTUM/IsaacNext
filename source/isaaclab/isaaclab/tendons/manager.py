@@ -48,6 +48,16 @@ class TendonManager:
         self.hip_static_joint_indices = self.robot_io.hip_static_joint_indices
         self.foot_link_indices = self.robot_io.foot_link_indices
 
+        # numerical damping for stability
+        self.tendon_damping = {
+            "gst": 1.0,
+            "dft": 1.0,
+            "kft": 1.0,
+            "edt1": 1.0,
+            "edt2": 1.0,
+        }
+        self._prev_delta_lengths = None
+
     def _compute_torques_from_energy(self, joint_angles: torch.Tensor, energy: torch.Tensor):
         if not torch.is_grad_enabled():
             raise RuntimeError("Cannot compute tendon torques: torch grad mode is disabled.")
@@ -71,7 +81,7 @@ class TendonManager:
         batch_size = self.robot.num_instances
         return tendon_torques[:batch_size], tendon_torques[batch_size:]
 
-    def compute_torques(self, *, debug: bool = False):
+    def compute_torques(self, *, debug: bool = False, dt: float = 0.0):
         """Differentiable eager torque computation.
 
         This path must stay eager because torques are computed as dE/dq using autograd.
@@ -81,7 +91,13 @@ class TendonManager:
             joint_angles = joint_angles.detach().clone().requires_grad_(True)
 
             output = self.model.energy(joint_angles, debug=debug)
-            left, right = self._compute_torques_from_energy(joint_angles, output.energy)
+
+            damping = self._damping_potential(output.delta_lengths, dt)
+            total_energy = output.energy + damping
+
+            left, right = self._compute_torques_from_energy(joint_angles, total_energy)
+
+            self._store_delta_lengths(output.delta_lengths)
 
         if debug:
             info = output.debug or {}
@@ -94,32 +110,45 @@ class TendonManager:
     def compute_torques_debug(self):
         return self.compute_torques(debug=True)
 
-    def compute_torques_jit(self):
-        """TorchScript-backed torque computation.
-
-        The scripted part is the analytic energy/delta-length forward pass.  The
-        final gradient is intentionally left in eager PyTorch so autograd can
-        differentiate through the scripted graph.
-        """
+    def compute_torques_jit(self, *, dt: float = 0.0):
+        """TorchScript-backed torque computation with tendon damping."""
         with torch.inference_mode(False), torch.enable_grad():
             joint_angles = self.robot_io.get_leg_joint_angles(requires_grad=True)
             joint_angles = joint_angles.detach().clone().requires_grad_(True)
-            if hasattr(self.model, "energy_jit"):
+
+            if hasattr(self.model, "energy_jit") and hasattr(self.model, "delta_lengths_jit"):
                 energy = self.model.energy_jit(joint_angles)
-            else:
-                # Safe fallback for future non-analytic models that have not exposed
-                # a scripted forward path yet.
-                energy = self.model.energy(joint_angles, debug=False).energy
 
-            return self._compute_torques_from_energy(joint_angles, energy)
+                delta_tuple = self.model.delta_lengths_jit(joint_angles)
+                deltas = self._delta_tuple_to_dict(delta_tuple)
 
-    def apply(self, *, debug: bool = False, virtual_ground_height: float | None = None):
+                damping = self._damping_potential(deltas, dt)
+                total_energy = energy + damping
+
+                left, right = self._compute_torques_from_energy(joint_angles, total_energy)
+
+                self._store_delta_lengths(deltas)
+
+                return left, right
+
+            # Fallback for non-analytic models.
+            output = self.model.energy(joint_angles, debug=False)
+            damping = self._damping_potential(output.delta_lengths, dt)
+            total_energy = output.energy + damping
+
+            left, right = self._compute_torques_from_energy(joint_angles, total_energy)
+
+            self._store_delta_lengths(output.delta_lengths)
+
+            return left, right
+
+    def apply(self, *, debug: bool = False, virtual_ground_height: float | None = None, dt: float = 0.0):
         """Eager apply path preserving the previous public behaviour."""
         batch_size = self.robot.num_instances
         if debug:
-            left, right, info = self.compute_torques(debug=True)
+            left, right, info = self.compute_torques(debug=True, dt=dt)
         else:
-            left, right = self.compute_torques(debug=False)
+            left, right = self.compute_torques(debug=False, dt=dt)
             info = None
 
         link_torques = self.torque_mapper.joint_to_link_torques(left, right, batch_size=batch_size)
@@ -132,17 +161,17 @@ class TendonManager:
         )
         return info
 
-    def apply_debug(self, virtual_ground_height: float | None = None):
-        return self.apply(debug=True, virtual_ground_height=virtual_ground_height)
+    def apply_debug(self, virtual_ground_height: float | None = None, dt: float = 0.0):
+        return self.apply(debug=True, virtual_ground_height=virtual_ground_height, dt=dt)
 
-    def apply_jit(self, *, virtual_ground_height: float | None = None):
+    def apply_jit(self, *, virtual_ground_height: float | None = None, dt: float = 0.0):
         """Apply torques using the JIT torque path.
 
         External force construction remains in ``TendonRobotIO`` because it uses
         Isaac Lab state and quaternion utilities.
         """
         batch_size = self.robot.num_instances
-        left, right = self.compute_torques_jit()
+        left, right = self.compute_torques_jit(dt=dt)
         link_torques = self.torque_mapper.joint_to_link_torques_jit(left, right, batch_size=batch_size)
         forces = self.robot_io.compute_external_forces(virtual_ground_height=virtual_ground_height)
 
@@ -152,3 +181,58 @@ class TendonManager:
             body_ids=self.link_indices_left_right,
         )
         return None
+
+    def _store_delta_lengths(self, deltas: dict[str, torch.Tensor]):
+        self._prev_delta_lengths = {
+            name: delta.detach().clone()
+            for name, delta in deltas.items()
+        }
+
+    def _damping_potential(
+            self,
+            deltas: dict[str, torch.Tensor],
+            dt: float,
+    ) -> torch.Tensor:
+        # First step: no velocity yet.
+        if self._prev_delta_lengths is None or dt <= 0.0:
+            return sum(delta.sum() * 0.0 for delta in deltas.values())
+
+        damping = None
+
+        for name, delta in deltas.items():
+            prev = self._prev_delta_lengths[name].to(
+                device=delta.device,
+                dtype=delta.dtype,
+            )
+
+            delta_dot = (delta.detach() - prev) / dt
+
+            # Match current slack logic: tendons are active when delta_l <= 0.
+            active = delta.detach() <= 0.0
+
+            c = torch.as_tensor(
+                self.tendon_damping[name],
+                device=delta.device,
+                dtype=delta.dtype,
+            )
+
+            coeff = - c * delta_dot * active
+
+            # Gradient of this gives: c * delta_dot * d(delta_l)/dq
+            term = (coeff.detach() * delta).sum()
+
+            damping = term if damping is None else damping + term
+
+        return damping
+
+    def _delta_tuple_to_dict(
+            self,
+            deltas: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    ) -> dict[str, torch.Tensor]:
+        return {
+            "gst": deltas[0],
+            "dft": deltas[1],
+            "kft": deltas[2],
+            "edt1": deltas[3],
+            "edt2": deltas[4],
+        }

@@ -20,7 +20,7 @@ from isaaclab.assets import ArticulationCfg
 # Configuration
 ##
 
-actuator_stiffness = 0
+actuator_stiffness = 200
 actuator_damping = 0.1
 
 """Configuration for RoboTUM's Forrest robot."""
@@ -45,7 +45,7 @@ FORREST_CFG = ArticulationCfg(
     ),
     soft_joint_pos_limit_factor=0.9,
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 1.5),
+        pos=(0.0, 0.0, 1.45),
         joint_pos={
             # Left leg
             "rp2_pantograph": 0.0,
@@ -115,7 +115,7 @@ FORREST_CFG = ArticulationCfg(
                     ],
                     effort_limit_sim=10.0e6,
                     velocity_limit_sim=100.0,
-                    stiffness=actuator_stiffness,
+                    stiffness=actuator_stiffness*10,
                     damping=actuator_damping,
                 ),
                 "knee_flex": ImplicitActuatorCfg(

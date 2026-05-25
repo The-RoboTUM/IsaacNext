@@ -73,7 +73,8 @@ from isaaclab.tendons.models.analytic.constants import joint_names_left, joint_n
 from isaaclab_assets.robots.forrest import FORREST_CFG
 
 USD_PATH = "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"
-VIRTUAL_GROUND_HEIGHT = 0.38
+# VIRTUAL_GROUND_HEIGHT = 0.38
+VIRTUAL_GROUND_HEIGHT = None
 SIM_DT = 0.0024
 
 # Enable this while hunting for autograd issues in the tendon model.
@@ -284,18 +285,18 @@ def make_cpg_legs() -> tuple[BirdBotCPGLeg, BirdBotCPGLeg]:
 def make_sinusoidal_legs() -> tuple[SinusoidalLegController, SinusoidalLegController]:
     """Create left/right sinusoidal controllers over the same logical DOFs."""
     common = dict(
-        f_hz=1.5,
+        f_hz=1.0,
         amplitude_deg={
             "hip_roll": 0.0,
             "hip_yaw": 0.0,
-            "hip_flexion": 0.0,
-            "knee_flexion": 0.0,
+            "hip_flexion": 45.0,
+            "knee_flexion": 75.0,
         },
         offset_deg={
             "hip_roll": 0.0,
             "hip_yaw": 0.0,
             "hip_flexion": 0.0,
-            "knee_flexion": 0.0,
+            "knee_flexion": -75.0,
         },
     )
 
@@ -314,8 +315,8 @@ def make_sinusoidal_legs() -> tuple[SinusoidalLegController, SinusoidalLegContro
             SinusoidalParams(
                 phi0=0.0,
                 phase_rad={
-                    "hip_flexion": 0.0,
-                    "knee_flexion": 0.0,
+                    "hip_flexion": 180.0,
+                    "knee_flexion": 180.0,
                 },
                 **common,
             )
@@ -339,7 +340,13 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
     print(f"Torch CUDA:        {torch.cuda.is_available()}")
     print(f"Physics dt:        {sim_cfg.dt:.6f} s")
     print(f"Duration:          {args.duration:.3f} s ({num_steps} steps)")
-    print(f"Virtual ground:    {VIRTUAL_GROUND_HEIGHT:.3f} m")
+    virtual_ground_str = (
+        "disabled"
+        if VIRTUAL_GROUND_HEIGHT is None
+        else f"{VIRTUAL_GROUND_HEIGHT:.3f} m"
+    )
+
+    print(f"Virtual ground:    {virtual_ground_str}")
     print(f"Video recording:   {'on' if args.record_video else 'off'}")
 
     if args.jit:
@@ -417,16 +424,15 @@ def main():
     camera, video_writer = setup_video_writer(args_cli, sim_cfg)
 
     sim.reset()
-    robot.write_joint_state_to_sim(
-        position=robot.data.default_joint_pos,
-        velocity=robot.data.default_joint_vel,
-    )
-    robot.write_data_to_sim()
+    add_fixed_world_joint(sim)
+    # robot.write_joint_state_to_sim(
+    #     position=robot.data.default_joint_pos,
+    #     velocity=robot.data.default_joint_vel,
+    # )
+    # robot.write_data_to_sim()
     sim.step()
     robot.update(sim.get_physics_dt())
-
-    add_fixed_world_joint(sim)
-    time.sleep(1)
+    time.sleep(0.1)
 
     joint_indices_right, _ = robot.find_joints(joint_names_right, preserve_order=True)
     joint_indices_left, _ = robot.find_joints(joint_names_left, preserve_order=True)
@@ -445,9 +451,9 @@ def main():
             debug_info = None
 
             if args_cli.jit:
-                tendon_manager.apply_jit(virtual_ground_height=VIRTUAL_GROUND_HEIGHT)
+                tendon_manager.apply_jit(virtual_ground_height=VIRTUAL_GROUND_HEIGHT, dt=SIM_DT)
             else:
-                debug_info = tendon_manager.apply_debug(virtual_ground_height=VIRTUAL_GROUND_HEIGHT)
+                debug_info = tendon_manager.apply_debug(virtual_ground_height=VIRTUAL_GROUND_HEIGHT, dt=SIM_DT)
                 data_left, data_right = leg_tensordict_to_python_dict(debug_info)
 
             commanded_positions = controller_command_tensor(
