@@ -126,18 +126,21 @@ all_joint_names_right = [
 class TendonConstants:
     """Fixed baseline mathematical constants for our tendon model: link lengths and pulley radii etc."""
 
-    gst_stiffness: float = 128e3  # FIXME: Reduced for simulation stability by 10x
+    gst_stiffness: float = 128e2 * 0 # FIXME: Reduced for simulation stability by 10x
+    dft_stiffness: float = 20e2 * 0 # FIXME: find out real value
+    edt1_stiffness: float = 20e2 * 0 # FIXME: find out real value
+    edt2_stiffness: float = 20e2 * 0  # FIXME: find out real value
+    kft_stiffness: float = 20e2 * 0  # FIXME: find out real value
+
+
     gst_spring_rest_length: float = 0.06
-    dft_stiffness: float = 20e4  # FIXME: find out real value
-    edt1_stiffness: float = 20e3  # FIXME: find out real value
-    edt2_stiffness: float = 20e3  # FIXME: find out real value
-    kft_stiffness: float = 20e4  # FIXME: find out real value
     upper_gst_length: float = 0.6367  # FIXME: measure correct value
     lower_gst_length: float = 0.6314  # FIXME: measure correct value
     dft_length: float = 0.345  # FIXME: measure correct value
     edt1_length: float = 0.55  # FIXME: measure correct value
     edt2_length: float = 0.66  # FIXME: measure correct value
     kft_length: float = 0.402  # FIXME: measure correct value
+
     joint_offsets_theta: torch.Tensor = (
         torch.deg2rad(  # between joint-to-joint links, offsets to raw joint angles
             torch.tensor(
@@ -239,11 +242,17 @@ class TendonConstants:
 class TendonConstantRandomizationRanges:
     """Ranges for randomizing tendon constants for sim-to-real transfer."""
 
-    gst_stiffness: tuple[float, float] = (-10e3, 10e3)
-    dft_stiffness: tuple[float, float] = (-10e3, 10e3)
-    edt1_stiffness: tuple[float, float] = (-100e3, 100e3)
-    edt2_stiffness: tuple[float, float] = (-100e3, 100e3)
-    kft_stiffness: tuple[float, float] = (-100e3, 100e3)
+    # gst_stiffness: tuple[float, float] = (-10e3, 10e3)
+    # dft_stiffness: tuple[float, float] = (-10e3, 10e3)
+    # edt1_stiffness: tuple[float, float] = (-100e3, 100e3)
+    # edt2_stiffness: tuple[float, float] = (-100e3, 100e3)
+    # kft_stiffness: tuple[float, float] = (-100e3, 100e3)
+
+    gst_stiffness: tuple[float, float] = (0.0, 0.0)
+    dft_stiffness: tuple[float, float] = (0.0, 0.0)
+    edt1_stiffness: tuple[float, float] = (0.0, 0.0)
+    edt2_stiffness: tuple[float, float] = (0.0, 0.0)
+    kft_stiffness: tuple[float, float] = (0.0, 0.0)
 
     dft_length: tuple[float, float] = (-0.005, 0.005)
     edt1_length: tuple[float, float] = (-0.005, 0.005)

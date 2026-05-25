@@ -13,7 +13,6 @@ import time
 from pathlib import Path
 
 from isaaclab.app import AppLauncher
-
 parser = argparse.ArgumentParser(description="Run the Forrest tendon simulation.")
 parser.add_argument("--jit", action="store_true", help="Use the TorchScript/JIT tendon path.")
 parser.add_argument("--record_video", action="store_true", help="Record video of the simulation.")
@@ -32,7 +31,7 @@ parser.add_argument(
 parser.add_argument(
     "--duration",
     type=float,
-    default=4.0,
+    default=2.0,
     help="Simulation duration in seconds.",
 )
 parser.add_argument(
@@ -40,6 +39,12 @@ parser.add_argument(
     type=int,
     default=100,
     help="Print one status line every N simulation steps.",
+)
+parser.add_argument(
+    "--controller",
+    choices=("cpg", "sin"),
+    default="cpg",
+    help="Leg controller to use for actuated joints.",
 )
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -55,7 +60,14 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.sensors.camera import TiledCamera, TiledCameraCfg
 from isaaclab.sim import SimulationContext
+from isaaclab.tendons.controllers.base import (
+    DOF_ORDER,
+    DOF_SIGN,
+    DOF_TO_ACTUATOR_GROUP,
+    LegControllerBase,
+)
 from isaaclab.tendons.controllers.cpg import BirdBotCPGLeg, CPGParams
+from isaaclab.tendons.controllers.sinusoidal import SinusoidalLegController, SinusoidalParams
 from isaaclab.tendons.manager import TendonManager
 from isaaclab.tendons.models.analytic.constants import joint_names_left, joint_names_right
 from isaaclab_assets.robots.forrest import FORREST_CFG
@@ -170,12 +182,153 @@ def add_fixed_world_joint(sim):
     fixed_joint.CreateCollisionEnabledAttr(False)
 
 
+
+def make_actuated_dof_specs(robot_cfg):
+    """Build target joint specs from FORREST_CFG.actuators.
+
+    run.py intentionally does not contain concrete joint names. The actual
+    joint regex/name strings come from the robot config actuator groups.
+    """
+    specs = []
+
+    for side_prefix, side_name in (("l", "left"), ("r", "right")):
+        for dof in DOF_ORDER:
+            actuator_group = DOF_TO_ACTUATOR_GROUP[dof]
+            actuator_cfg = robot_cfg.actuators[actuator_group]
+
+            matches = [
+                expr
+                for expr in actuator_cfg.joint_names_expr
+                if expr.startswith(side_prefix)
+            ]
+
+            if len(matches) != 1:
+                raise RuntimeError(
+                    f"Expected exactly one {side_name} joint expression for "
+                    f"controller DOF {dof!r} in actuator group {actuator_group!r}; "
+                    f"got {matches}"
+                )
+
+            specs.append(
+                {
+                    "side": side_name,
+                    "dof": dof,
+                    "joint_expr": matches[0],
+                    "sign": DOF_SIGN[dof],
+                }
+            )
+
+    return specs
+
+
+def find_actuated_joint_indices(robot, actuated_dof_specs):
+    joint_exprs = [spec["joint_expr"] for spec in actuated_dof_specs]
+    joint_indices, found_joint_names = robot.find_joints(joint_exprs, preserve_order=True)
+
+    if len(joint_indices) != len(joint_exprs):
+        raise RuntimeError(
+            f"Could not find all actuated joints. "
+            f"Requested: {joint_exprs}; found: {found_joint_names}"
+        )
+
+    print("Actuated controller DOFs:")
+    for spec, joint_name in zip(actuated_dof_specs, found_joint_names):
+        print(f"  {spec['side']:>5} {spec['dof']:<13} -> {joint_name}")
+
+    return joint_indices
+
+
+def controller_command_tensor(
+    *,
+    t: float,
+    left_controller: LegControllerBase,
+    right_controller: LegControllerBase,
+    actuated_dof_specs,
+    device,
+) -> torch.Tensor:
+    controllers = {
+        "left": left_controller,
+        "right": right_controller,
+    }
+
+    commands = []
+    for spec in actuated_dof_specs:
+        q, _qd = controllers[spec["side"]].joint(spec["dof"], t)
+        commands.append(spec["sign"] * q)
+
+    return torch.tensor([commands], dtype=torch.float32, device=device)
+
+
 def make_cpg_legs() -> tuple[BirdBotCPGLeg, BirdBotCPGLeg]:
     """Create left/right CPG controllers."""
     phi_0_combined_offset = np.pi / 2
-    left_params = CPGParams(phi0=-np.pi / 2 + phi_0_combined_offset, f_hz=2.5)
-    right_params = CPGParams(phi0=np.pi / 2 + phi_0_combined_offset, f_hz=2.5)
-    return BirdBotCPGLeg(left_params), BirdBotCPGLeg(right_params)
+
+    common = dict(
+        f_hz=1.5,
+        D=0.60,
+        A_h_deg=32.0,
+        O_h_deg=22.0,
+        A_k_deg=120.0,
+        S_f=0.02,
+        S_e=0.05,
+    )
+    left_params = CPGParams(phi0=-np.pi / 2 + phi_0_combined_offset, **common)
+    right_params = CPGParams(phi0=np.pi / 2 + phi_0_combined_offset, **common)
+
+    return (
+        BirdBotCPGLeg(left_params, include_knee=True),
+        BirdBotCPGLeg(right_params, include_knee=True),
+    )
+
+
+def make_sinusoidal_legs() -> tuple[SinusoidalLegController, SinusoidalLegController]:
+    """Create left/right sinusoidal controllers over the same logical DOFs."""
+    common = dict(
+        f_hz=1.5,
+        amplitude_deg={
+            "hip_roll": 0.0,
+            "hip_yaw": 0.0,
+            "hip_flexion": 0.0,
+            "knee_flexion": 0.0,
+        },
+        offset_deg={
+            "hip_roll": 0.0,
+            "hip_yaw": 0.0,
+            "hip_flexion": 0.0,
+            "knee_flexion": 0.0,
+        },
+    )
+
+    return (
+        SinusoidalLegController(
+            SinusoidalParams(
+                phi0=0.0,
+                phase_rad={
+                    "hip_flexion": 0.0,
+                    "knee_flexion": 0.0,
+                },
+                **common,
+            )
+        ),
+        SinusoidalLegController(
+            SinusoidalParams(
+                phi0=0.0,
+                phase_rad={
+                    "hip_flexion": 0.0,
+                    "knee_flexion": 0.0,
+                },
+                **common,
+            )
+        ),
+    )
+
+
+def make_leg_controllers(controller_name: str) -> tuple[LegControllerBase, LegControllerBase]:
+    if controller_name == "cpg":
+        return make_cpg_legs()
+    if controller_name == "sin":
+        return make_sinusoidal_legs()
+    raise ValueError(f"Unknown controller: {controller_name}")
 
 
 def print_startup_summary(args, sim_cfg, num_steps: int):
@@ -277,18 +430,11 @@ def main():
 
     joint_indices_right, _ = robot.find_joints(joint_names_right, preserve_order=True)
     joint_indices_left, _ = robot.find_joints(joint_names_left, preserve_order=True)
-    actuated_joint_indices, _ = robot.find_joints(
-        [
-            "l2_pseudo_acetabulofemoral_flexion",
-            "l8_knee_flexor",
-            "r2_pseudo_acetabulofemoral_flexion",
-            "r8_knee_flexor",
-        ],
-        preserve_order=True,
-    )
+    actuated_dof_specs = make_actuated_dof_specs(FORREST_CFG)
+    actuated_joint_indices = find_actuated_joint_indices(robot, actuated_dof_specs)
 
     tendon_manager = TendonManager(robot)
-    cpg_leg_left, cpg_leg_right = make_cpg_legs()
+    left_controller, right_controller = make_leg_controllers(args_cli.controller)
 
     mode_label = "jit" if args_cli.jit else "debug"
     wall_start = time.perf_counter()
@@ -304,19 +450,16 @@ def main():
                 debug_info = tendon_manager.apply_debug(virtual_ground_height=VIRTUAL_GROUND_HEIGHT)
                 data_left, data_right = leg_tensordict_to_python_dict(debug_info)
 
+            commanded_positions = controller_command_tensor(
+                t=t,
+                left_controller=left_controller,
+                right_controller=right_controller,
+                actuated_dof_specs=actuated_dof_specs,
+                device=robot.device,
+            )
+
             robot.set_joint_position_target(
-                torch.tensor(
-                    [
-                        [
-                            cpg_leg_left.hip_flex(t)[0],
-                            -cpg_leg_left.knee(t)[0],
-                            cpg_leg_right.hip_flex(t)[0],
-                            -cpg_leg_right.knee(t)[0],
-                        ]
-                    ],
-                    dtype=torch.float32,
-                    device=robot.device,
-                ),
+                commanded_positions,
                 joint_ids=actuated_joint_indices,
             )
 

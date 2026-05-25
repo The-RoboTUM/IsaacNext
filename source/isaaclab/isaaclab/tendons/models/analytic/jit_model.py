@@ -11,7 +11,7 @@ from isaaclab.tendons.models.analytic.geometry.common import angle_from_sws
 from isaaclab.tendons.models.analytic.geometry.lengths import compute_all_tendon_delta_lengths_jit
 from isaaclab.tendons.models.analytic.spring_energy import compute_spring_energy_from_delta_lengths
 from isaaclab.tendons.models.analytic.tendon_data import TendonDataJIT
-
+from isaaclab.tendons.models.analytic.utils import dbg_grad
 
 @torch.jit.script
 def compute_delta_l_s_jit(
@@ -63,11 +63,28 @@ def compute_analytic_tendon_energy_jit(
         EDT1_delta_L_s,
         EDT2_delta_L_s,
     ) = compute_delta_l_s_jit(joint_angles, tendon_data)
-    return tendon_energy_from_delta_lengths_jit(
+
+    (
+        total_energy,
+        GST_energy,
+        DFT_energy,
+        KFT_energy,
+        EDT1_energy,
+        EDT2_energy,
+    ) = tendon_energy_from_delta_lengths_jit(
         GST_delta_L_s,
         DFT_delta_L_s,
         KFT_delta_L_s,
         EDT1_delta_L_s,
         EDT2_delta_L_s,
         tendon_data,
+    )
+
+    return (
+        total_energy,
+        GST_energy,
+        DFT_energy,
+        KFT_energy,
+        EDT1_energy,
+        EDT2_energy,
     )

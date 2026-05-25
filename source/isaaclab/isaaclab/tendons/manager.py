@@ -49,31 +49,46 @@ class TendonManager:
         self.foot_link_indices = self.robot_io.foot_link_indices
 
     def _compute_torques_from_energy(self, joint_angles: torch.Tensor, energy: torch.Tensor):
+        if not torch.is_grad_enabled():
+            raise RuntimeError("Cannot compute tendon torques: torch grad mode is disabled.")
+
+        if not joint_angles.requires_grad:
+            raise RuntimeError("Cannot compute tendon torques: joint_angles.requires_grad is False.")
+
+        if not energy.requires_grad:
+            raise RuntimeError(
+                "Cannot compute tendon torques: energy.requires_grad is False. "
+                "Use the eager energy path, not energy_jit(), when computing torques by autograd."
+            )
+
         tendon_torques = torch.autograd.grad(
             outputs=energy,
             inputs=joint_angles,
             create_graph=False,
             allow_unused=False,
         )[0]
+
         batch_size = self.robot.num_instances
         return tendon_torques[:batch_size], tendon_torques[batch_size:]
 
     def compute_torques(self, *, debug: bool = False):
-        """Eager torque computation.
+        """Differentiable eager torque computation.
 
-        Use this for validation and debugging.  Use ``compute_torques_jit`` for the
-        scripted simulation path.
+        This path must stay eager because torques are computed as dE/dq using autograd.
         """
-        joint_angles = self.robot_io.get_leg_joint_angles(requires_grad=True)
+        with torch.inference_mode(False), torch.enable_grad():
+            joint_angles = self.robot_io.get_leg_joint_angles(requires_grad=True)
+            joint_angles = joint_angles.detach().clone().requires_grad_(True)
 
-        output = self.model.energy(joint_angles, debug=debug)
-        left, right = self._compute_torques_from_energy(joint_angles, output.energy)
+            output = self.model.energy(joint_angles, debug=debug)
+            left, right = self._compute_torques_from_energy(joint_angles, output.energy)
 
         if debug:
             info = output.debug or {}
             info["tendon_torques_left"] = left
             info["tendon_torques_right"] = right
             return left, right, info
+
         return left, right
 
     def compute_torques_debug(self):
@@ -86,14 +101,17 @@ class TendonManager:
         final gradient is intentionally left in eager PyTorch so autograd can
         differentiate through the scripted graph.
         """
-        joint_angles = self.robot_io.get_leg_joint_angles(requires_grad=True)
-        if hasattr(self.model, "energy_jit"):
-            energy = self.model.energy_jit(joint_angles)
-        else:
-            # Safe fallback for future non-analytic models that have not exposed
-            # a scripted forward path yet.
-            energy = self.model.energy(joint_angles, debug=False).energy
-        return self._compute_torques_from_energy(joint_angles, energy)
+        with torch.inference_mode(False), torch.enable_grad():
+            joint_angles = self.robot_io.get_leg_joint_angles(requires_grad=True)
+            joint_angles = joint_angles.detach().clone().requires_grad_(True)
+            if hasattr(self.model, "energy_jit"):
+                energy = self.model.energy_jit(joint_angles)
+            else:
+                # Safe fallback for future non-analytic models that have not exposed
+                # a scripted forward path yet.
+                energy = self.model.energy(joint_angles, debug=False).energy
+
+            return self._compute_torques_from_energy(joint_angles, energy)
 
     def apply(self, *, debug: bool = False, virtual_ground_height: float | None = None):
         """Eager apply path preserving the previous public behaviour."""

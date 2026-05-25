@@ -20,6 +20,9 @@ from isaaclab.assets import ArticulationCfg
 # Configuration
 ##
 
+actuator_stiffness = 0
+actuator_damping = 0.1
+
 """Configuration for RoboTUM's Forrest robot."""
 
 FORREST_CFG = ArticulationCfg(
@@ -80,64 +83,50 @@ FORREST_CFG = ArticulationCfg(
                         "rp1_pantograph",
                         "rp2_pantograph", # TODO: rename and create a new URDF
                     ],
-                    effort_limit_sim=1e9,
-                    velocity_limit_sim=1000.0,
+                    effort_limit_sim=1e6,
+                    velocity_limit_sim=100.0,
                     stiffness=128e3,
-                    damping=10.0,
+                    damping=0.1,
                 ),
-                # "hip": ImplicitActuatorCfg(
-                #     joint_names_expr=[
-                #         "r8_knee_flexor",
-                #         "l8_knee_flexor",
-                #         "r2_pseudo_acetabulofemoral_flexion",
-                #         "l2_pseudo_acetabulofemoral_flexion",
-                #         "r0_acetabulofemoral_roll",
-                #         "l0_acetabulofemoral_roll",
-                #         "r1_acetabulofemoral_lateral",
-                #         "l1_acetabulofemoral_lateral",
-                #     ],
-                #     effort_limit_sim=1.0e6,
-                #     stiffness=100.0,
-                #     damping=1.0,
                 "hip_swing": ImplicitActuatorCfg(
                     joint_names_expr=[
                         "r2_pseudo_acetabulofemoral_flexion",
                         "l2_pseudo_acetabulofemoral_flexion",
                     ],
-                    effort_limit_sim=10.0e9,
+                    effort_limit_sim=10.0e6,
                     velocity_limit_sim=100.0,
-                    stiffness=10000.0,
-                    damping=10.0,
+                    stiffness=actuator_stiffness,
+                    damping=actuator_damping,
                 ),
                 "hip_roll": ImplicitActuatorCfg(
                     joint_names_expr=[
                         "r0_acetabulofemoral_roll",
                         "l0_acetabulofemoral_roll",
                     ],
-                    effort_limit_sim=10.0e9,
+                    effort_limit_sim=10.0e6,
                     velocity_limit_sim=100.0,
-                    stiffness=10000.0,
-                    damping=10.0,
+                    stiffness=actuator_stiffness,
+                    damping=actuator_damping,
                 ),
                 "hip_lateral": ImplicitActuatorCfg(
                     joint_names_expr=[
                         "r1_acetabulofemoral_lateral",
                         "l1_acetabulofemoral_lateral",
                     ],
-                    effort_limit_sim=10.0e9,
+                    effort_limit_sim=10.0e6,
                     velocity_limit_sim=100.0,
-                    stiffness=10000.0,
-                    damping=10.0,
+                    stiffness=actuator_stiffness,
+                    damping=actuator_damping,
                 ),
                 "knee_flex": ImplicitActuatorCfg(
                     joint_names_expr=[
                         "r8_knee_flexor",
                         "l8_knee_flexor",
                     ],
-                    effort_limit_sim=10.0,
+                    effort_limit_sim=10.0e6,
                     velocity_limit_sim=100.0,
-                    stiffness=10000.0,
-                    damping=10.0,
+                    stiffness=actuator_stiffness,
+                    damping=actuator_damping,
                 ),
             },
 )

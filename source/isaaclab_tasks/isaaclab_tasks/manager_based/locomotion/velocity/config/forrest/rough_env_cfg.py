@@ -1,11 +1,11 @@
-
+import math
 
 # Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import RewardTermCfg as RewTerm, TerminationTermCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
@@ -19,6 +19,7 @@ from isaaclab.sensors import ContactSensorCfg
 from isaaclab_assets import FORREST_CFG  # isort: skip
 
 from isaaclab.envs import ManagerBasedRLEnv
+import torch
 
 # Experimental
 from isaaclab.tendons.plugin.action_term_cfg import TendonActionTermHybridCfg
@@ -29,22 +30,24 @@ FEET_CFG = SceneEntityCfg(
     body_names=("s45_digit_assy_1", "s45_digit_assy_2"),
 )
 
-import torch
-# from isaaclab.utils import torch as torch_utils
+FOOT_CONNECTOR_CFG = SceneEntityCfg(
+    "robot",
+    body_names=("s34_foot_connector_assy_1", "s34_foot_connector_assy_2"),
+)
 
 def quat_to_rot_matrix(q: torch.Tensor) -> torch.Tensor:
     """Convert quaternions (wxyz) to rotation matrices."""
     # q: [N, 4] in (x, y, z, w) order (check Isaac Lab ordering!)
     x, y, z, w = q.unbind(-1)
     # rotation matrix components
-    xx, yy, zz = x*x, y*y, z*z
-    xy, xz, yz = x*y, x*z, y*z
-    wx, wy, wz = w*x, w*y, w*z
+    xx, yy, zz = x * x, y * y, z * z
+    xy, xz, yz = x * y, x * z, y * z
+    wx, wy, wz = w * x, w * y, w * z
 
     rot = torch.stack([
-        1 - 2*(yy + zz), 2*(xy - wz),     2*(xz + wy),
-        2*(xy + wz),     1 - 2*(xx + zz), 2*(yz - wx),
-        2*(xz - wy),     2*(yz + wx),     1 - 2*(xx + yy),
+        1 - 2 * (yy + zz), 2 * (xy - wz),     2 * (xz + wy),
+        2 * (xy + wz),     1 - 2 * (xx + zz), 2 * (yz - wx),
+        2 * (xz - wy),     2 * (yz + wx),     1 - 2 * (xx + yy),
     ], dim=-1)
     rot = rot.view(-1, 3, 3)
     return rot
@@ -86,7 +89,7 @@ def feet_symmetry_penalty(
         }
 
     # get base-frame foot positions
-    pos_b, _ = get_feet_pose_base(env, asset_cfg) # this is in the robotic body frame
+    pos_b, _ = get_feet_pose_base(env, asset_cfg)  # this is in the robotic body frame
     x = pos_b[:, :, 0]
 
     # indicators
@@ -105,9 +108,19 @@ def feet_symmetry_penalty(
 
     return penalty
 
+def terminate_if_base_too_low(env, minimum_height: float = 0.8):
+    # Torch tensor: (num_envs, num_bodies, 3)
+    body_pos = env.scene["robot"].data.body_pos_w
+
+    # z-coordinate of base body (index 0 or use name lookup)
+    base_z = body_pos[:, 0, 2]  # shape (num_envs,)
+
+    # return a torch.BoolTensor mask
+    return base_z < minimum_height
+
 @configclass
 class ForrestRewards(RewardsCfg):
- #   Reward terms for the MDP.
+     # Reward terms for the MDP.
 
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
     track_lin_vel_xy_exp = RewTerm(
@@ -171,15 +184,32 @@ class ForrestRewards(RewardsCfg):
         weight=-1.0,
         params={
             "asset_cfg": FEET_CFG,
-            "alpha":0.001,
+            "alpha": 0.001,
         },
+    )
+
+    foot_connector_contact = RewTerm(
+         func=mdp.undesired_contacts,
+         weight=-1.0,
+         params={
+             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=FOOT_CONNECTOR_CFG.body_names),
+             "threshold": 1.0,
+         },
     )
 
 @configclass
 class ForrestActionsCfg:
-    joint_pos = mdp.JointPositionActionCfg(asset_name="robot",
-                                           joint_names=actuated_joint_names, scale=0.5,
-                                           use_default_offset=True)
+    joint_pos = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=actuated_joint_names,
+        scale={
+            ".*roll": math.radians(30),
+            ".*lateral": math.radians(20),
+            ".*flexion": math.radians(90),
+            ".*flexor": math.radians(60),
+        },
+        use_default_offset=True,
+    )
     tendon = TendonActionTermHybridCfg(
         asset_name="robot",
         randomization_ranges=TendonConstantRandomizationRanges(
@@ -217,7 +247,7 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         #     track_air_time=True,
         # )
         self.scene.contact_forces = ContactSensorCfg(
-            prim_path="{ENV_REGEX_NS}/forrest_urdf_latest/(s45_digit_assy_1|s45_digit_assy_2|world_corrected|outside_hip_v2_assy_axial_left_1|outside_hip_v2_assy_axial_1)",
+            prim_path="{ENV_REGEX_NS}/forrest_urdf_latest/(s45_digit_assy_1|s45_digit_assy_2|base_assy_v2_1|outside_hip_v2_assy_axial_left_1|outside_hip_v2_assy_axial_1|differential_cage_assy_small_motor_1|differential_cage_assy_small_motor_2|s34_foot_connector_assy_1|s34_foot_connector_assy_2)",
             update_period=0.0,  # update every sim step
             history_length=6,
             debug_vis=False,
@@ -267,31 +297,30 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             ],
         )
 
-        # DOF torques penalty
-        # self.rewards.dof_torques_l2.weight = -1.5e-7
-        self.rewards.dof_torques_l2.weight = 0.0
+        # DOF torques penalty for actuated joints.
+        self.rewards.dof_torques_l2.weight = -1.5e-7
         self.rewards.dof_torques_l2.params["asset_cfg"] = SceneEntityCfg(
             "robot",
-            joint_names=[
-                "l0_acetabulofemoral_roll",
-                "l1_acetabulofemoral_lateral",
-                "l2_pseudo_acetabulofemoral_flexion",
-                "r0_acetabulofemoral_roll",
-                "r1_acetabulofemoral_lateral",
-                "r2_pseudo_acetabulofemoral_flexion",
-            ],
+            joint_names=actuated_joint_names,
         )
 
         # Commands
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
 
         # terminations
-        self.terminations.base_contact.params["sensor_cfg"].body_names = ("world_corrected",
+        self.terminations.base_contact.params["sensor_cfg"].body_names = ("base_assy_v2_1",
+                                                                          "differential_cage_assy_small_motor_1",
+                                                                          "differential_cage_assy_small_motor_2",
                                                                           "outside_hip_v2_assy_axial_1",
                                                                           "outside_hip_v2_assy_axial_left_1"
                                                                           )
+
+        self.terminations.base_too_low = TerminationTermCfg(
+                                             func=terminate_if_base_too_low,
+                                             params={"minimum_height": 0.5},
+                                         )
 
         # # DEBUG
         # self.observations.policy.enable_corruption = False
@@ -327,6 +356,4 @@ class ForrestRoughEnvCfg_PLAY(ForrestRoughEnvCfg):
         # remove random pushing
         self.events.base_external_force_torque = None
         self.events.push_robot = None
-
-
 
