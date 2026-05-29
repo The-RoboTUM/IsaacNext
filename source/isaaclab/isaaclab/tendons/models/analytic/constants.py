@@ -33,7 +33,7 @@ N_QHAT_OFFSETS: int = (
 )
 
 N_TENDON_TANGENCY_ANGLES: int = (
-    8  # number of fixed tendon tangency angles used in the computation
+    9  # number of fixed tendon tangency angles used in the computation
 )
 
 JOINT_AXIS_IDX: int = 0  # axis index for joint torques around x-axis
@@ -101,7 +101,7 @@ actuated_joint_names = [
     "r1_acetabulofemoral_lateral",
     "r2_pseudo_acetabulofemoral_flexion",
     "l8_knee_flexor",
-    "r8_knee_flexor"
+    "r8_knee_flexor",
 ]
 
 all_joint_names_right = [
@@ -126,12 +126,11 @@ all_joint_names_right = [
 class TendonConstants:
     """Fixed baseline mathematical constants for our tendon model: link lengths and pulley radii etc."""
 
-    gst_stiffness: float = 128e1 * 1 # FIXME: Reduced for simulation stability by 10x
-    dft_stiffness: float = 20e2 * 0 # FIXME: find out real value
-    edt1_stiffness: float = 20e4 * 1 # FIXME: find out real value
+    gst_stiffness: float = 128e1 * 1  # FIXME: Reduced for simulation stability by 10x
+    dft_stiffness: float = 20e2 * 0  # FIXME: find out real value
+    edt1_stiffness: float = 20e4 * 1  # FIXME: find out real value
     edt2_stiffness: float = 20e4 * 1  # FIXME: find out real value
     kft_stiffness: float = 20e4 * 1  # FIXME: find out real value
-
 
     gst_spring_rest_length: float = 0.06
     upper_gst_length: float = 0.6367  # FIXME: measure correct value

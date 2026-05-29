@@ -507,7 +507,7 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
     if edt2_state == "a" or edt2_state == "d":
         phi4 = data["EDT2_phi_4_a"] + np.pi / 2 - data["EDT2_phi_45_A"]
     elif edt2_state == "b":
-        # 3pi = (2pi - theta5) + (2pi - theta4) + phi6 + pi/2
+        # 3pi = (2pi - theta5) + (2pi - theta4) + phi6 + pi/2 + phi4
         phi4 = (
             -1.5 * np.pi
             - data["EDT2_phi_6_B"]

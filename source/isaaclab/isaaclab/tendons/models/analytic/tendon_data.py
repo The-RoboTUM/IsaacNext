@@ -118,6 +118,7 @@ def as_tensor_on_device(x, device, dtype=torch.float32):
         return x.detach().clone().to(device=device, dtype=dtype)
     return torch.tensor(x, device=device, dtype=dtype)
 
+
 # we compute theta offsets (all tendon thetas), q offsets, tendon section lengths, tendon tangency angles,
 # pulley radii,  link lengths (chain and connector)
 class TendonData:
@@ -398,6 +399,7 @@ class TendonData:
                     tids.I_TENDON_TANGENCY_ANGLE_DFT_6C_J6: dft_phi_6c_j6,
                     tids.I_TENDON_TANGENCY_ANGLE_EDT1_5C_J5: edt1_phi_5c_jc,
                     tids.I_TENDON_TANGENCY_ANGLE_EDT2_56_J5: edt2_phi_56_j5,
+                    tids.I_TENDON_TANGENCY_ANGLE_EDT2_67_J6: edt2_phi_6c_j6,
                 },
                 N_TENDON_TANGENCY_ANGLES,
             ),
