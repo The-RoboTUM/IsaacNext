@@ -1489,6 +1489,7 @@ class KinematicChainAnimator:
                 self.edt2_h_6_line,
                 self.edt2_x_c5_line,
                 self.edt2_x_c6_line,
+                self.edt2_x_46_line,
                 self.edt2_x_5c_line,
             ]
         )
