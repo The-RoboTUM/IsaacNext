@@ -50,6 +50,32 @@ class SharedTendonGeometry(NamedTuple):
     KFT_phi_8: torch.Tensor
     KFT_phi_8_a: torch.Tensor
     KFT_q8: torch.Tensor
+    # DFT shared terms
+    DFT_phi_4_a: torch.Tensor
+    DFT_x_c6_squared: torch.Tensor
+    DFT_x_c6: torch.Tensor
+    DFT_l_c6_squared: torch.Tensor
+    DFT_l_c6: torch.Tensor
+    DFT_phi_4_b: torch.Tensor
+    DFT_phi_4_B: torch.Tensor
+    DFT_phi_6_B: torch.Tensor
+    DFT_q_6_B: torch.Tensor
+    DFT_h5_B: torch.Tensor
+    DFT_theta_6_a: torch.Tensor
+    DFT_theta_6_b: torch.Tensor
+    DFT_l_c7_squared: torch.Tensor
+    DFT_phi_4_d: torch.Tensor
+    DFT_phi_4_C: torch.Tensor
+    DFT_h5_C: torch.Tensor
+    DFT_h6_C: torch.Tensor
+    DFT_x_57_squared: torch.Tensor
+    DFT_x_57: torch.Tensor
+    DFT_l_57_squared: torch.Tensor
+    DFT_l_57: torch.Tensor
+    DFT_phi_5_a: torch.Tensor
+    DFT_phi_5_b: torch.Tensor
+    DFT_phi_5_D: torch.Tensor
+    DFT_h6_D: torch.Tensor
     # EDT1 shared terms
     EDT1_x_c5_squared: torch.Tensor
     EDT1_x_c5: torch.Tensor
@@ -144,6 +170,31 @@ def shared_geometry_as_debug_dict(
         "KFT_phi_8": geom.KFT_phi_8,
         "KFT_phi_8_a": geom.KFT_phi_8_a,
         "KFT_q8": geom.KFT_q8,
+        "DFT_phi_4_a": geom.DFT_phi_4_a,
+        "DFT_x_c6_squared": geom.DFT_x_c6_squared,
+        "DFT_x_c6": geom.DFT_x_c6,
+        "DFT_l_c6_squared": geom.DFT_l_c6_squared,
+        "DFT_l_c6": geom.DFT_l_c6,
+        "DFT_phi_4_b": geom.DFT_phi_4_b,
+        "DFT_phi_4_B": geom.DFT_phi_4_B,
+        "DFT_phi_6_B": geom.DFT_phi_6_B,
+        "DFT_q_6_B": geom.DFT_q_6_B,
+        "DFT_h5_B": geom.DFT_h5_B,
+        "DFT_theta_6_a": geom.DFT_theta_6_a,
+        "DFT_theta_6_b": geom.DFT_theta_6_b,
+        "DFT_l_c7_squared": geom.DFT_l_c7_squared,
+        "DFT_phi_4_d": geom.DFT_phi_4_d,
+        "DFT_phi_4_C": geom.DFT_phi_4_C,
+        "DFT_h5_C": geom.DFT_h5_C,
+        "DFT_h6_C": geom.DFT_h6_C,
+        "DFT_x_57_squared": geom.DFT_x_57_squared,
+        "DFT_x_57": geom.DFT_x_57,
+        "DFT_l_57_squared": geom.DFT_l_57_squared,
+        "DFT_l_57": geom.DFT_l_57,
+        "DFT_phi_5_a": geom.DFT_phi_5_a,
+        "DFT_phi_5_b": geom.DFT_phi_5_b,
+        "DFT_phi_5_D": geom.DFT_phi_5_D,
+        "DFT_h6_D": geom.DFT_h6_D,
         "EDT1_x_c5_squared": geom.EDT1_x_c5_squared,
         "EDT1_x_c5": geom.EDT1_x_c5,
         "EDT1_phi_4_a": geom.EDT1_phi_4_a,
@@ -320,6 +371,74 @@ def compute_shared_tendon_geometry(
     )
     KFT_q8 = thetas[:, tids.I_THETA_KFT_8] - KFT_phi_8 + KFT_phi_8_a
 
+    # ---------------- DFT -----------------
+    # shared between state B and D
+    DFT_phi_4_a = angle_from_sws(
+        tendon_data.link_lengths[:, tids.I_LINK_DFT_C5],
+        tendon_data.link_lengths[:, tids.I_LINK_56],
+        thetas[:, tids.I_THETA_DFT_5],
+    )
+    DFT_x_c6_squared = (
+        tendon_data.link_lengths_squared[:, tids.I_LINK_DFT_C5]
+        + tendon_data.link_lengths_squared[:, tids.I_LINK_56]
+        - 2
+        * tendon_data.link_lengths[:, tids.I_LINK_DFT_C5]
+        * tendon_data.link_lengths[:, tids.I_LINK_56]
+        * torch.cos(thetas[:, tids.I_THETA_DFT_5])
+    )
+    DFT_x_c6 = torch.sqrt(DFT_x_c6_squared)
+
+    # state B
+    DFT_l_c6_squared = (
+        DFT_x_c6_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_DFT_6]
+    )
+    DFT_l_c6 = torch.sqrt(DFT_l_c6_squared)
+    DFT_phi_4_b = torch.atan2(
+        tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_6], DFT_l_c6
+    )
+    DFT_phi_4_B = DFT_phi_4_a + DFT_phi_4_b
+    DFT_phi_6_B = torch.pi * 1.5 - DFT_phi_4_B - thetas[:, tids.I_THETA_DFT_5]
+    DFT_q_6_B = (
+        thetas[:, tids.I_THETA_ALL_6]
+        - DFT_phi_6_B
+        - tendon_data.tendon_tangency_angles[:, tids.I_TENDON_TANGENCY_ANGLE_DFT_6C_J6]
+    )
+    DFT_h5_B = tendon_data.link_lengths[:, tids.I_LINK_DFT_C5] * torch.sin(DFT_phi_4_B)
+
+    # state C
+    DFT_theta_6_a = torch.pi - thetas[:, tids.I_THETA_DFT_5] - DFT_phi_4_a
+    DFT_theta_6_b = thetas[:, tids.I_THETA_ALL_6] - DFT_theta_6_a
+    DFT_l_c7_squared = (
+        DFT_x_c6_squared
+        + tendon_data.link_lengths_squared[:, tids.I_LINK_67]
+        - 2
+        * DFT_x_c6
+        * tendon_data.link_lengths[:, tids.I_LINK_67]
+        * torch.cos(DFT_theta_6_b)
+    )
+    DFT_phi_4_d = angle_from_sws(
+        DFT_x_c6, tendon_data.link_lengths[:, tids.I_LINK_67], torch.cos(DFT_theta_6_b)
+    )
+    DFT_phi_4_C = DFT_phi_4_a + DFT_phi_4_d
+    DFT_h5_C = tendon_data.link_lengths[:, tids.I_LINK_DFT_C5] * torch.sin(DFT_phi_4_C)
+    DFT_h6_C = DFT_x_c6 * torch.sin(DFT_phi_4_d)
+
+    # state D
+    DFT_x_57_squared = GST_x_57_squared
+    DFT_x_57 = GST_x_57
+    DFT_l_57_squared = (
+        DFT_x_57_squared - tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_5] ** 2
+    )
+    DFT_l_57 = torch.sqrt(DFT_l_57_squared)
+    DFT_phi_5_a = GST_phi_5_a
+    DFT_phi_5_b = torch.acos(
+        tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_5] / DFT_x_57
+    )
+    DFT_phi_5_D = DFT_phi_5_a + DFT_phi_5_b
+    DFT_h6_D = tendon_data.pulley_radii[
+        :, tids.I_RADIUS_DFT_5
+    ] - tendon_data.link_lengths[:, tids.I_LINK_56] * torch.cos(DFT_phi_5_D)
+
     # ---------------- EDT1 ----------------
     EDT1_x_c5_squared = (
         tendon_data.link_lengths_squared[:, tids.I_LINK_EDT1_C4]
@@ -421,11 +540,6 @@ def compute_shared_tendon_geometry(
         * torch.cos(EDT2_thetahat_4_b)
     )
     EDT2_x_6c = torch.sqrt(EDT2_x_6c_squared)
-    # EDT2_phi_6_d = angle_from_sws(
-    #     EDT2_x_6c,
-    #     tendon_data.link_lengths[:, tids.I_LINK_EDT2_C4],
-    #     EDT2_thetahat_4_b,
-    # )
     EDT2_phi_6_d = angle_from_sws(
         EDT2_x_64prime,
         tendon_data.link_lengths[:, tids.I_LINK_EDT2_C4],
@@ -562,6 +676,31 @@ def compute_shared_tendon_geometry(
         KFT_phi_8=KFT_phi_8,
         KFT_phi_8_a=KFT_phi_8_a,
         KFT_q8=KFT_q8,
+        DFT_phi_4_a=DFT_phi_4_a,
+        DFT_x_c6_squared=DFT_x_c6_squared,
+        DFT_x_c6=DFT_x_c6,
+        DFT_l_c6_squared=DFT_l_c6_squared,
+        DFT_l_c6=DFT_l_c6,
+        DFT_phi_4_b=DFT_phi_4_b,
+        DFT_phi_4_B=DFT_phi_4_B,
+        DFT_phi_6_B=DFT_phi_6_B,
+        DFT_q_6_B=DFT_q_6_B,
+        DFT_h5_B=DFT_h5_B,
+        DFT_theta_6_a=DFT_theta_6_a,
+        DFT_theta_6_b=DFT_theta_6_b,
+        DFT_l_c7_squared=DFT_l_c7_squared,
+        DFT_phi_4_d=DFT_phi_4_d,
+        DFT_phi_4_C=DFT_phi_4_C,
+        DFT_h5_C=DFT_h5_C,
+        DFT_h6_C=DFT_h6_C,
+        DFT_x_57_squared=DFT_x_57_squared,
+        DFT_x_57=DFT_x_57,
+        DFT_l_57_squared=DFT_l_57_squared,
+        DFT_l_57=DFT_l_57,
+        DFT_phi_5_a=DFT_phi_5_a,
+        DFT_phi_5_b=DFT_phi_5_b,
+        DFT_phi_5_D=DFT_phi_5_D,
+        DFT_h6_D=DFT_h6_D,
         EDT1_x_c5_squared=EDT1_x_c5_squared,
         EDT1_x_c5=EDT1_x_c5,
         EDT1_phi_4_a=EDT1_phi_4_a,

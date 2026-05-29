@@ -395,7 +395,7 @@ class TendonData:
                     tids.I_TENDON_TANGENCY_ANGLE_GST_4PRIME5_J4: gst_phi_4prime5_j4,
                     tids.I_TENDON_TANGENCY_ANGLE_GST_4PRIME5_J5: gst_phi_4prime5_j5,
                     tids.I_TENDON_TANGENCY_ANGLE_GST_67_J6: gst_phi_67_j6,
-                    tids.I_TENDON_TANGENCY_ANGLE_DFT_56_J5: dft_phi_56_j5,
+                    tids.I_TENDON_TANGENCY_ANGLE_DFT_C5_J5: dft_phi_c5_j5,
                     tids.I_TENDON_TANGENCY_ANGLE_DFT_6C_J6: dft_phi_6c_j6,
                     tids.I_TENDON_TANGENCY_ANGLE_EDT1_5C_J5: edt1_phi_5c_jc,
                     tids.I_TENDON_TANGENCY_ANGLE_EDT2_56_J5: edt2_phi_56_j5,
