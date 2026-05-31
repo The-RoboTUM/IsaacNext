@@ -56,6 +56,23 @@ def get_gst_state(data):
         raise ValueError(f"GST: no state is true")
 
 
+def get_dft_state(data):
+    state_a = data["DFT_state_A"]
+    state_b = data["DFT_state_B"]
+    state_c = data["DFT_state_C"]
+    state_d = data["DFT_state_D"]
+    if state_a:
+        return "a"
+    elif state_b:
+        return "b"
+    elif state_c:
+        return "c"
+    elif state_d:
+        return "d"
+    else:
+        raise ValueError(f"DFT: no state is true")
+
+
 def get_edt1_state(data):
     state_a = data["EDT1_state_a"]
     state_b = data["EDT1_state_b"]
@@ -343,9 +360,9 @@ def compute_kft_points(alpha_8, joint_locations, data, r8):
 
 
 def compute_dft_points(alphas, joint_locations, data, r5, r6):
-    [_j2, _j3, _j4, j5, j6, p7] = joint_locations
+    [_j2, _j3, j4, j5, j6, p7] = joint_locations
     alpha_2, alpha_3, alpha_4, alpha_5, alpha_6, alpha_8 = alphas
-
+    dft_state = get_dft_state(data)
     # starting point is from j5 going offset length to j4 and orthogonally
     pc5 = j5 - rotate_by(
         alpha_4,
@@ -362,58 +379,118 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
         tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_DFT_C5].item(),
         tc.connector_link_lengths_longitudinal[tids.I_CONNECTOR_LINK_DFT_C5].item(),
     )
-    gamma_c5 = np.arcsin(
-        tc.pulley_radii[tids.I_RADIUS_DFT_5].item()
-        / np.sqrt(
-            tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_DFT_C5].item() ** 2
-            + tc.connector_link_lengths_longitudinal[
-                tids.I_CONNECTOR_LINK_DFT_C5
-            ].item()
-            ** 2
-        )
-    )
 
+    # initial direction
+    if dft_state == "a" or dft_state == "d":
+        gamma_c5 = np.arcsin(
+            tc.pulley_radii[tids.I_RADIUS_DFT_5].item()
+            / np.sqrt(
+                tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_DFT_C5].item()
+                ** 2
+                + tc.connector_link_lengths_longitudinal[
+                    tids.I_CONNECTOR_LINK_DFT_C5
+                ].item()
+                ** 2
+            )
+        )
+    elif dft_state == "b":
+        gamma_c5 = data["DFT_phi_4_B"]
+    elif dft_state == "c":
+        gamma_c5 = data["DFT_phi_4_C"]
     direction_angle = alpha_4 + theta_c5 - gamma_c5
 
-    p5_i = pc5 + rotate_by(
-        direction_angle,
-        np.array(
-            [
-                td.tendon_section_lengths[
-                    0, tids.I_TENDON_SECTION_LENGTH_DFT_C5
-                ].item(),
-                0.0,
-            ]
-        ),
-    )
+    if dft_state == "a":
+        p5_i = pc5 + rotate_by(
+            direction_angle,
+            np.array(
+                [
+                    td.tendon_section_lengths[
+                        0, tids.I_TENDON_SECTION_LENGTH_DFT_C5
+                    ].item(),
+                    0.0,
+                ]
+            ),
+        )
 
-    q5 = data["qs"][tids.I_Q_DFT_5]
+        q5 = data["qs"][tids.I_Q_DFT_5]
 
-    p5_o = j5 + rotate_by(
-        q5,
-        p5_i - j5,
-    )
-    direction_angle += q5
-    p6_i = p5_o + rotate_by(
-        direction_angle,
-        np.array(
-            [
-                td.tendon_section_lengths[
-                    0, tids.I_TENDON_SECTION_LENGTH_DFT_56
-                ].item(),
-                0.0,
-            ]
-        ),
-    )
-    q6 = data["qs"][tids.I_Q_DFT_6]
-    p6_o = j6 + rotate_by(
-        q6,
-        p6_i - j6,
-    )
+        p5_o = j5 + rotate_by(
+            q5,
+            p5_i - j5,
+        )
+        direction_angle += q5
+        p6_i = p5_o + rotate_by(
+            direction_angle,
+            np.array(
+                [
+                    td.tendon_section_lengths[
+                        0, tids.I_TENDON_SECTION_LENGTH_DFT_56
+                    ].item(),
+                    0.0,
+                ]
+            ),
+        )
+        q6 = data["qs"][tids.I_Q_DFT_6]
+        p6_o = j6 + rotate_by(
+            q6,
+            p6_i - j6,
+        )
 
-    tendon_points = [pc5, p5_i, p5_o, p6_i, p6_o, p7]
-    tendon_joints = [j5, j6]
-    q_positives = [q5 >= 0, q6 >= 0]
+        tendon_points = [pc5, p5_i, p5_o, p6_i, p6_o, p7]
+        tendon_joints = [j5, j6]
+        q_positives = [q5 >= 0, q6 >= 0]
+
+    elif dft_state == "b":
+        p6_i = pc5 + rotate_by(
+            direction_angle,
+            np.array(
+                [
+                    data["DFT_l_c6"],
+                    0.0,
+                ]
+            ),
+        )
+        q6 = data["DFT_q6_B"]
+        p6_o = j6 + rotate_by(
+            q6,
+            p6_i - j6,
+        )
+
+        tendon_points = [pc5, p6_i, p6_o, p7]
+        tendon_joints = [j6]
+        q_positives = [q6 >= 0]
+    elif dft_state == "c":
+        p7 = pc5 + rotate_by(
+            direction_angle, np.array([np.sqrt(data["DFT_l_c7_squared"]), 0.0])
+        )
+        tendon_points = [pc5, p7]
+        tendon_joints = []
+        q_positives = []
+    elif dft_state == "d":
+        p5_i = pc5 + rotate_by(
+            direction_angle,
+            np.array(
+                [
+                    td.tendon_section_lengths[
+                        0, tids.I_TENDON_SECTION_LENGTH_DFT_C5
+                    ].item(),
+                    0.0,
+                ]
+            ),
+        )
+        q5 = data["DFT_q5_D"]
+        p5_o = j5 + rotate_by(
+            q5,
+            p5_i - j5,
+        )
+        direction_angle += q5
+        p7 = p5_o + rotate_by(
+            direction_angle,
+            np.array([data["DFT_l_57"], 0.0]),
+        )
+        tendon_points = [pc5, p5_i, p5_o, p7]
+        tendon_joints = [j5]
+        q_positives = [q5 >= 0]
 
     return tendon_points, tendon_joints, q_positives
 
@@ -851,6 +928,42 @@ class KinematicChainAnimator:
         (self.dft_tendon_line,) = self.ax[0, 1].plot(
             [], [], "-", linewidth=2, label="Lower Tendon", color="orange"
         )
+        (self.dft_x_c6_line,) = self.ax[0, 1].plot(
+            [],
+            [],
+            linestyle="solid",
+            color="grey",
+            linewidth=2,
+            label="x4'6",
+            alpha=helper_line_alpha,
+        )
+        (self.dft_x_57_line,) = self.ax[0, 1].plot(
+            [],
+            [],
+            linestyle="solid",
+            color="grey",
+            linewidth=2,
+            label="x57",
+            alpha=helper_line_alpha,
+        )
+        (self.dft_h_5_line,) = self.ax[0, 1].plot(
+            [],
+            [],
+            linestyle="solid",
+            color="grey",
+            linewidth=2,
+            label="h5",
+            alpha=helper_line_alpha,
+        )
+        (self.dft_h_6_line,) = self.ax[0, 1].plot(
+            [],
+            [],
+            linestyle="solid",
+            color="grey",
+            linewidth=2,
+            label="h6",
+            alpha=helper_line_alpha,
+        )
 
         # EDT1 lines
         (self.edt1_tendon_line,) = self.ax[1, 0].plot(
@@ -1285,11 +1398,76 @@ class KinematicChainAnimator:
             alphas,
             joints,
             current_data,
-            tc.pulley_radii[tids.I_RADIUS_DFT_6].item(),
+            tc.pulley_radii[tids.I_RADIUS_DFT_5].item(),
             tc.pulley_radii[tids.I_RADIUS_DFT_6].item(),
         )
+
+        # Draw helper lines for DFT
+        dft_state = get_dft_state(current_data)
+        if dft_state == "a":
+            self.dft_h_5_line.set_data([], [])
+            self.dft_h_6_line.set_data([], [])
+            self.dft_x_c6_line.set_data([], [])
+            self.dft_x_57_line.set_data([], [])
+        elif dft_state == "b":
+            dft_h_5_end_point = compute_h_end_point(
+                dft_points[0],
+                dft_points[1],
+                j5,
+                current_data["DFT_h5_B"],
+            )
+            self.dft_h_5_line.set_data(
+                [j5[0], dft_h_5_end_point[0]], [j5[1], dft_h_5_end_point[1]]
+            )
+            self.dft_h_6_line.set_data([], [])
+            self.dft_x_c6_line.set_data(
+                [dft_points[0][0], j6[0]], [dft_points[0][1], j6[1]]
+            )
+            self.dft_x_57_line.set_data([], [])
+        elif dft_state == "d":
+            dft_h_6_end_point = compute_h_end_point(
+                dft_points[-2],
+                dft_points[-1],
+                j6,
+                current_data["DFT_h6_D"],
+            )
+            self.dft_h_5_line.set_data([], [])
+            self.dft_h_6_line.set_data(
+                [j6[0], dft_h_6_end_point[0]], [j6[1], dft_h_6_end_point[1]]
+            )
+            self.dft_x_c6_line.set_data([], [])
+            self.dft_x_57_line.set_data([j5[0], p7[0]], [j5[1], p7[1]])
+        elif dft_state == "c":
+            dft_h_5_end_point = compute_h_end_point(
+                dft_points[0],
+                dft_points[1],
+                j5,
+                current_data["DFT_h5_C"],
+            )
+            dft_h_6_end_point = compute_h_end_point(
+                dft_points[0],
+                dft_points[1],
+                j6,
+                current_data["DFT_h6_C"],
+            )
+            self.dft_h_5_line.set_data(
+                [j5[0], dft_h_5_end_point[0]], [j5[1], dft_h_5_end_point[1]]
+            )
+            self.dft_h_6_line.set_data(
+                [j6[0], dft_h_6_end_point[0]], [j6[1], dft_h_6_end_point[1]]
+            )
+            self.dft_x_c6_line.set_data(
+                [dft_points[0][0], j6[0]], [dft_points[0][1], j6[1]]
+            )
+            self.dft_x_57_line.set_data([], [])
+
+        # Draw DFT tendon
         dft_xs, dft_ys = self.tendon_path_general(
-            dft_points, dft_joints, dft_q_positives, [True, True], start_with_arc=False
+            dft_points,
+            dft_joints,
+            dft_q_positives,
+            [True, True],
+            start_with_arc=False,
         )
         self.dft_tendon_line.set_data(dft_xs, dft_ys)
 
@@ -1491,6 +1669,12 @@ class KinematicChainAnimator:
                 self.edt2_x_c6_line,
                 self.edt2_x_46_line,
                 self.edt2_x_5c_line,
+            ]
+            + [
+                self.dft_x_57_line,
+                self.dft_x_c6_line,
+                self.dft_h_5_line,
+                self.dft_h_6_line,
             ]
         )
         return artists
