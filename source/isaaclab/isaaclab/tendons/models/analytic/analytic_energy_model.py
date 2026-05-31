@@ -56,13 +56,11 @@ class AnalyticTendonEnergyModel(TendonEnergyModel):
         if debug:
             debug_info = {
                 **(delta_output.debug or {}),
-
                 "GST_not_slack": spring.active_masks["gst"],
                 "DFT_not_slack": spring.active_masks["dft"],
                 "KFT_not_slack": spring.active_masks["kft"],
                 "EDT1_not_slack": spring.active_masks["edt1"],
                 "EDT2_not_slack": spring.active_masks["edt2"],
-
                 "GST_energy": spring.per_tendon_energy["gst"],
                 "DFT_energy": spring.per_tendon_energy["dft"],
                 "KFT_energy": spring.per_tendon_energy["kft"],

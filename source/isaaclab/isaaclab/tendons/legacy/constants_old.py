@@ -195,9 +195,7 @@ class TendonConstants:
     b_23 = 0.11104  # distance from end of spring to joint 3
     a_23 = 0.0594097  # distance from other attachment point of pantograph on l23 to end of spring
     c_23 = 0.14  # distance from joint 3 to other attachment point of pantograph on l23
-    angle_4prime5_to_j44prime = np.deg2rad(
-        124.069
-    )  # angle between link 4'5 and line from joint 4 to 4-4' transition
+    angle_4prime5_to_j44prime = np.deg2rad(124.069)  # angle between link 4'5 and line from joint 4 to 4-4' transition
     dft_attachment_point_to_j5 = 0.08  # FIXME: measure correct value
     dft_limit_angle_theta5 = float(np.deg2rad(190))
     dft_limit_angle_theta6 = float(np.deg2rad(240))
@@ -363,9 +361,7 @@ class TendonData:
         joint_offsets_theta = torch.stack(
             [
                 tc.joint_offsets_theta[i]
-                + torch.empty(batch_size, device=dev).uniform_(
-                    *randomization_ranges.joint_offsets_theta[i]
-                )
+                + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.joint_offsets_theta[i])
                 for i in range(N_JOINTS)
             ],
             dim=1,
@@ -374,9 +370,7 @@ class TendonData:
         pulley_radii = torch.stack(
             [
                 torch.tensor(tc.pulley_radii[i], device=dev)
-                + torch.empty(batch_size, device=dev).uniform_(
-                    *randomization_ranges.pulley_radii[i]
-                )
+                + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.pulley_radii[i])
                 for i in range(N_RADII)
             ],
             dim=1,
@@ -385,9 +379,7 @@ class TendonData:
         link_lengths = torch.stack(
             [
                 torch.tensor(tc.link_lengths[i], device=dev)
-                + torch.empty(batch_size, device=dev).uniform_(
-                    *randomization_ranges.link_lengths[i]
-                )
+                + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.link_lengths[i])
                 for i in range(N_LINKS_PER_LEG)
             ],
             dim=1,
@@ -397,21 +389,15 @@ class TendonData:
         gst_stiffness = tc.gst_stiffness + torch.empty(batch_size, device=dev).uniform_(
             *randomization_ranges.gst_stiffness
         )
-        gst_spring_rest_length = tc.gst_spring_rest_length + torch.empty(
-            batch_size, device=dev
-        ).uniform_(*randomization_ranges.gst_spring_rest_length)
-        a_23 = tc.a_23 + torch.empty(batch_size, device=dev).uniform_(
-            *randomization_ranges.a_23
+        gst_spring_rest_length = tc.gst_spring_rest_length + torch.empty(batch_size, device=dev).uniform_(
+            *randomization_ranges.gst_spring_rest_length
         )
-        b_23 = tc.b_23 + torch.empty(batch_size, device=dev).uniform_(
-            *randomization_ranges.b_23
+        a_23 = tc.a_23 + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.a_23)
+        b_23 = tc.b_23 + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.b_23)
+        c_23 = tc.c_23 + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.c_23)
+        gst_angle_4prime5_to_j44prime = tc.angle_4prime5_to_j44prime + torch.empty(batch_size, device=dev).uniform_(
+            *randomization_ranges.angle_4prime5_to_j44prime
         )
-        c_23 = tc.c_23 + torch.empty(batch_size, device=dev).uniform_(
-            *randomization_ranges.c_23
-        )
-        gst_angle_4prime5_to_j44prime = tc.angle_4prime5_to_j44prime + torch.empty(
-            batch_size, device=dev
-        ).uniform_(*randomization_ranges.angle_4prime5_to_j44prime)
 
         l_2prime3 = torch.sqrt(b_23**2 - pulley_radii[:, tids.GST_I_RADIUS_3] ** 2)
         phi_23_j3_upper = torch.acos(pulley_radii[:, tids.GST_I_RADIUS_3] / b_23)
@@ -469,22 +455,12 @@ class TendonData:
             dim=1,
         )  # (B, N_TENDON_TANGENCY_ANGLES)
         print("phi_23_j3:", np.rad2deg(phi_23_j3[0].item()))
-        gst_q_3_offset = (
-            joint_offsets_theta[:, tids.GST_I_Q_OFFSET_3] - phi_23_j3 - phi_34_j3
-        )
-        gst_q_4_offset = (
-            joint_offsets_theta[:, tids.GST_I_Q_OFFSET_4]
-            - gst_angle_4prime5_to_j44prime
-            - phi_34_j4
-        )
+        gst_q_3_offset = joint_offsets_theta[:, tids.GST_I_Q_OFFSET_3] - phi_23_j3 - phi_34_j3
+        gst_q_4_offset = joint_offsets_theta[:, tids.GST_I_Q_OFFSET_4] - gst_angle_4prime5_to_j44prime - phi_34_j4
 
         gst_q_4prime_relaxed = gst_angle_4prime5_to_j44prime - phi_4prime5_j4
-        gst_q_5_offset = (
-            joint_offsets_theta[:, tids.GST_I_Q_OFFSET_5] - phi_4prime5_j5 - phi_56_j5
-        )
-        gst_q_6_offset = (
-            joint_offsets_theta[:, tids.GST_I_Q_OFFSET_6] - phi_56_j6 - phi_67_j6
-        )
+        gst_q_5_offset = joint_offsets_theta[:, tids.GST_I_Q_OFFSET_5] - phi_4prime5_j5 - phi_56_j5
+        gst_q_6_offset = joint_offsets_theta[:, tids.GST_I_Q_OFFSET_6] - phi_56_j6 - phi_67_j6
 
         joint_offsets_gst_q = torch.stack(
             list_from_dict(
@@ -515,12 +491,8 @@ class TendonData:
             + pulley_radii[:, tids.GST_I_RADIUS_6] * gst_q_6_offset
         )
         # Note: we randomize upper and lower tendon lengths after computing other offsets because of manufacturing tolerances.
-        upper_gst_length += torch.empty(batch_size, device=dev).uniform_(
-            *randomization_ranges.upper_tendon_length
-        )
-        lower_gst_length += torch.empty(batch_size, device=dev).uniform_(
-            *randomization_ranges.lower_tendon_length
-        )
+        upper_gst_length += torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.upper_tendon_length)
+        lower_gst_length += torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.lower_tendon_length)
 
         # -------------------- DFT ------------------ #
         "dft_stiffness", "dft_length", "dft_tendon_section_lengths", "dft_tendon_tangency_angles"
@@ -596,9 +568,7 @@ def main():
             )
         ),
     )
-    print(
-        "l_23:", tendon_data.gst_tendon_section_lengths[:, tids.I_CONNECTOR_LINK_GST_23]
-    )
+    print("l_23:", tendon_data.gst_tendon_section_lengths[:, tids.I_CONNECTOR_LINK_GST_23])
 
 
 if __name__ == "__main__":

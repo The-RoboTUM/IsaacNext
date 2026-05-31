@@ -8,9 +8,7 @@ import numpy as np
 import torch
 
 N_CHAIN_LINKS_PER_LEG: int = 6  # -> number of links in the kinematic chain of the leg
-N_CONNECTOR_OFFSETS: int = (
-    6  # -> GST, DFT, EDT2, KFT have a connector not on the ji-ji+1 axis; EDT1 has two
-)
+N_CONNECTOR_OFFSETS: int = 6  # -> GST, DFT, EDT2, KFT have a connector not on the ji-ji+1 axis; EDT1 has two
 N_LINK_LENGTHS_PER_LEG: int = (
     N_CHAIN_LINKS_PER_LEG
     + N_CONNECTOR_OFFSETS  # -> number of link lengths per leg (including virtual links for tendon attachment points)
@@ -25,16 +23,12 @@ N_TENDON_SECTION_LENGTHS: int = (
 N_TENDON_THETA_OFFSETS: int = (
     N_JOINTS + N_CONNECTOR_OFFSETS
 )  # -> number of raw joint angle offsets: 5 for joints, 6 for connectors
-N_Q_OFFSETS: int = (
-    6  # -> number of joint angle theta offsets to wrapping angles : 4 for GST, 2 for DFT
-)
+N_Q_OFFSETS: int = 6  # -> number of joint angle theta offsets to wrapping angles : 4 for GST, 2 for DFT
 N_QHAT_OFFSETS: int = (
     1  # -> number of joint angle theta hat offsets to wrapping angles : 4 for GST, 2 for DFT, j6 for EDT2
 )
 
-N_TENDON_TANGENCY_ANGLES: int = (
-    9  # number of fixed tendon tangency angles used in the computation
-)
+N_TENDON_TANGENCY_ANGLES: int = 9  # number of fixed tendon tangency angles used in the computation
 
 JOINT_AXIS_IDX: int = 0  # axis index for joint torques around x-axis
 
@@ -126,8 +120,8 @@ all_joint_names_right = [
 class TendonConstants:
     """Fixed baseline mathematical constants for our tendon model: link lengths and pulley radii etc."""
 
-    gst_stiffness: float = 128e1 * 1  # FIXME: Reduced for simulation stability by 10x
-    dft_stiffness: float = 20e2 * 0  # FIXME: find out real value
+    gst_stiffness: float = 128e1 * 0  # FIXME: Reduced for simulation stability by 10x
+    dft_stiffness: float = 20e2 * 1  # FIXME: find out real value
     edt1_stiffness: float = 20e4 * 1  # FIXME: find out real value
     edt2_stiffness: float = 20e4 * 1  # FIXME: find out real value
     kft_stiffness: float = 20e4 * 1  # FIXME: find out real value
@@ -140,21 +134,19 @@ class TendonConstants:
     edt2_length: float = 0.66  # FIXME: measure correct value
     kft_length: float = 0.402  # FIXME: measure correct value
 
-    joint_offsets_theta: torch.Tensor = (
-        torch.deg2rad(  # between joint-to-joint links, offsets to raw joint angles
-            torch.tensor(
-                list_from_dict(
-                    {
-                        tids.I_JOINT_3: 227.671,
-                        tids.I_JOINT_4: 225.931,
-                        tids.I_JOINT_5: 180.0,
-                        tids.I_JOINT_6: 270.0,
-                        tids.I_JOINT_8: 180.0,
-                    },
-                    N_JOINTS,
-                ),
-                device=dev,
-            )
+    joint_offsets_theta: torch.Tensor = torch.deg2rad(  # between joint-to-joint links, offsets to raw joint angles
+        torch.tensor(
+            list_from_dict(
+                {
+                    tids.I_JOINT_3: 227.671,
+                    tids.I_JOINT_4: 225.931,
+                    tids.I_JOINT_5: 180.0,
+                    tids.I_JOINT_6: 270.0,
+                    tids.I_JOINT_8: 180.0,
+                },
+                N_JOINTS,
+            ),
+            device=dev,
         )
     )
     joint_directions: torch.Tensor = torch.tensor(
@@ -232,9 +224,7 @@ class TendonConstants:
     gst_phi_23_j3: float = float(
         np.deg2rad(98.874)
     )  # angle between link 23 and line from joint 3 to the tangency point of the GST on pulley 3
-    angle_4prime5_to_j44prime = np.deg2rad(
-        124.069
-    )  # angle between link 4'5 and line from joint 4 to 4-4' transition
+    angle_4prime5_to_j44prime = np.deg2rad(124.069)  # angle between link 4'5 and line from joint 4 to 4-4' transition
 
 
 @dataclass

@@ -129,18 +129,10 @@ def compute_joint_locations(alphas):
         alpha_2,
         np.array([td.link_lengths[0, tids.I_CONNECTOR_LINK_GST_23].item(), 0.0]),
     )
-    j4 = j3 + rotate_by(
-        alpha_3, np.array([td.link_lengths[0, tids.I_LINK_34].item(), 0.0])
-    )
-    j5 = j4 + rotate_by(
-        alpha_4, np.array([td.link_lengths[0, tids.I_LINK_4prime5].item(), 0.0])
-    )
-    j6 = j5 + rotate_by(
-        alpha_5, np.array([td.link_lengths[0, tids.I_LINK_56].item(), 0.0])
-    )
-    p7 = j6 + rotate_by(
-        alpha_6, np.array([td.link_lengths[0, tids.I_LINK_67].item(), 0.0])
-    )
+    j4 = j3 + rotate_by(alpha_3, np.array([td.link_lengths[0, tids.I_LINK_34].item(), 0.0]))
+    j5 = j4 + rotate_by(alpha_4, np.array([td.link_lengths[0, tids.I_LINK_4prime5].item(), 0.0]))
+    j6 = j5 + rotate_by(alpha_5, np.array([td.link_lengths[0, tids.I_LINK_56].item(), 0.0]))
+    p7 = j6 + rotate_by(alpha_6, np.array([td.link_lengths[0, tids.I_LINK_67].item(), 0.0]))
 
     return [j2, j3, j4, j5, j6, p7]
 
@@ -172,9 +164,7 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
         direction_angle,
         np.array(
             [
-                td.tendon_section_lengths[
-                    0, tids.I_TENDON_SECTION_LENGTH_GST_23
-                ].item(),
+                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_23].item(),
                 0.0,
             ]
         ),
@@ -185,19 +175,14 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
         direction_angle,
         np.array(
             [
-                td.tendon_section_lengths[
-                    0, tids.I_TENDON_SECTION_LENGTH_GST_34
-                ].item(),
+                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_34].item(),
                 0.0,
             ]
         ),
     )
     p4_o = (
         rotate_by(
-            q4
-            + np.deg2rad(
-                45
-            ),  # note: added extra angle to avoid issues with negative values
+            q4 + np.deg2rad(45),  # note: added extra angle to avoid issues with negative values
             p4_i - j4,
         )
         + j4
@@ -237,9 +222,7 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
             direction_angle,
             np.array(
                 [
-                    td.tendon_section_lengths[
-                        0, tids.I_TENDON_SECTION_LENGTH_GST_4PRIME5
-                    ].item(),
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_4PRIME5].item(),
                     0.0,
                 ]
             ),
@@ -250,9 +233,7 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
             direction_angle,
             np.array(
                 [
-                    td.tendon_section_lengths[
-                        0, tids.I_TENDON_SECTION_LENGTH_GST_56
-                    ].item(),
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_56].item(),
                     0.0,
                 ]
             ),
@@ -263,9 +244,7 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
             direction_angle,
             np.array(
                 [
-                    td.tendon_section_lengths[
-                        0, tids.I_TENDON_SECTION_LENGTH_GST_67
-                    ].item(),
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_67].item(),
                     0.0,
                 ]
             ),
@@ -281,9 +260,7 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
             direction_angle,
             np.array(
                 [
-                    td.tendon_section_lengths[
-                        0, tids.I_TENDON_SECTION_LENGTH_GST_67
-                    ].item(),
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_67].item(),
                     0.0,
                 ]
             ),
@@ -301,9 +278,7 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
             direction_angle,
             np.array(
                 [
-                    td.tendon_section_lengths[
-                        0, tids.I_TENDON_SECTION_LENGTH_GST_4PRIME5
-                    ].item(),
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_4PRIME5].item(),
                     0.0,
                 ]
             ),
@@ -368,9 +343,7 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
         alpha_4,
         np.array(
             [
-                tc.connector_link_lengths_longitudinal[
-                    tids.I_CONNECTOR_LINK_DFT_C5
-                ].item(),
+                tc.connector_link_lengths_longitudinal[tids.I_CONNECTOR_LINK_DFT_C5].item(),
                 tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_DFT_C5].item(),
             ]
         ),
@@ -385,12 +358,8 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
         gamma_c5 = np.arcsin(
             tc.pulley_radii[tids.I_RADIUS_DFT_5].item()
             / np.sqrt(
-                tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_DFT_C5].item()
-                ** 2
-                + tc.connector_link_lengths_longitudinal[
-                    tids.I_CONNECTOR_LINK_DFT_C5
-                ].item()
-                ** 2
+                tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_DFT_C5].item() ** 2
+                + tc.connector_link_lengths_longitudinal[tids.I_CONNECTOR_LINK_DFT_C5].item() ** 2
             )
         )
     elif dft_state == "b":
@@ -404,9 +373,7 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
             direction_angle,
             np.array(
                 [
-                    td.tendon_section_lengths[
-                        0, tids.I_TENDON_SECTION_LENGTH_DFT_C5
-                    ].item(),
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_DFT_C5].item(),
                     0.0,
                 ]
             ),
@@ -423,9 +390,7 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
             direction_angle,
             np.array(
                 [
-                    td.tendon_section_lengths[
-                        0, tids.I_TENDON_SECTION_LENGTH_DFT_56
-                    ].item(),
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_DFT_56].item(),
                     0.0,
                 ]
             ),
@@ -460,9 +425,7 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
         tendon_joints = [j6]
         q_positives = [q6 >= 0]
     elif dft_state == "c":
-        p7 = pc5 + rotate_by(
-            direction_angle, np.array([np.sqrt(data["DFT_l_c7_squared"]), 0.0])
-        )
+        p7 = pc5 + rotate_by(direction_angle, np.array([np.sqrt(data["DFT_l_c7_squared"]), 0.0]))
         tendon_points = [pc5, p7]
         tendon_joints = []
         q_positives = []
@@ -471,9 +434,7 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
             direction_angle,
             np.array(
                 [
-                    td.tendon_section_lengths[
-                        0, tids.I_TENDON_SECTION_LENGTH_DFT_C5
-                    ].item(),
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_DFT_C5].item(),
                     0.0,
                 ]
             ),
@@ -504,12 +465,8 @@ def compute_edt1_points(alphas, joint_locations, data, r5):
         alpha_3,
         np.array(
             [
-                tc.connector_link_lengths_longitudinal[
-                    tids.I_CONNECTOR_LINK_EDT1_C4
-                ].item(),
-                -tc.connector_link_lengths_lateral[
-                    tids.I_CONNECTOR_LINK_EDT1_C4
-                ].item(),
+                tc.connector_link_lengths_longitudinal[tids.I_CONNECTOR_LINK_EDT1_C4].item(),
+                -tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_EDT1_C4].item(),
             ]
         ),
     )
@@ -519,9 +476,7 @@ def compute_edt1_points(alphas, joint_locations, data, r5):
     )
 
     phi4a = data["EDT1_phi_4_a"]
-    phi4b = (
-        data["EDT1_phi_4_b"] if edt1_state == "b" else np.pi / 2 - data["EDT1_phi_45_A"]
-    )
+    phi4b = data["EDT1_phi_4_b"] if edt1_state == "b" else np.pi / 2 - data["EDT1_phi_45_A"]
 
     phi4 = phi4a + phi4b
     direction_angle = alpha_3 + phi4 - gamma_c4
@@ -537,9 +492,7 @@ def compute_edt1_points(alphas, joint_locations, data, r5):
             direction_angle,
             np.array(
                 [
-                    td.tendon_section_lengths[
-                        0, tids.I_TENDON_SECTION_LENGTH_EDT1_5C
-                    ].item(),
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_EDT1_5C].item(),
                     0.0,
                 ]
             ),
@@ -566,12 +519,8 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
         alpha_3,
         np.array(
             [
-                tc.connector_link_lengths_longitudinal[
-                    tids.I_CONNECTOR_LINK_EDT2_C4
-                ].item(),
-                -tc.connector_link_lengths_lateral[
-                    tids.I_CONNECTOR_LINK_EDT2_C4
-                ].item(),
+                tc.connector_link_lengths_longitudinal[tids.I_CONNECTOR_LINK_EDT2_C4].item(),
+                -tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_EDT2_C4].item(),
             ]
         ),
     )
@@ -592,9 +541,7 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
             + data["thetas"][tids.I_THETA_EDT2_4]
         )
     elif edt2_state == "c":
-        phi4 = data["EDT2_phi_4_d"] + (
-            np.pi - data["EDT2_thetatilde_6_a"] - data["EDT2_thetatilde_4"]
-        )
+        phi4 = data["EDT2_phi_4_d"] + (np.pi - data["EDT2_thetatilde_6_a"] - data["EDT2_thetatilde_4"])
     direction_angle = alpha_3 + phi4 - gamma_c4
 
     if edt2_state == "a":
@@ -609,9 +556,7 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
             direction_angle,
             np.array(
                 [
-                    td.tendon_section_lengths[
-                        0, tids.I_TENDON_SECTION_LENGTH_EDT2_56
-                    ].item(),
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_EDT2_56].item(),
                     0.0,
                 ]
             ),
@@ -626,9 +571,7 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
             direction_angle,
             np.array(
                 [
-                    td.tendon_section_lengths[
-                        0, tids.I_TENDON_SECTION_LENGTH_EDT2_6C
-                    ].item(),
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_EDT2_6C].item(),
                     0.0,
                 ]
             ),
@@ -649,9 +592,7 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
             direction_angle,
             np.array(
                 [
-                    td.tendon_section_lengths[
-                        0, tids.I_TENDON_SECTION_LENGTH_EDT2_6C
-                    ].item(),
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_EDT2_6C].item(),
                     0.0,
                 ]
             ),
@@ -686,36 +627,21 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
 # for state A: none, state B: x4'6 with h5B, state C: x4'6, x4'7, h5C, h6C, state D: x57, h6D; draw using phis
 def validate_xs(joint_locations, x4prime6, x4prime7, x57):
     [_j2, _j3, j4, j5, j6, p7] = joint_locations
-    assert (
-        abs(np.linalg.norm(j6 - j4) - x4prime6) < 0.001
-    ), f"expected x4'6={np.linalg.norm(j6 - j4)}, got {x4prime6}"
-    assert (
-        abs(np.linalg.norm(p7 - j4) - x4prime7) < 0.001
-    ), f"expected x4'7={np.linalg.norm(p7 - j4)}, got {x4prime7}"
-    assert (
-        abs(np.linalg.norm(p7 - j5) - x57) < 0.001
-    ), f"expected x57={np.linalg.norm(p7 - j5)}, got {x57}"
+    assert abs(np.linalg.norm(j6 - j4) - x4prime6) < 0.001, f"expected x4'6={np.linalg.norm(j6 - j4)}, got {x4prime6}"
+    assert abs(np.linalg.norm(p7 - j4) - x4prime7) < 0.001, f"expected x4'7={np.linalg.norm(p7 - j4)}, got {x4prime7}"
+    assert abs(np.linalg.norm(p7 - j5) - x57) < 0.001, f"expected x57={np.linalg.norm(p7 - j5)}, got {x57}"
 
 
 def validate_ls(joint_locations, l4prime6, l4prime7, l57):
     [_j2, _j3, j4, j5, j6, p7] = joint_locations
     x46_inf = np.linalg.norm(j6 - j4)
     l46_inf = np.sqrt(
-        x46_inf**2
-        - (
-            (
-                tc.pulley_radii[tids.I_RADIUS_GST_4prime]
-                - tc.pulley_radii[tids.I_RADIUS_GST_6]
-            )
-            ** 2
-        ).item()
+        x46_inf**2 - ((tc.pulley_radii[tids.I_RADIUS_GST_4prime] - tc.pulley_radii[tids.I_RADIUS_GST_6]) ** 2).item()
     )
     assert abs(l46_inf - l4prime6) < 0.001, f"Expected l4'6={l46_inf}, got {l4prime6}"
 
     x47_inf = np.linalg.norm(p7 - j4)
-    l47_inf = np.sqrt(
-        x47_inf**2 - (tc.pulley_radii[tids.I_RADIUS_GST_4prime] ** 2).item()
-    )
+    l47_inf = np.sqrt(x47_inf**2 - (tc.pulley_radii[tids.I_RADIUS_GST_4prime] ** 2).item())
     assert abs(l47_inf - l4prime7) < 0.001, f"Expected l4'7={l47_inf}, got {l4prime7}"
 
     x57_inf = np.linalg.norm(p7 - j5)
@@ -726,9 +652,7 @@ def validate_ls(joint_locations, l4prime6, l4prime7, l57):
 def arc_from_3_points(c, p1, p2, ccw=True, q_positive=True, tol=1e-4):
     d1 = p1 - c
     d2 = p2 - c
-    assert np.isclose(
-        np.linalg.norm(d1), np.linalg.norm(d2), atol=tol
-    ), "start and end points should have same radius"
+    assert np.isclose(np.linalg.norm(d1), np.linalg.norm(d2), atol=tol), "start and end points should have same radius"
     r = np.linalg.norm(d1)
     # assert np.isclose(d1, r, atol=tol), f"Start point not on circle: {d1} != {r}"
     # assert np.isclose(d2, r, atol=tol), f"End point not on circle: {d2} != {r}"
@@ -843,37 +767,25 @@ class KinematicChainAnimator:
             (j6, tc.pulley_radii[tids.I_RADIUS_EDT2_6].item(), "navy", "6"),
         ]
         for center, radius, color, label in gst_pulley_configs:
-            circle = Circle(
-                center, radius, fill=False, edgecolor=color, linewidth=1.5, alpha=0.7
-            )
+            circle = Circle(center, radius, fill=False, edgecolor=color, linewidth=1.5, alpha=0.7)
             self.ax[0, 0].add_patch(circle)
             self.gst_pulley_circles[label] = circle
         for center, radius, color, label in kft_pulley_configs + dft_pulley_configs:
-            circle = Circle(
-                center, radius, fill=False, edgecolor=color, linewidth=1.5, alpha=0.7
-            )
+            circle = Circle(center, radius, fill=False, edgecolor=color, linewidth=1.5, alpha=0.7)
             self.ax[0, 1].add_patch(circle)
             self.kft_dft_pulley_circles[label] = circle
         for center, radius, color, label in edt1_pulley_configs:
-            circle = Circle(
-                center, radius, fill=False, edgecolor=color, linewidth=1.5, alpha=0.7
-            )
+            circle = Circle(center, radius, fill=False, edgecolor=color, linewidth=1.5, alpha=0.7)
             self.ax[1, 0].add_patch(circle)
             self.edt1_pulley_circles[label] = circle
         for center, radius, color, label in edt2_pulley_configs:
-            circle = Circle(
-                center, radius, fill=False, edgecolor=color, linewidth=1.5, alpha=0.7
-            )
+            circle = Circle(center, radius, fill=False, edgecolor=color, linewidth=1.5, alpha=0.7)
             self.ax[1, 1].add_patch(circle)
             self.edt2_pulley_circles[label] = circle
 
         # GST-specific lines
-        (self.gst_upper_tendon_line,) = self.ax[0, 0].plot(
-            [], [], "r-", linewidth=2, label="Upper Tendon"
-        )
-        (self.gst_lower_tendon_line,) = self.ax[0, 0].plot(
-            [], [], "y-", linewidth=2, label="Lower Tendon"
-        )
+        (self.gst_upper_tendon_line,) = self.ax[0, 0].plot([], [], "r-", linewidth=2, label="Upper Tendon")
+        (self.gst_lower_tendon_line,) = self.ax[0, 0].plot([], [], "y-", linewidth=2, label="Lower Tendon")
 
         (self.gst_x_4prime6_line,) = self.ax[0, 0].plot(
             [],
@@ -922,12 +834,8 @@ class KinematicChainAnimator:
         )
 
         # KFT/DFT-specific lines
-        (self.kft_tendon_line,) = self.ax[0, 1].plot(
-            [], [], "r-", linewidth=2, label="Upper Tendon"
-        )
-        (self.dft_tendon_line,) = self.ax[0, 1].plot(
-            [], [], "-", linewidth=2, label="Lower Tendon", color="orange"
-        )
+        (self.kft_tendon_line,) = self.ax[0, 1].plot([], [], "r-", linewidth=2, label="Upper Tendon")
+        (self.dft_tendon_line,) = self.ax[0, 1].plot([], [], "-", linewidth=2, label="Lower Tendon", color="orange")
         (self.dft_x_c6_line,) = self.ax[0, 1].plot(
             [],
             [],
@@ -966,9 +874,7 @@ class KinematicChainAnimator:
         )
 
         # EDT1 lines
-        (self.edt1_tendon_line,) = self.ax[1, 0].plot(
-            [], [], "r-", linewidth=2, label="EDT1 Tendon"
-        )
+        (self.edt1_tendon_line,) = self.ax[1, 0].plot([], [], "r-", linewidth=2, label="EDT1 Tendon")
         # xc5,  h5
         (self.edt1_h_5_line,) = self.ax[1, 0].plot(
             [],
@@ -990,9 +896,7 @@ class KinematicChainAnimator:
         )
 
         # EDT2 lines
-        (self.edt2_tendon_line,) = self.ax[1, 1].plot(
-            [], [], "y-", linewidth=2, label="EDT2 Tendon"
-        )
+        (self.edt2_tendon_line,) = self.ax[1, 1].plot([], [], "y-", linewidth=2, label="EDT2 Tendon")
         # h5, h6, xc5, xc6 x5c
         (self.edt2_h_5_line,) = self.ax[1, 1].plot(
             [],
@@ -1282,9 +1186,7 @@ class KinematicChainAnimator:
             lower_tendon_joints,
             lower_q_positives,
         ) = compute_gst_attachment_points(alpha_2, joints, current_data)
-        upper_gst_xs, upper_gst_ys = self.tendon_path(
-            upper_tendon_points, upper_tendon_joints, upper_tendon=True
-        )
+        upper_gst_xs, upper_gst_ys = self.tendon_path(upper_tendon_points, upper_tendon_joints, upper_tendon=True)
         lower_gst_xs, lower_gst_ys = self.tendon_path(
             copy.copy(lower_tendon_points), lower_tendon_joints, upper_tendon=False
         )
@@ -1319,18 +1221,14 @@ class KinematicChainAnimator:
                 current_data["GST_x_4prime6"],
                 goal_point=j6,
             )  # rotate 4'5 by -phi_4'a and scale
-            self.gst_x_4prime6_line.set_data(
-                [j4[0], x_4prime6_end_point[0]], [j4[1], x_4prime6_end_point[1]]
-            )
+            self.gst_x_4prime6_line.set_data([j4[0], x_4prime6_end_point[0]], [j4[1], x_4prime6_end_point[1]])
             h5_end_point = compute_h_end_point(
                 lower_tendon_points[1],
                 lower_tendon_points[2],
                 j5,
                 current_data["GST_h5_B"],
             )  # project j5 onto according line segment, assert distance is equal to h5B
-            self.gst_h_5_line.set_data(
-                [j5[0], h5_end_point[0]], [j5[1], h5_end_point[1]]
-            )
+            self.gst_h_5_line.set_data([j5[0], h5_end_point[0]], [j5[1], h5_end_point[1]])
         elif gst_state == "c":
             x_4prime6_end_point = compute_x_end_point(
                 j4,
@@ -1339,18 +1237,14 @@ class KinematicChainAnimator:
                 current_data["GST_x_4prime6"],
                 goal_point=j6,
             )  # rotate 4'5 by -phi_4'a and scale
-            self.gst_x_4prime6_line.set_data(
-                [j4[0], x_4prime6_end_point[0]], [j4[1], x_4prime6_end_point[1]]
-            )
+            self.gst_x_4prime6_line.set_data([j4[0], x_4prime6_end_point[0]], [j4[1], x_4prime6_end_point[1]])
             h5_end_point = compute_h_end_point(
                 lower_tendon_points[1],
                 lower_tendon_points[2],
                 j5,
                 current_data["GST_h5_C"],
             )  # project j5 onto according line segment, assert distance is equal to h5C
-            self.gst_h_5_line.set_data(
-                [j5[0], h5_end_point[0]], [j5[1], h5_end_point[1]]
-            )
+            self.gst_h_5_line.set_data([j5[0], h5_end_point[0]], [j5[1], h5_end_point[1]])
 
             x_4prime7_end_point = compute_x_end_point(
                 j4,
@@ -1359,18 +1253,14 @@ class KinematicChainAnimator:
                 current_data["GST_x_4prime7"],
                 goal_point=p7,
             )  # rotate 4'5 by -phi_4'a-phi_4'd and scale
-            self.gst_x_4prime7_line.set_data(
-                [j4[0], x_4prime7_end_point[0]], [j4[1], x_4prime7_end_point[1]]
-            )
+            self.gst_x_4prime7_line.set_data([j4[0], x_4prime7_end_point[0]], [j4[1], x_4prime7_end_point[1]])
             h6_end_point = compute_h_end_point(
                 lower_tendon_points[1],
                 lower_tendon_points[2],
                 j6,
                 current_data["GST_h6_C"],
             )  # project j6 onto according line segment, assert distance is equal to h6C
-            self.gst_h_6_line.set_data(
-                [j6[0], h6_end_point[0]], [j6[1], h6_end_point[1]]
-            )
+            self.gst_h_6_line.set_data([j6[0], h6_end_point[0]], [j6[1], h6_end_point[1]])
 
         elif gst_state == "d":
             x_57_end_point = compute_x_end_point(
@@ -1380,18 +1270,14 @@ class KinematicChainAnimator:
                 current_data["GST_x_57"],
                 goal_point=p7,
             )  # rotate 56 by -phi_5a and scale
-            self.gst_x_57_line.set_data(
-                [j5[0], x_57_end_point[0]], [j5[1], x_57_end_point[1]]
-            )
+            self.gst_x_57_line.set_data([j5[0], x_57_end_point[0]], [j5[1], x_57_end_point[1]])
             h6_end_point = compute_h_end_point(
                 lower_tendon_points[-2],
                 lower_tendon_points[-1],
                 j6,
                 current_data["GST_h6_D"],
             )  # project j6 onto according line segment, assert distance is equal to h6B
-            self.gst_h_6_line.set_data(
-                [j6[0], h6_end_point[0]], [j6[1], h6_end_point[1]]
-            )
+            self.gst_h_6_line.set_data([j6[0], h6_end_point[0]], [j6[1], h6_end_point[1]])
 
         # Draw DFT
         dft_points, dft_joints, dft_q_positives = compute_dft_points(
@@ -1416,13 +1302,9 @@ class KinematicChainAnimator:
                 j5,
                 current_data["DFT_h5_B"],
             )
-            self.dft_h_5_line.set_data(
-                [j5[0], dft_h_5_end_point[0]], [j5[1], dft_h_5_end_point[1]]
-            )
+            self.dft_h_5_line.set_data([j5[0], dft_h_5_end_point[0]], [j5[1], dft_h_5_end_point[1]])
             self.dft_h_6_line.set_data([], [])
-            self.dft_x_c6_line.set_data(
-                [dft_points[0][0], j6[0]], [dft_points[0][1], j6[1]]
-            )
+            self.dft_x_c6_line.set_data([dft_points[0][0], j6[0]], [dft_points[0][1], j6[1]])
             self.dft_x_57_line.set_data([], [])
         elif dft_state == "d":
             dft_h_6_end_point = compute_h_end_point(
@@ -1432,9 +1314,7 @@ class KinematicChainAnimator:
                 current_data["DFT_h6_D"],
             )
             self.dft_h_5_line.set_data([], [])
-            self.dft_h_6_line.set_data(
-                [j6[0], dft_h_6_end_point[0]], [j6[1], dft_h_6_end_point[1]]
-            )
+            self.dft_h_6_line.set_data([j6[0], dft_h_6_end_point[0]], [j6[1], dft_h_6_end_point[1]])
             self.dft_x_c6_line.set_data([], [])
             self.dft_x_57_line.set_data([j5[0], p7[0]], [j5[1], p7[1]])
         elif dft_state == "c":
@@ -1450,15 +1330,9 @@ class KinematicChainAnimator:
                 j6,
                 current_data["DFT_h6_C"],
             )
-            self.dft_h_5_line.set_data(
-                [j5[0], dft_h_5_end_point[0]], [j5[1], dft_h_5_end_point[1]]
-            )
-            self.dft_h_6_line.set_data(
-                [j6[0], dft_h_6_end_point[0]], [j6[1], dft_h_6_end_point[1]]
-            )
-            self.dft_x_c6_line.set_data(
-                [dft_points[0][0], j6[0]], [dft_points[0][1], j6[1]]
-            )
+            self.dft_h_5_line.set_data([j5[0], dft_h_5_end_point[0]], [j5[1], dft_h_5_end_point[1]])
+            self.dft_h_6_line.set_data([j6[0], dft_h_6_end_point[0]], [j6[1], dft_h_6_end_point[1]])
+            self.dft_x_c6_line.set_data([dft_points[0][0], j6[0]], [dft_points[0][1], j6[1]])
             self.dft_x_57_line.set_data([], [])
 
         # Draw DFT tendon
@@ -1475,9 +1349,7 @@ class KinematicChainAnimator:
         kft_points, kft_joints, kft_q_positives = compute_kft_points(
             alphas[5], joints, current_data, tc.pulley_radii[tids.I_RADIUS_KFT_8].item()
         )
-        kft_xs, kft_ys = self.tendon_path_general(
-            kft_points, kft_joints, kft_q_positives, [False], start_with_arc=True
-        )
+        kft_xs, kft_ys = self.tendon_path_general(kft_points, kft_joints, kft_q_positives, [False], start_with_arc=True)
         self.kft_tendon_line.set_data(kft_xs, kft_ys)
 
         # Compute EDT1
@@ -1489,9 +1361,7 @@ class KinematicChainAnimator:
         )
 
         # Draw helper lines for EDT1
-        self.edt1_x_c5_line.set_data(
-            [edt1_points[0][0], j5[0]], [edt1_points[0][1], j5[1]]
-        )
+        self.edt1_x_c5_line.set_data([edt1_points[0][0], j5[0]], [edt1_points[0][1], j5[1]])
         if get_edt1_state(current_data) == "b":
             edt1_h_5_end_point = compute_h_end_point(
                 edt1_points[0],
@@ -1499,9 +1369,7 @@ class KinematicChainAnimator:
                 j5,
                 current_data["EDT1_h5_B"],
             )
-            self.edt1_h_5_line.set_data(
-                [j5[0], edt1_h_5_end_point[0]], [j5[1], edt1_h_5_end_point[1]]
-            )
+            self.edt1_h_5_line.set_data([j5[0], edt1_h_5_end_point[0]], [j5[1], edt1_h_5_end_point[1]])
 
         else:
             self.edt1_h_5_line.set_data([], [])
@@ -1522,9 +1390,7 @@ class KinematicChainAnimator:
         )
 
         # Draw helper lines for EDT2
-        self.edt2_x_c5_line.set_data(
-            [edt2_points[0][0], j5[0]], [edt2_points[0][1], j5[1]]
-        )
+        self.edt2_x_c5_line.set_data([edt2_points[0][0], j5[0]], [edt2_points[0][1], j5[1]])
         edt2_state = get_edt2_state(current_data)
         if edt2_state == "a":
             self.edt2_h_5_line.set_data([], [])
@@ -1539,13 +1405,9 @@ class KinematicChainAnimator:
                 j5,
                 current_data["EDT2_h5_B"],
             )
-            self.edt2_h_5_line.set_data(
-                [j5[0], edt2_h_5_end_point[0]], [j5[1], edt2_h_5_end_point[1]]
-            )
+            self.edt2_h_5_line.set_data([j5[0], edt2_h_5_end_point[0]], [j5[1], edt2_h_5_end_point[1]])
             self.edt2_h_6_line.set_data([], [])
-            self.edt2_x_c6_line.set_data(
-                [edt2_points[0][0], j6[0]], [edt2_points[0][1], j6[1]]
-            )
+            self.edt2_x_c6_line.set_data([edt2_points[0][0], j6[0]], [edt2_points[0][1], j6[1]])
             self.edt2_x_46_line.set_data([], [])
             self.edt2_x_5c_line.set_data([], [])
         elif edt2_state == "d":
@@ -1556,9 +1418,7 @@ class KinematicChainAnimator:
                 current_data["EDT2_h6_D"],
             )
             self.edt2_h_5_line.set_data([], [])
-            self.edt2_h_6_line.set_data(
-                [j6[0], edt2_h_6_end_point[0]], [j6[1], edt2_h_6_end_point[1]]
-            )
+            self.edt2_h_6_line.set_data([j6[0], edt2_h_6_end_point[0]], [j6[1], edt2_h_6_end_point[1]])
             self.edt2_x_c6_line.set_data([], [])
             self.edt2_x_46_line.set_data([], [])
             self.edt2_x_5c_line.set_data([j5[0], p7[0]], [j5[1], p7[1]])
@@ -1575,15 +1435,9 @@ class KinematicChainAnimator:
                 j6,
                 current_data["EDT2_h6_C"],
             )
-            self.edt2_h_5_line.set_data(
-                [j5[0], edt2_h_5_end_point[0]], [j5[1], edt2_h_5_end_point[1]]
-            )
-            self.edt2_h_6_line.set_data(
-                [j6[0], edt2_h_6_end_point[0]], [j6[1], edt2_h_6_end_point[1]]
-            )
-            self.edt2_x_c6_line.set_data(
-                [edt2_points[0][0], j6[0]], [edt2_points[0][1], j6[1]]
-            )
+            self.edt2_h_5_line.set_data([j5[0], edt2_h_5_end_point[0]], [j5[1], edt2_h_5_end_point[1]])
+            self.edt2_h_6_line.set_data([j6[0], edt2_h_6_end_point[0]], [j6[1], edt2_h_6_end_point[1]])
+            self.edt2_x_c6_line.set_data([edt2_points[0][0], j6[0]], [edt2_points[0][1], j6[1]])
             self.edt2_x_46_line.set_data([j4[0], j6[0]], [j4[1], j6[1]])
             self.edt2_x_5c_line.set_data([], [])
 
@@ -1600,9 +1454,7 @@ class KinematicChainAnimator:
         # Update title and info
         status = "▶ Playing" if self.is_playing else "⏸ Paused"
         gst_state = get_gst_state(all_data[frame_idx])
-        self.gst_title.set_text(
-            f"Kinematic Chain Animation - Frame {frame_idx + 1}/{self.num_frames}"
-        )
+        self.gst_title.set_text(f"Kinematic Chain Animation - Frame {frame_idx + 1}/{self.num_frames}")
         self.gst_info_text.set_text(
             f"{status}\n"
             f"GST State: {gst_state}\n"
@@ -1629,9 +1481,7 @@ class KinematicChainAnimator:
 
         edt1_delta_l = all_data[frame_idx]["EDT1_delta_L_s"]
         edt1_delta_l_color = "grey" if edt1_delta_l > 0 else "green"
-        self.edt1_delta_l_text.set_text(
-            f"EDT1 $\\Delta L={edt1_delta_l * 1000:02.3f}$ mm"
-        )
+        self.edt1_delta_l_text.set_text(f"EDT1 $\\Delta L={edt1_delta_l * 1000:02.3f}$ mm")
         self.edt1_delta_l_text.set_color(edt1_delta_l_color)
 
         edt2_state = get_edt2_state(all_data[frame_idx])
@@ -1639,9 +1489,7 @@ class KinematicChainAnimator:
 
         edt2_delta_l = all_data[frame_idx]["EDT2_delta_L_s"]
         edt2_delta_l_color = "grey" if edt2_delta_l > 0 else "green"
-        self.edt2_delta_l_text.set_text(
-            f"EDT2 $\\Delta L={edt2_delta_l * 1000:02.3f}$ mm"
-        )
+        self.edt2_delta_l_text.set_text(f"EDT2 $\\Delta L={edt2_delta_l * 1000:02.3f}$ mm")
         self.edt2_delta_l_text.set_color(edt2_delta_l_color)
 
         # Return all artists for blitting

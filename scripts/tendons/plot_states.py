@@ -94,9 +94,7 @@ def plot_states(ax, states, title, max_length):
 
 def plot_state_changes(ax, states, title, max_length):
     """Plot state change events."""
-    state_changes = [0] + [
-        1 if states[i] != states[i - 1] else 0 for i in range(1, len(states))
-    ]
+    state_changes = [0] + [1 if states[i] != states[i - 1] else 0 for i in range(1, len(states))]
     change_indices = [i for i, change in enumerate(state_changes) if change == 1]
     ax.scatter(
         change_indices,
@@ -188,12 +186,8 @@ plot_states(axes[0, 0], states_left, "State Transitions Over Time - LEFT", max_l
 plot_states(axes[0, 1], states_right, "State Transitions Over Time - RIGHT", max_length)
 
 # Row 1: State Changes (Left and Right)
-n_transitions_left = plot_state_changes(
-    axes[1, 0], states_left, "State Transition Events - LEFT", max_length
-)
-n_transitions_right = plot_state_changes(
-    axes[1, 1], states_right, "State Transition Events - RIGHT", max_length
-)
+n_transitions_left = plot_state_changes(axes[1, 0], states_left, "State Transition Events - LEFT", max_length)
+n_transitions_right = plot_state_changes(axes[1, 1], states_right, "State Transition Events - RIGHT", max_length)
 
 # Row 2: Lengths (Left and Right)
 plot_lengths(axes[2, 0], lengths_left, "Lengths Over Time - LEFT", max_length)
@@ -216,17 +210,11 @@ plot_joint_angles(
 )
 
 # Row 4: Thetas (Left and Right)
-plot_thetas(
-    axes[4, 0], thetas_left, joint_names_left, "Thetas Over Time - LEFT", max_length
-)
-plot_thetas(
-    axes[4, 1], thetas_right, joint_names_right, "Thetas Over Time - RIGHT", max_length
-)
+plot_thetas(axes[4, 0], thetas_left, joint_names_left, "Thetas Over Time - LEFT", max_length)
+plot_thetas(axes[4, 1], thetas_right, joint_names_right, "Thetas Over Time - RIGHT", max_length)
 
 # Row 5: Torques (Left and Right)
-plot_torques(
-    axes[5, 0], torques_left, joint_names_left, "Torques Over Time - LEFT", max_length
-)
+plot_torques(axes[5, 0], torques_left, joint_names_left, "Torques Over Time - LEFT", max_length)
 plot_torques(
     axes[5, 1],
     torques_right,

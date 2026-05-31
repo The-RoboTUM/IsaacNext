@@ -6,9 +6,7 @@ import argparse
 import json
 from isaaclab.app import AppLauncher
 
-parser = argparse.ArgumentParser(
-    description="Apply random forces to a two-bar robot and visualize them."
-)
+parser = argparse.ArgumentParser(description="Apply random forces to a two-bar robot and visualize them.")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -102,9 +100,7 @@ def define_force_markers(link_names: list[str]) -> VisualizationMarkers:
             name: sim_utils.UsdFileCfg(
                 usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/arrow_x.usd",
                 scale=(0.5, 0.1, 0.1),
-                visual_material=sim_utils.PreviewSurfaceCfg(
-                    diffuse_color=(1.0, 0.0, 0.0)
-                ),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
             )
             for name in link_names
         },
@@ -134,12 +130,8 @@ class TendonManager:
             len(joint_names) == N_LINKS - 1
         ), f"number of joints must be one less than number of links {N_LINKS} got {len(joint_names)}"
         N_JOINTS = N_LINKS - 1
-        assert axis_global.shape == (
-            3,
-        ), f"axis_global must be shape (3,), got {axis_global.shape}"
-        assert radii.shape == (
-            N_LINKS + 1,
-        ), f"radii must one more than links, got {radii.shape}"
+        assert axis_global.shape == (3,), f"axis_global must be shape (3,), got {axis_global.shape}"
+        assert radii.shape == (N_LINKS + 1,), f"radii must one more than links, got {radii.shape}"
         assert pulley_positions_i.shape == (
             N_LINKS,
             3,
@@ -148,12 +140,8 @@ class TendonManager:
             N_LINKS,
             3,
         ), f"pulley_positions_iplus1 must be shape ({N_LINKS}, 3), got {pulley_positions_iplus1.shape}"
-        assert (
-            len(configurations) == N_LINKS
-        ), f"configurations must have length {N_LINKS}, got {len(configurations)}"
-        assert (
-            len(joint_names) == N_JOINTS
-        ), f"joint_names must have length {N_JOINTS}, got {len(joint_names)}"
+        assert len(configurations) == N_LINKS, f"configurations must have length {N_LINKS}, got {len(configurations)}"
+        assert len(joint_names) == N_JOINTS, f"joint_names must have length {N_JOINTS}, got {len(joint_names)}"
 
         # for non-joint pulleys tendon_lengths, tangents and initial_windings have to be overridden
         self.tendon_lengths = torch.zeros(N_LINKS, device=self.device)
@@ -164,9 +152,7 @@ class TendonManager:
         self.radius_vectors_iplus1 = torch.zeros((N_LINKS, 3), device=self.device)
         self.initial_windings = torch.zeros(N_JOINTS, device=self.device)
         self.initial_joint_angles = torch.zeros(N_JOINTS, device=self.device)
-        self.joint_angle_to_winding_sign = torch.zeros(
-            (N_JOINTS, 3), device=self.device
-        )
+        self.joint_angle_to_winding_sign = torch.zeros((N_JOINTS, 3), device=self.device)
 
         self.radii = radii
         self.pulley_positions_iplus1 = pulley_positions_iplus1
@@ -227,9 +213,7 @@ class TendonManager:
         for i, conf in enumerate(configurations[:-1]):
             i_r_1 = self.radius_vectors_iplus1[i]
             iplus1_r_2 = self.radius_vectors_i[i + 1]
-            link_quat_iplus1 = self.robot.data.body_link_quat_w[
-                0, self.link_indices[i + 1]
-            ]
+            link_quat_iplus1 = self.robot.data.body_link_quat_w[0, self.link_indices[i + 1]]
             link_quat_i = self.robot.data.body_link_quat_w[0, self.link_indices[i]]
 
             world_r_2 = quat_apply(link_quat_iplus1, iplus1_r_2)
@@ -246,9 +230,7 @@ class TendonManager:
                 self.initial_windings[i] = 2 * torch.pi - self.initial_windings[i]
 
             # store
-            self.initial_joint_angles[i] = self.robot.data.joint_pos[
-                0, self.joint_indices[i]
-            ]
+            self.initial_joint_angles[i] = self.robot.data.joint_pos[0, self.joint_indices[i]]
 
             # store
             self.joint_angle_to_winding_sign = motor_winding_alignments[i]
@@ -266,10 +248,7 @@ class TendonManager:
                 (
                     self.initial_windings
                     + self.joint_angle_to_winding_sign
-                    * (
-                        self.robot.data.joint_pos[0, self.joint_indices]
-                        - self.initial_joint_angles
-                    )
+                    * (self.robot.data.joint_pos[0, self.joint_indices] - self.initial_joint_angles)
                 )
                 * self.radii[1:-1]
             ).sum()
@@ -281,9 +260,7 @@ class TendonManager:
         length_velocity = (current_length - self.last_length) / dt
         if current_length <= self.desired_length:
             self.last_length = current_length
-            print(
-                f"[Slack] Current length: {current_length.item():.4f}; Velocity: {length_velocity.item():.4f}"
-            )
+            print(f"[Slack] Current length: {current_length.item():.4f}; Velocity: {length_velocity.item():.4f}")
             return
 
         tension = self.stiffness * delta_length + self.damping * length_velocity
@@ -306,20 +283,12 @@ class TendonManager:
             force_vector = (
                 i_tangent_next
                 if i == 0
-                else (
-                    -self.tangents[i]
-                    if i == self.n_joints - 1
-                    else -self.tangents[i] + i_tangent_next
-                )
+                else (-self.tangents[i] if i == self.n_joints - 1 else -self.tangents[i] + i_tangent_next)
             )
             torque = (
                 initial_torque
                 if i == 0
-                else (
-                    final_torque
-                    if i == self.n_joints - 1
-                    else torch.zeros(3, device=self.device)
-                )
+                else (final_torque if i == self.n_joints - 1 else torch.zeros(3, device=self.device))
             )
 
             self.robot.set_external_force_and_torque(
@@ -349,9 +318,7 @@ class TendonManagerV2:
         self.joint_signs = joint_signs
         self.radii = radii
         for i in range(N_JOINTS):
-            self.initial_joint_angles[i] = self.robot.data.joint_pos[
-                0, self.joint_indices[i]
-            ]
+            self.initial_joint_angles[i] = self.robot.data.joint_pos[0, self.joint_indices[i]]
         self.K_matrix = torch.zeros((N_JOINTS, N_JOINTS), device=self.device)
         for i in range(N_JOINTS):
             for j in range(N_JOINTS):
@@ -359,14 +326,10 @@ class TendonManagerV2:
 
     def apply(self, dt: float):
         current_joint_angles = self.robot.data.joint_pos[0, self.joint_indices]
-        angle_deltas = (
-            current_joint_angles - self.initial_joint_angles
-        ) * self.joint_signs
+        angle_deltas = (current_joint_angles - self.initial_joint_angles) * self.joint_signs
         delta_length = torch.dot(self.radii, angle_deltas)
         if delta_length > 0:
-            print(
-                f"[Tense V2] Delta length: {delta_length.item():.4f}, applying tension."
-            )
+            print(f"[Tense V2] Delta length: {delta_length.item():.4f}, applying tension.")
             torques = -torch.matmul(self.K_matrix, angle_deltas)
             self.robot.set_joint_effort_target(
                 target=torques.unsqueeze(0),
@@ -374,9 +337,7 @@ class TendonManagerV2:
             )
 
         else:
-            print(
-                f"[Slack V2] Delta length: {delta_length.item():.4f}, no tension applied."
-            )
+            print(f"[Slack V2] Delta length: {delta_length.item():.4f}, no tension applied.")
             self.robot.set_joint_effort_target(
                 target=torch.zeros_like(angle_deltas).unsqueeze(0),
                 joint_ids=self.joint_indices,
@@ -414,9 +375,7 @@ class TendonManagerV2NoActuator:
         self.joint_signs = joint_signs
         self.radii = radii
         for i in range(self.N_JOINTS):
-            self.initial_joint_angles[i] = self.robot.data.joint_pos[
-                0, self.joint_indices[i]
-            ]
+            self.initial_joint_angles[i] = self.robot.data.joint_pos[0, self.joint_indices[i]]
         self.K_matrix = torch.zeros((self.N_JOINTS, self.N_JOINTS), device=self.device)
         for i in range(self.N_JOINTS):
             for j in range(self.N_JOINTS):
@@ -424,14 +383,10 @@ class TendonManagerV2NoActuator:
 
     def apply(self, dt: float):
         current_joint_angles = self.robot.data.joint_pos[0, self.joint_indices]
-        angle_deltas = (
-            current_joint_angles - self.initial_joint_angles
-        ) * self.joint_signs
+        angle_deltas = (current_joint_angles - self.initial_joint_angles) * self.joint_signs
         delta_length = torch.dot(self.radii, angle_deltas)
         if delta_length > 0:
-            print(
-                f"[Tense V2] Delta length: {delta_length.item():.4f}, applying tension."
-            )
+            print(f"[Tense V2] Delta length: {delta_length.item():.4f}, applying tension.")
             torques = -torch.matmul(self.K_matrix, angle_deltas)
             applied_torques = torch.zeros((self.N_BODIES, 3), device=self.device)
             applied_torques[:-1] = -torques.unsqueeze(1) * self.joint_axes
@@ -444,9 +399,7 @@ class TendonManagerV2NoActuator:
             )
 
         else:
-            print(
-                f"[Slack V2] Delta length: {delta_length.item():.4f}, no tension applied."
-            )
+            print(f"[Slack V2] Delta length: {delta_length.item():.4f}, no tension applied.")
             self.robot.set_external_force_and_torque(
                 forces=torch.zeros((1, self.N_BODIES, 3), device=self.device),
                 torques=torch.zeros((1, self.N_BODIES, 3), device=self.device),
@@ -464,12 +417,8 @@ def main():
     #  sim.set_camera_view([5.0, 0.0, 1.5], [0.0, 0.0, 1.0])  # type: ignore
 
     # Add ground and light
-    sim_utils.GroundPlaneCfg().func(
-        "/World/defaultGroundPlane", sim_utils.GroundPlaneCfg()
-    )
-    sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func(
-        "/World/Light", sim_utils.DomeLightCfg()
-    )
+    sim_utils.GroundPlaneCfg().func("/World/defaultGroundPlane", sim_utils.GroundPlaneCfg())
+    sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func("/World/Light", sim_utils.DomeLightCfg())
 
     robot = Articulation(cfg=get_two_bar_act_cfg())
 
@@ -493,12 +442,8 @@ def main():
         link_names=["base_link", "center_link", "top_link"],
         joint_names=["lower_joint", "upper_joint"],
         radii=torch.tensor([0.0, 0.05, 0.05, 0.05], device=robot.device),
-        pulley_positions_i=torch.tensor(
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], device=robot.device
-        ),
-        pulley_positions_iplus1=torch.tensor(
-            [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]], device=robot.device
-        ),
+        pulley_positions_i=torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], device=robot.device),
+        pulley_positions_iplus1=torch.tensor([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]], device=robot.device),
         configurations=["down-down", "down-up", "up-up"],
         motor_winding_alignments=torch.tensor([-1.0, -1.0], device=robot.device),
     )
@@ -513,9 +458,7 @@ def main():
         robot=robot,
         joint_names=["lower_joint", "upper_joint"],
         body_names=["base_link", "center_link", "top_link"],
-        joint_axes=torch.tensor(
-            [[0.0, 1.0, 0.0], [0.0, -1.0, 0.0]], device=robot.device
-        ),
+        joint_axes=torch.tensor([[0.0, 1.0, 0.0], [0.0, -1.0, 0.0]], device=robot.device),
         stiffness=200000.0,
         joint_signs=torch.tensor([-1.0, -1.0], device=robot.device),
         radii=torch.tensor([0.05, 0.05], device=robot.device),

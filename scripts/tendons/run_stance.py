@@ -7,9 +7,7 @@ import argparse
 import json
 from isaaclab.app import AppLauncher
 
-parser = argparse.ArgumentParser(
-    description="Apply random forces to a two-bar robot and visualize them."
-)
+parser = argparse.ArgumentParser(description="Apply random forces to a two-bar robot and visualize them.")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -128,12 +126,8 @@ def main():
     #  sim.set_camera_view([5.0, 0.0, 1.5], [0.0, 0.0, 1.0])  # type: ignore
 
     # Add ground and light
-    sim_utils.GroundPlaneCfg().func(
-        "/World/defaultGroundPlane", sim_utils.GroundPlaneCfg()
-    )
-    sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func(
-        "/World/Light", sim_utils.DomeLightCfg()
-    )
+    sim_utils.GroundPlaneCfg().func("/World/defaultGroundPlane", sim_utils.GroundPlaneCfg())
+    sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func("/World/Light", sim_utils.DomeLightCfg())
 
     robot = Articulation(cfg=get_leg_cfg())
 
@@ -171,51 +165,37 @@ def main():
     try:
         for iteration in range(int(t_total / sim.get_physics_dt())):
             t = iteration * sim.get_physics_dt()
-            a, b, c, d, le, thetas, tendon_torques_left, tendon_torques_right = (
-                gst_tendon_manager.apply_actuated(
-                    hip_position=torch.tensor(
-                        [0.0, 0.0],
-                        dtype=torch.float32,
-                    ),
-                    knee_torque=torch.tensor(
-                        [
-                            20.0,
-                            20.0,
-                        ],  # TODO: better torque computation
-                        dtype=torch.float32,
-                    ),
-                    virtual_ground_height=0.38,
-                    apply_tendons=False,
-                )
+            a, b, c, d, le, thetas, tendon_torques_left, tendon_torques_right = gst_tendon_manager.apply_actuated(
+                hip_position=torch.tensor(
+                    [0.0, 0.0],
+                    dtype=torch.float32,
+                ),
+                knee_torque=torch.tensor(
+                    [
+                        20.0,
+                        20.0,
+                    ],  # TODO: better torque computation
+                    dtype=torch.float32,
+                ),
+                virtual_ground_height=0.38,
+                apply_tendons=False,
             )
             states_left.append(
                 "s"
                 if le[0].item() > 0
-                else (
-                    "b"
-                    if b[0].item() > 0
-                    else ("c" if c[0].item() > 0 else ("d" if d[0].item() > 0 else "s"))
-                )
+                else ("b" if b[0].item() > 0 else ("c" if c[0].item() > 0 else ("d" if d[0].item() > 0 else "s")))
             )
             ls_left.append(le[0].item())
             all_thetas_left.append(thetas[0].detach().cpu().numpy().tolist())
-            all_tendon_torques_left.append(
-                tendon_torques_left[0].cpu().numpy().tolist()
-            )
+            all_tendon_torques_left.append(tendon_torques_left[0].cpu().numpy().tolist())
             states_right.append(
                 "s"
                 if le[1].item() > 0
-                else (
-                    "b"
-                    if b[1].item() > 0
-                    else ("c" if c[1].item() > 0 else ("d" if d[1].item() > 0 else "s"))
-                )
+                else ("b" if b[1].item() > 0 else ("c" if c[1].item() > 0 else ("d" if d[1].item() > 0 else "s")))
             )
             ls_right.append(le[1].item())
             all_thetas_right.append(thetas[1].detach().cpu().numpy().tolist())
-            all_tendon_torques_right.append(
-                tendon_torques_right[0].cpu().numpy().tolist()
-            )
+            all_tendon_torques_right.append(tendon_torques_right[0].cpu().numpy().tolist())
 
             robot.write_data_to_sim()
             sim.step()

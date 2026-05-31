@@ -14,6 +14,7 @@ from isaaclab.tendons.controllers.base import (
     wrap_0_2pi,
 )
 
+
 @dataclass
 class CPGParams:
     f_hz: float = 1.0

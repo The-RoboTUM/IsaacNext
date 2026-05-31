@@ -22,7 +22,9 @@ def compute_kft_delta_l_core(
     tendon_data: TendonDataJIT,
 ) -> KFTDeltaCoreOutput:
     """KFT spring-length delta shared by debug and JIT paths."""
-    KFT_delta_L_s = tendon_data.kft_length - geom.KFT_q8 * tendon_data.pulley_radii[:, tids.I_RADIUS_KFT_8] - geom.KFT_l_8c
+    KFT_delta_L_s = (
+        tendon_data.kft_length - geom.KFT_q8 * tendon_data.pulley_radii[:, tids.I_RADIUS_KFT_8] - geom.KFT_l_8c
+    )
     return KFTDeltaCoreOutput(delta_l=KFT_delta_L_s)
 
 

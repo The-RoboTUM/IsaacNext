@@ -13,6 +13,7 @@ import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg, RewardsCfg
 
 from isaaclab.sensors import ContactSensorCfg
+
 ##
 # Pre-defined configs
 ##
@@ -35,6 +36,7 @@ FOOT_CONNECTOR_CFG = SceneEntityCfg(
     body_names=("s34_foot_connector_assy_1", "s34_foot_connector_assy_2"),
 )
 
+
 def quat_to_rot_matrix(q: torch.Tensor) -> torch.Tensor:
     """Convert quaternions (wxyz) to rotation matrices."""
     # q: [N, 4] in (x, y, z, w) order (check Isaac Lab ordering!)
@@ -44,11 +46,20 @@ def quat_to_rot_matrix(q: torch.Tensor) -> torch.Tensor:
     xy, xz, yz = x * y, x * z, y * z
     wx, wy, wz = w * x, w * y, w * z
 
-    rot = torch.stack([
-        1 - 2 * (yy + zz), 2 * (xy - wz),     2 * (xz + wy),
-        2 * (xy + wz),     1 - 2 * (xx + zz), 2 * (yz - wx),
-        2 * (xz - wy),     2 * (yz + wx),     1 - 2 * (xx + yy),
-    ], dim=-1)
+    rot = torch.stack(
+        [
+            1 - 2 * (yy + zz),
+            2 * (xy - wz),
+            2 * (xz + wy),
+            2 * (xy + wz),
+            1 - 2 * (xx + zz),
+            2 * (yz - wx),
+            2 * (xz - wy),
+            2 * (yz + wx),
+            1 - 2 * (xx + yy),
+        ],
+        dim=-1,
+    )
     rot = rot.view(-1, 3, 3)
     return rot
 
@@ -58,17 +69,17 @@ def get_feet_pose_base(env, feet_cfg: SceneEntityCfg = FEET_CFG):
     ids = feet_cfg.body_ids  # get the ids of the feet
 
     # in the world frame
-    pos_w = robot.data.body_pos_w[:, ids, :]      # [N, 2, 3] position of the 2 feet in the world frame
-    quat_w = robot.data.body_quat_w[:, ids, :]    # [N, 2, 4] Quaternion of the 2 feet in the world frame
+    pos_w = robot.data.body_pos_w[:, ids, :]  # [N, 2, 3] position of the 2 feet in the world frame
+    quat_w = robot.data.body_quat_w[:, ids, :]  # [N, 2, 4] Quaternion of the 2 feet in the world frame
 
     base_pos = robot.data.root_pos_w[:, None, :]  # [N, 1, 3]
-    base_quat = robot.data.root_quat_w            # [N, 4]
+    base_quat = robot.data.root_quat_w  # [N, 4]
 
     # relative in world frame
-    rel = pos_w - base_pos                        # [N, 2, 3]
+    rel = pos_w - base_pos  # [N, 2, 3]
 
     # rotate into base frame
-    R = quat_to_rot_matrix(base_quat)             # [N, 3, 3]
+    R = quat_to_rot_matrix(base_quat)  # [N, 3, 3]
     rel_b = torch.einsum("nij,nkj->nki", R.transpose(1, 2), rel)
 
     # for orientations, you can skip for now if you only need positions
@@ -108,6 +119,7 @@ def feet_symmetry_penalty(
 
     return penalty
 
+
 def terminate_if_base_too_low(env, minimum_height: float = 0.8):
     # Torch tensor: (num_envs, num_bodies, 3)
     body_pos = env.scene["robot"].data.body_pos_w
@@ -118,9 +130,10 @@ def terminate_if_base_too_low(env, minimum_height: float = 0.8):
     # return a torch.BoolTensor mask
     return base_z < minimum_height
 
+
 @configclass
 class ForrestRewards(RewardsCfg):
-     # Reward terms for the MDP.
+    # Reward terms for the MDP.
 
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
     track_lin_vel_xy_exp = RewTerm(
@@ -178,7 +191,6 @@ class ForrestRewards(RewardsCfg):
         },
     )
 
-
     gait_symetry = RewTerm(
         func=feet_symmetry_penalty,
         weight=-1.0,
@@ -189,13 +201,14 @@ class ForrestRewards(RewardsCfg):
     )
 
     foot_connector_contact = RewTerm(
-         func=mdp.undesired_contacts,
-         weight=-1.0,
-         params={
-             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=FOOT_CONNECTOR_CFG.body_names),
-             "threshold": 1.0,
-         },
+        func=mdp.undesired_contacts,
+        weight=-1.0,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=FOOT_CONNECTOR_CFG.body_names),
+            "threshold": 1.0,
+        },
     )
+
 
 @configclass
 class ForrestActionsCfg:
@@ -212,9 +225,9 @@ class ForrestActionsCfg:
     )
     tendon = TendonActionTermHybridCfg(
         asset_name="robot",
-        randomization_ranges=TendonConstantRandomizationRanges(
-        ),
+        randomization_ranges=TendonConstantRandomizationRanges(),
     )
+
 
 @configclass
 class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
@@ -227,7 +240,6 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Scene
         self.scene.robot = FORREST_CFG.replace(prim_path="{ENV_REGEX_NS}/forrest_urdf_latest")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/forrest_urdf_latest/world_corrected"
-
 
         # TEMP (Used only to make flat env model work)
         # self.scene.height_scanner = None
@@ -310,17 +322,18 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
 
         # terminations
-        self.terminations.base_contact.params["sensor_cfg"].body_names = ("base_assy_v2_1",
-                                                                          "differential_cage_assy_small_motor_1",
-                                                                          "differential_cage_assy_small_motor_2",
-                                                                          "outside_hip_v2_assy_axial_1",
-                                                                          "outside_hip_v2_assy_axial_left_1"
-                                                                          )
+        self.terminations.base_contact.params["sensor_cfg"].body_names = (
+            "base_assy_v2_1",
+            "differential_cage_assy_small_motor_1",
+            "differential_cage_assy_small_motor_2",
+            "outside_hip_v2_assy_axial_1",
+            "outside_hip_v2_assy_axial_left_1",
+        )
 
         self.terminations.base_too_low = TerminationTermCfg(
-                                             func=terminate_if_base_too_low,
-                                             params={"minimum_height": 0.5},
-                                         )
+            func=terminate_if_base_too_low,
+            params={"minimum_height": 0.5},
+        )
 
         # # DEBUG
         # self.observations.policy.enable_corruption = False
@@ -356,4 +369,3 @@ class ForrestRoughEnvCfg_PLAY(ForrestRoughEnvCfg):
         # remove random pushing
         self.events.base_external_force_torque = None
         self.events.push_robot = None
-

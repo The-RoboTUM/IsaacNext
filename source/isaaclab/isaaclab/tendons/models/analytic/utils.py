@@ -1,4 +1,5 @@
 """Utility functions for tendons."""
+
 import torch
 
 
@@ -8,6 +9,7 @@ def list_from_dict(d: dict, n: int) -> list:
         min(d.keys()) == 0 and max(d.keys()) == n - 1 and len(set(d.keys())) == n
     ), "Dict keys must be consecutive integers starting from 0."
     return [d[k] for k in sorted(d.keys())]
+
 
 def dbg_grad(name: str, x: torch.Tensor, joint_angles: torch.Tensor):
     print(f"\n--- {name} ---")

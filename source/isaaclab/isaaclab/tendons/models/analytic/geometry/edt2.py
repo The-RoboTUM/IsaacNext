@@ -47,9 +47,7 @@ def compute_edt2_delta_l_core(
     )
     EDT2_L_s_C = geom.EDT2_l_cc_C
     EDT2_L_s_D = (
-        geom.EDT2_l_c5_A
-        + geom.EDT2_q5_D * tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_5]
-        + geom.EDT2_l_5c_D
+        geom.EDT2_l_c5_A + geom.EDT2_q5_D * tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_5] + geom.EDT2_l_5c_D
     )
 
     EDT2_h5_B_disengaged = geom.EDT2_h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_5]

@@ -6,6 +6,7 @@ from isaaclab.tendons.models.analytic.constants import TendonConstantRandomizati
 from isaaclab.tendons.plugin.action_term import TendonActionTerm, TendonActionTermHybrid
 from isaaclab.utils import configclass
 
+
 @configclass
 class TendonActionTermHybridCfg(ActionTermCfg):
     """Configuration for tendon-based action term."""
@@ -23,10 +24,9 @@ class TendonActionTermHybridCfg(ActionTermCfg):
     class for more details.
     """
 
-    randomization_ranges: TendonConstantRandomizationRanges = (
-        TendonConstantRandomizationRanges()
-    )
+    randomization_ranges: TendonConstantRandomizationRanges = TendonConstantRandomizationRanges()
     """Randomization ranges for tendon constants."""
+
 
 @configclass
 class TendonActionTermCfg(ActionTermCfg):
@@ -45,7 +45,5 @@ class TendonActionTermCfg(ActionTermCfg):
     class for more details.
     """
 
-    randomization_ranges: TendonConstantRandomizationRanges = (
-        TendonConstantRandomizationRanges()
-    )
+    randomization_ranges: TendonConstantRandomizationRanges = TendonConstantRandomizationRanges()
     """Randomization ranges for tendon constants."""

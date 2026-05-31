@@ -63,32 +63,17 @@ state_to_numeric = {"a": 0, "b": 1, "c": 2, "d": 3, "s": 4}
 numeric_states_left = [state_to_numeric.get(state[0], -1) for state in states_left]
 numeric_states_right = [state_to_numeric.get(state[0], -1) for state in states_right]
 
-state_changes_left = [0] + [
-    1 if states_left[i] != states_left[i - 1] else 0 for i in range(1, len(states_left))
-]
-state_changes_right = [0] + [
-    1 if states_right[i] != states_right[i - 1] else 0
-    for i in range(1, len(states_right))
-]
+state_changes_left = [0] + [1 if states_left[i] != states_left[i - 1] else 0 for i in range(1, len(states_left))]
+state_changes_right = [0] + [1 if states_right[i] != states_right[i - 1] else 0 for i in range(1, len(states_right))]
 
-joint_angles_left = [
-    [x[i] for x in joint_positions_left] for i in range(len(joint_names_left))
-]
-joint_angles_right = [
-    [x[i] for x in joint_positions_right] for i in range(len(joint_names_right))
-]
+joint_angles_left = [[x[i] for x in joint_positions_left] for i in range(len(joint_names_left))]
+joint_angles_right = [[x[i] for x in joint_positions_right] for i in range(len(joint_names_right))]
 
 thetas_values_left = [[x[i] for x in thetas_left] for i in range(len(joint_names_left))]
-thetas_values_right = [
-    [x[i] for x in thetas_right] for i in range(len(joint_names_right))
-]
+thetas_values_right = [[x[i] for x in thetas_right] for i in range(len(joint_names_right))]
 
-torque_values_left = [
-    [x[i] for x in torques_left] for i in range(len(joint_names_left))
-]
-torque_values_right = [
-    [x[i] for x in torques_right] for i in range(len(joint_names_right))
-]
+torque_values_left = [[x[i] for x in torques_left] for i in range(len(joint_names_left))]
+torque_values_right = [[x[i] for x in torques_right] for i in range(len(joint_names_right))]
 
 # Create figure with subplots (6 rows for each metric, 2 columns for left/right)
 fig, axes = plt.subplots(6, 2, figsize=(16, 20))
@@ -129,9 +114,7 @@ def setup_axes():
             fontsize=10,
             verticalalignment="bottom",
             horizontalalignment="center",
-            bbox=dict(
-                boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8
-            ),
+            bbox=dict(boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8),
         )
         ax.set_yticks([0, 1, 2, 3, 4])
         ax.set_yticklabels(["a", "b", "c", "d", "s"])
@@ -158,9 +141,7 @@ def setup_axes():
             fontsize=10,
             verticalalignment="bottom",
             horizontalalignment="center",
-            bbox=dict(
-                boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8
-            ),
+            bbox=dict(boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8),
         )
         ax.set_ylim([0, 2])
         ax.set_xlim(0, max_length - 1)
@@ -171,9 +152,7 @@ def setup_axes():
     # Row 2: Lengths - compute shared y-limits
     all_lengths = lengths_left + lengths_right
     lengths_min, lengths_max = min(all_lengths), max(all_lengths)
-    for col, (ax, title) in enumerate(
-        zip(axes[2], ["GST Lengths - LEFT", "GST Lengths - RIGHT"])
-    ):
+    for col, (ax, title) in enumerate(zip(axes[2], ["GST Lengths - LEFT", "GST Lengths - RIGHT"])):
         ax.set_xticklabels([])
         if col == 0:
             ax.set_ylabel("Length")
@@ -185,9 +164,7 @@ def setup_axes():
             fontsize=10,
             verticalalignment="bottom",
             horizontalalignment="center",
-            bbox=dict(
-                boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8
-            ),
+            bbox=dict(boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8),
         )
         ax.set_xlim(0, max_length - 1)
         if all_lengths:
@@ -195,9 +172,7 @@ def setup_axes():
         # Add black line at length=0 and shade area above grey
         ax.axhline(y=0, color="black", linewidth=1.5, zorder=5)
         ylim = ax.get_ylim()
-        ax.fill_between(
-            [0, max_length - 1], 0, ylim[1], color="grey", alpha=0.3, zorder=1
-        )
+        ax.fill_between([0, max_length - 1], 0, ylim[1], color="grey", alpha=0.3, zorder=1)
         ax.set_ylim(ylim)  # Restore ylim after fill_between
         (line,) = ax.plot([], [], linewidth=1, color="green", alpha=0.7, zorder=10)
         lines[f"lengths_{col}"] = line
@@ -226,9 +201,7 @@ def setup_axes():
             fontsize=10,
             verticalalignment="bottom",
             horizontalalignment="center",
-            bbox=dict(
-                boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8
-            ),
+            bbox=dict(boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8),
         )
         ax.set_xlim(0, max_length - 1)
         if all_joint_values:
@@ -264,9 +237,7 @@ def setup_axes():
             fontsize=10,
             verticalalignment="bottom",
             horizontalalignment="center",
-            bbox=dict(
-                boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8
-            ),
+            bbox=dict(boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8),
         )
         ax.set_xlim(0, max_length - 1)
         if all_theta_values:
@@ -302,9 +273,7 @@ def setup_axes():
             fontsize=10,
             verticalalignment="bottom",
             horizontalalignment="center",
-            bbox=dict(
-                boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8
-            ),
+            bbox=dict(boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8),
         )
         ax.set_xlim(0, max_length - 1)
         if all_torque_values:
@@ -340,16 +309,8 @@ def update(frame):
     )
 
     # Row 1: State Changes
-    change_indices_left = [
-        i
-        for i in range(min(n_points, len(state_changes_left)))
-        if state_changes_left[i] == 1
-    ]
-    change_indices_right = [
-        i
-        for i in range(min(n_points, len(state_changes_right)))
-        if state_changes_right[i] == 1
-    ]
+    change_indices_left = [i for i in range(min(n_points, len(state_changes_left))) if state_changes_left[i] == 1]
+    change_indices_right = [i for i in range(min(n_points, len(state_changes_right))) if state_changes_right[i] == 1]
     lines["changes_0"].set_offsets(
         np.column_stack([change_indices_left, [1] * len(change_indices_left)])
         if change_indices_left
@@ -362,12 +323,8 @@ def update(frame):
     )
 
     # Row 2: Lengths
-    lines["lengths_0"].set_data(
-        np.arange(min(n_points, len(lengths_left))), lengths_left[:n_points]
-    )
-    lines["lengths_1"].set_data(
-        np.arange(min(n_points, len(lengths_right))), lengths_right[:n_points]
-    )
+    lines["lengths_0"].set_data(np.arange(min(n_points, len(lengths_left))), lengths_left[:n_points])
+    lines["lengths_1"].set_data(np.arange(min(n_points, len(lengths_right))), lengths_right[:n_points])
 
     # Row 3: Joint Angles
     for i, line in enumerate(lines["joints_0"]):

@@ -9,6 +9,7 @@ import numpy as np
 
 from isaaclab.tendons.controllers.base import DOF_ORDER, TWOPI, LegControllerBase, _rad_map
 
+
 @dataclass
 class SinusoidalParams:
     f_hz: float = 1.0

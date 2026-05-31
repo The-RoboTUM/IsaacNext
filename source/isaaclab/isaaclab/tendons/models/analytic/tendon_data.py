@@ -139,9 +139,7 @@ class TendonData:
         joint_offsets_theta = torch.stack(
             [
                 tc.joint_offsets_theta[i]
-                + torch.empty(batch_size, device=dev).uniform_(
-                    *randomization_ranges.joint_offsets_theta[i]
-                )
+                + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.joint_offsets_theta[i])
                 for i in range(N_JOINTS)
             ],
             dim=1,
@@ -151,9 +149,7 @@ class TendonData:
         pulley_radii = torch.stack(
             [
                 as_tensor_on_device(tc.pulley_radii[i], dev)
-                + torch.empty(batch_size, device=dev).uniform_(
-                    *randomization_ranges.pulley_radii[i]
-                )
+                + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.pulley_radii[i])
                 for i in range(N_RADII)
             ],
             dim=1,
@@ -163,9 +159,7 @@ class TendonData:
         chain_link_lengths = torch.stack(
             [
                 as_tensor_on_device(tc.chain_link_lengths[i], dev)
-                + torch.empty(batch_size, device=dev).uniform_(
-                    *randomization_ranges.chain_link_lengths[i]
-                )
+                + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.chain_link_lengths[i])
                 for i in range(N_CHAIN_LINKS_PER_LEG)
             ],
             dim=1,
@@ -190,9 +184,7 @@ class TendonData:
         connector_link_lengths_lateral = torch.stack(
             [
                 as_tensor_on_device(tc.connector_link_lengths_lateral[i], dev)
-                + torch.empty(batch_size, device=dev).uniform_(
-                    *randomization_ranges.connector_link_lengths_lateral[i]
-                )
+                + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.connector_link_lengths_lateral[i])
                 for i in range(N_CONNECTOR_OFFSETS)
             ],
             dim=1,
@@ -208,9 +200,9 @@ class TendonData:
         gst_stiffness = tc.gst_stiffness + torch.empty(batch_size, device=dev).uniform_(
             *randomization_ranges.gst_stiffness
         )
-        gst_spring_rest_length = tc.gst_spring_rest_length + torch.empty(
-            batch_size, device=dev
-        ).uniform_(*randomization_ranges.gst_spring_rest_length)
+        gst_spring_rest_length = tc.gst_spring_rest_length + torch.empty(batch_size, device=dev).uniform_(
+            *randomization_ranges.gst_spring_rest_length
+        )
 
         gst_phi_34_j3, gst_phi_34_j4, gst_l_34 = opposite_sided_wrap(
             pulley_radii[:, tids.I_RADIUS_GST_3],
@@ -236,15 +228,13 @@ class TendonData:
             chain_link_lengths[:, tids.I_CHAIN_LINK_67],
         )
 
-        gst_l_2prime3 = connector_link_lengths_longitudinal[
-            :, tids.I_CONNECTOR_LINK_GST_23
-        ]
+        gst_l_2prime3 = connector_link_lengths_longitudinal[:, tids.I_CONNECTOR_LINK_GST_23]
         gst_phi_23_j3 = tc.gst_phi_23_j3 + torch.empty(batch_size, device=dev).uniform_(
             *randomization_ranges.gst_phi_23_j3
         )
-        gst_angle_4prime5_to_j44prime = tc.angle_4prime5_to_j44prime + torch.empty(
-            batch_size, device=dev
-        ).uniform_(*randomization_ranges.angle_4prime5_to_j44prime)
+        gst_angle_4prime5_to_j44prime = tc.angle_4prime5_to_j44prime + torch.empty(batch_size, device=dev).uniform_(
+            *randomization_ranges.angle_4prime5_to_j44prime
+        )
 
         gst_q_3_offset = -gst_phi_23_j3 - gst_phi_34_j3
         gst_q_4_offset = -gst_angle_4prime5_to_j44prime - gst_phi_34_j4
@@ -253,20 +243,18 @@ class TendonData:
         gst_q_6_offset = -gst_phi_56_j6 - gst_phi_67_j6
 
         # Note: we randomize upper and lower tendon lengths after computing other offsets because of manufacturing tolerances.
-        upper_gst_length = tc.upper_gst_length + torch.empty(
-            batch_size, device=dev
-        ).uniform_(*randomization_ranges.upper_gst_length)
-        lower_gst_length = tc.lower_gst_length + torch.empty(
-            batch_size, device=dev
-        ).uniform_(*randomization_ranges.lower_gst_length)
+        upper_gst_length = tc.upper_gst_length + torch.empty(batch_size, device=dev).uniform_(
+            *randomization_ranges.upper_gst_length
+        )
+        lower_gst_length = tc.lower_gst_length + torch.empty(batch_size, device=dev).uniform_(
+            *randomization_ranges.lower_gst_length
+        )
 
         # -------------------- DFT ------------------ #
         dft_stiffness = tc.dft_stiffness + torch.empty(batch_size, device=dev).uniform_(
             *randomization_ranges.dft_stiffness
         )
-        dft_length = tc.dft_length + torch.empty(batch_size, device=dev).uniform_(
-            *randomization_ranges.dft_length
-        )
+        dft_length = tc.dft_length + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.dft_length)
         _, dft_phi_c5_j5, dft_l_c5 = same_sided_wrap(
             torch.tensor(0.0, device=dev),
             pulley_radii[:, tids.I_RADIUS_DFT_5],
@@ -294,12 +282,10 @@ class TendonData:
         dft_q6_offset = -dft_phi_56_j6 - dft_phi_6c_j6
 
         # -------------------- EDT1 ----------------- #
-        edt1_length = tc.edt1_length + torch.empty(batch_size, device=dev).uniform_(
-            *randomization_ranges.edt1_length
+        edt1_length = tc.edt1_length + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.edt1_length)
+        edt1_stiffness = tc.edt1_stiffness + torch.empty(batch_size, device=dev).uniform_(
+            *randomization_ranges.edt1_stiffness
         )
-        edt1_stiffness = tc.edt1_stiffness + torch.empty(
-            batch_size, device=dev
-        ).uniform_(*randomization_ranges.edt1_stiffness)
 
         edt1_theta_offset_4 = joint_offsets_theta[
             :, tids.I_JOINT_4
@@ -321,12 +307,10 @@ class TendonData:
         )
 
         # -------------------- EDT2 ----------------- #
-        edt2_length = tc.edt2_length + torch.empty(batch_size, device=dev).uniform_(
-            *randomization_ranges.edt2_length
+        edt2_length = tc.edt2_length + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.edt2_length)
+        edt2_stiffness = tc.edt2_stiffness + torch.empty(batch_size, device=dev).uniform_(
+            *randomization_ranges.edt2_stiffness
         )
-        edt2_stiffness = tc.edt2_stiffness + torch.empty(
-            batch_size, device=dev
-        ).uniform_(*randomization_ranges.edt2_stiffness)
 
         edt2_phi_56_j5, edt2_phi_56_j6, edt2_l_56 = same_sided_wrap(
             pulley_radii[:, tids.I_RADIUS_EDT2_5],
@@ -350,9 +334,7 @@ class TendonData:
         edt2_q6hat_offset = -edt2_phi_56_j6 - edt2_phi_6c_j6
 
         # -------------------- KFT ----------------- #
-        kft_length = tc.kft_length + torch.empty(batch_size, device=dev).uniform_(
-            *randomization_ranges.kft_length
-        )
+        kft_length = tc.kft_length + torch.empty(batch_size, device=dev).uniform_(*randomization_ranges.kft_length)
         kft_stiffness = tc.kft_stiffness + torch.empty(batch_size, device=dev).uniform_(
             *randomization_ranges.kft_stiffness
         )
@@ -469,9 +451,7 @@ class TendonData:
 
         self.pulley_radii = pulley_radii
         self.pulley_radii_squared = pulley_radii**2
-        self.link_lengths = torch.cat(
-            (chain_link_lengths, connector_link_lengths), dim=1
-        )
+        self.link_lengths = torch.cat((chain_link_lengths, connector_link_lengths), dim=1)
         self.link_lengths_squared = self.link_lengths**2
 
         self.tendon_offsets_theta = tendon_offsets_theta
@@ -527,9 +507,7 @@ def main():
         torch.rad2deg(
             torch.atan2(
                 tendon_data.pulley_radii[:, tids.I_RADIUS_GST_3],
-                tendon_data.tendon_section_lengths[
-                    :, tids.I_TENDON_SECTION_LENGTH_GST_23
-                ],
+                tendon_data.tendon_section_lengths[:, tids.I_TENDON_SECTION_LENGTH_GST_23],
             )
         ),
     )

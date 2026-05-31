@@ -44,9 +44,7 @@ def compute_gst_delta_l_core(
     GST_h6_C_disengaged = geom.GST_h6_C > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_6]
     GST_h6_D_disengaged = geom.GST_h6_D > tendon_data.pulley_radii[:, tids.I_RADIUS_GST_6]
 
-    GST_state_C = (GST_h5_B_disengaged & GST_h6_C_disengaged) | (
-        GST_h6_D_disengaged & GST_h5_C_disengaged
-    )
+    GST_state_C = (GST_h5_B_disengaged & GST_h6_C_disengaged) | (GST_h6_D_disengaged & GST_h5_C_disengaged)
     GST_state_B = ~GST_state_C & GST_h5_B_disengaged
     GST_state_D = ~GST_state_C & GST_h6_D_disengaged
     GST_state_A = ~(GST_state_B | GST_state_C | GST_state_D)
@@ -93,11 +91,15 @@ def compute_gst_delta_l_core(
         torch.where(
             GST_state_B,
             GST_lower_tendon_state_length_after_4prime_B,
-            torch.where(GST_state_C, GST_lower_tendon_state_length_after_4prime_C, GST_lower_tendon_state_length_after_4prime_D),
+            torch.where(
+                GST_state_C, GST_lower_tendon_state_length_after_4prime_C, GST_lower_tendon_state_length_after_4prime_D
+            ),
         ),
     )
 
-    GST_q4prime = (tendon_data.lower_gst_length - GST_lower_tendon_state_length_after_4prime) / tendon_data.pulley_radii[:, tids.I_RADIUS_GST_4prime]
+    GST_q4prime = (
+        tendon_data.lower_gst_length - GST_lower_tendon_state_length_after_4prime
+    ) / tendon_data.pulley_radii[:, tids.I_RADIUS_GST_4prime]
     GST_q4_base = (
         thetas[:, tids.I_THETA_GST_4]
         - GST_q4prime

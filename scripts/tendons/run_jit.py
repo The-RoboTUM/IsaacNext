@@ -6,12 +6,8 @@ print("Started")
 import argparse
 from isaaclab.app import AppLauncher
 
-parser = argparse.ArgumentParser(
-    description="Apply random forces to a two-bar robot and visualize them."
-)
-parser.add_argument(
-    "--record_video", action="store_true", help="Record video of the simulation."
-)
+parser = argparse.ArgumentParser(description="Apply random forces to a two-bar robot and visualize them.")
+parser.add_argument("--record_video", action="store_true", help="Record video of the simulation.")
 parser.add_argument(
     "--video_output",
     type=str,
@@ -133,12 +129,8 @@ def main():
     )  # Set camera view for recording
 
     # Add ground and light
-    sim_utils.GroundPlaneCfg().func(
-        "/World/defaultGroundPlane", sim_utils.GroundPlaneCfg()
-    )
-    sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func(
-        "/World/Light", sim_utils.DomeLightCfg()
-    )
+    sim_utils.GroundPlaneCfg().func("/World/defaultGroundPlane", sim_utils.GroundPlaneCfg())
+    sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func("/World/Light", sim_utils.DomeLightCfg())
 
     robot = Articulation(cfg=get_leg_cfg())
 

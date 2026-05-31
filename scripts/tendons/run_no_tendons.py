@@ -6,9 +6,7 @@ print("Started")
 import argparse
 from isaaclab.app import AppLauncher
 
-parser = argparse.ArgumentParser(
-    description="Apply random forces to a two-bar robot and visualize them."
-)
+parser = argparse.ArgumentParser(description="Apply random forces to a two-bar robot and visualize them.")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -127,12 +125,8 @@ def main():
     #  sim.set_camera_view([5.0, 0.0, 1.5], [0.0, 0.0, 1.0])  # type: ignore
 
     # Add ground and light
-    sim_utils.GroundPlaneCfg().func(
-        "/World/defaultGroundPlane", sim_utils.GroundPlaneCfg()
-    )
-    sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func(
-        "/World/Light", sim_utils.DomeLightCfg()
-    )
+    sim_utils.GroundPlaneCfg().func("/World/defaultGroundPlane", sim_utils.GroundPlaneCfg())
+    sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func("/World/Light", sim_utils.DomeLightCfg())
 
     robot = Articulation(cfg=get_leg_cfg())
 

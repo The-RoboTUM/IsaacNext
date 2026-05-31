@@ -1,13 +1,15 @@
 from __future__ import annotations
+
 """Tendon-based action term implementation."""
 
 from typing import Sequence
 from isaaclab.envs.manager_based_env import ManagerBasedEnv
 from isaaclab.managers.action_manager import ActionTerm
+
 # from isaaclab.tendons.action_term_cfg import TendonActionTermCfg
 from isaaclab.tendons.models.analytic.constants import (
     tids,
-    N_CHAIN_LINKS_PER_LEG, # NOTE: Changed from N_LINKS_PER_LEG
+    N_CHAIN_LINKS_PER_LEG,  # NOTE: Changed from N_LINKS_PER_LEG
     JOINT_AXIS_IDX,
     link_names_left,
     link_names_right,
@@ -33,30 +35,20 @@ class TendonActionTermHybrid(ActionTerm):
             robot=self.robot,
             tendon_data=TendonData(
                 batch_size=env.num_envs,
-                randomization_ranges=cfg.randomization_ranges, # FIXME
+                randomization_ranges=cfg.randomization_ranges,  # FIXME
             ),
         )
 
-        self._raw_actions: torch.Tensor = torch.zeros(
-            (env.num_envs, self.action_dim), device=env.device
-        )
-        self._processed_actions: torch.Tensor = torch.zeros(
-            (env.num_envs, self.action_dim), device=env.device
-        )
+        self._raw_actions: torch.Tensor = torch.zeros((env.num_envs, self.action_dim), device=env.device)
+        self._processed_actions: torch.Tensor = torch.zeros((env.num_envs, self.action_dim), device=env.device)
 
         self.link_indices_left_right, _ = self.robot.find_bodies(
             link_names_left + link_names_right, preserve_order=True
         )
-        self.joint_indices_left, _ = self.robot.find_joints(
-            joint_names_left, preserve_order=True
-        )
-        self.joint_indices_right, _ = self.robot.find_joints(
-            joint_names_right, preserve_order=True
-        )
+        self.joint_indices_left, _ = self.robot.find_joints(joint_names_left, preserve_order=True)
+        self.joint_indices_right, _ = self.robot.find_joints(joint_names_right, preserve_order=True)
 
-        self.hip_joint_indices, _ = self.robot.find_joints(
-            hip_joint_names, preserve_order=True
-        )
+        self.hip_joint_indices, _ = self.robot.find_joints(hip_joint_names, preserve_order=True)
 
     """
     Properties.
@@ -71,6 +63,7 @@ class TendonActionTermHybrid(ActionTerm):
     def raw_actions(self) -> torch.Tensor:
         """The input/raw actions sent to the term."""
         return self._raw_actions
+
     #
     @property
     def processed_actions(self) -> torch.Tensor:
@@ -94,15 +87,11 @@ class TendonActionTermHybrid(ActionTerm):
         (
             tendon_torques_left,
             tendon_torques_right,
-        ) = (  # pyright: ignore[reportAssignmentType]
-            self.tendon_manager.compute_torques_jit()
-        )
+        ) = self.tendon_manager.compute_torques_jit()  # pyright: ignore[reportAssignmentType]
 
         batch_size = self.robot.num_instances
         # 4) apply torques: with axis [0 -1 0], to each link
-        tendon_torques_full = torch.zeros(
-            (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
-        )
+        tendon_torques_full = torch.zeros((batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device)
 
         # Fix coordinate system inversion for joint 3 and 4
         tendon_torques_left[:, tids.I_JOINT_3] *= -1.0
@@ -111,18 +100,12 @@ class TendonActionTermHybrid(ActionTerm):
         tendon_torques_right[:, tids.I_JOINT_4] *= -1.0
 
         # Apply GST torques
-        tendon_torques_full[:, : N_CHAIN_LINKS_PER_LEG - 1, JOINT_AXIS_IDX] = (
-            -tendon_torques_left
+        tendon_torques_full[:, : N_CHAIN_LINKS_PER_LEG - 1, JOINT_AXIS_IDX] = -tendon_torques_left
+        tendon_torques_full[:, 1:N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] += tendon_torques_left
+        tendon_torques_full[:, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, JOINT_AXIS_IDX] = (
+            -tendon_torques_right
         )
-        tendon_torques_full[
-            :, 1:N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX
-        ] += tendon_torques_left
-        tendon_torques_full[
-            :, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, JOINT_AXIS_IDX
-        ] = -tendon_torques_right
-        tendon_torques_full[
-            :, N_CHAIN_LINKS_PER_LEG + 1 :, JOINT_AXIS_IDX
-        ] += tendon_torques_right
+        tendon_torques_full[:, N_CHAIN_LINKS_PER_LEG + 1 :, JOINT_AXIS_IDX] += tendon_torques_right
 
         # Apply other tendons
 
@@ -145,14 +128,10 @@ class TendonActionTermHybrid(ActionTerm):
         # ] += self._processed_actions[:, 1]
 
         self.robot.set_external_force_and_torque(
-            forces=torch.zeros(
-                (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
-            ),
+            forces=torch.zeros((batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device),
             torques=tendon_torques_full,
             body_ids=self.link_indices_left_right,
         )
-
-
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         """Resets the manager term.
@@ -181,22 +160,14 @@ class TendonActionTerm(ActionTerm):
             ),
         )
 
-        self._raw_actions: torch.Tensor = torch.zeros(
-            (env.num_envs, self.action_dim), device=env.device
-        )
-        self._processed_actions: torch.Tensor = torch.zeros(
-            (env.num_envs, self.action_dim), device=env.device
-        )
+        self._raw_actions: torch.Tensor = torch.zeros((env.num_envs, self.action_dim), device=env.device)
+        self._processed_actions: torch.Tensor = torch.zeros((env.num_envs, self.action_dim), device=env.device)
 
         self.link_indices_left_right, _ = self.robot.find_bodies(
             link_names_left + link_names_right, preserve_order=True
         )
-        self.joint_indices_left, _ = self.robot.find_joints(
-            joint_names_left, preserve_order=True
-        )
-        self.joint_indices_right, _ = self.robot.find_joints(
-            joint_names_right, preserve_order=True
-        )
+        self.joint_indices_left, _ = self.robot.find_joints(joint_names_left, preserve_order=True)
+        self.joint_indices_right, _ = self.robot.find_joints(joint_names_right, preserve_order=True)
 
     """
     Properties.
@@ -235,15 +206,11 @@ class TendonActionTerm(ActionTerm):
         (
             tendon_torques_left,
             tendon_torques_right,
-        ) = (  # pyright: ignore[reportAssignmentType]
-            self.tendon_manager.compute_torques_jit()
-        )
+        ) = self.tendon_manager.compute_torques_jit()  # pyright: ignore[reportAssignmentType]
 
         batch_size = self.robot.num_instances
         # 4) apply torques: with axis [0 -1 0], to each link
-        tendon_torques_full = torch.zeros(
-            (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
-        )
+        tendon_torques_full = torch.zeros((batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device)
 
         # Fix coordinate system inversion for joint 3 and 4
         tendon_torques_left[:, tids.I_Q_GST_3] *= -1.0
@@ -252,18 +219,12 @@ class TendonActionTerm(ActionTerm):
         tendon_torques_right[:, tids.I_Q_GST_4] *= -1.0
 
         # Apply GST torques
-        tendon_torques_full[:, : N_CHAIN_LINKS_PER_LEG - 1, JOINT_AXIS_IDX] = (
-            -tendon_torques_left
+        tendon_torques_full[:, : N_CHAIN_LINKS_PER_LEG - 1, JOINT_AXIS_IDX] = -tendon_torques_left
+        tendon_torques_full[:, 1:N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] += tendon_torques_left
+        tendon_torques_full[:, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, JOINT_AXIS_IDX] = (
+            -tendon_torques_right
         )
-        tendon_torques_full[
-            :, 1:N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX
-        ] += tendon_torques_left
-        tendon_torques_full[
-            :, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, JOINT_AXIS_IDX
-        ] = -tendon_torques_right
-        tendon_torques_full[
-            :, N_CHAIN_LINKS_PER_LEG + 1 :, JOINT_AXIS_IDX
-        ] += tendon_torques_right
+        tendon_torques_full[:, N_CHAIN_LINKS_PER_LEG + 1 :, JOINT_AXIS_IDX] += tendon_torques_right
 
         # Apply knee motor torques from actions
         tendon_torques_full[
@@ -271,14 +232,12 @@ class TendonActionTerm(ActionTerm):
             self.link_indices_left_right[tids.I_CONNECTOR_LINK_GST_23],
             JOINT_AXIS_IDX,
         ] = -self._processed_actions[:, 0]
-        tendon_torques_full[
-            :, self.link_indices_left_right[tids.I_LINK_34], JOINT_AXIS_IDX
-        ] += self._processed_actions[:, 0]
+        tendon_torques_full[:, self.link_indices_left_right[tids.I_LINK_34], JOINT_AXIS_IDX] += self._processed_actions[
+            :, 0
+        ]
         tendon_torques_full[
             :,
-            self.link_indices_left_right[
-                tids.I_CONNECTOR_LINK_GST_23 + N_CHAIN_LINKS_PER_LEG
-            ],
+            self.link_indices_left_right[tids.I_CONNECTOR_LINK_GST_23 + N_CHAIN_LINKS_PER_LEG],
             JOINT_AXIS_IDX,
         ] = -self._processed_actions[:, 1]
         tendon_torques_full[
@@ -288,9 +247,7 @@ class TendonActionTerm(ActionTerm):
         ] += self._processed_actions[:, 1]
 
         self.robot.set_external_force_and_torque(
-            forces=torch.zeros(
-                (batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
-            ),
+            forces=torch.zeros((batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device),
             torques=tendon_torques_full,
             body_ids=self.link_indices_left_right,
         )

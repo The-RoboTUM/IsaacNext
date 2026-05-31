@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from isaaclab.app import AppLauncher
+
 parser = argparse.ArgumentParser(description="Run the Forrest tendon simulation.")
 parser.add_argument("--jit", action="store_true", help="Use the TorchScript/JIT tendon path.")
 parser.add_argument("--record_video", action="store_true", help="Record video of the simulation.")
@@ -183,7 +184,6 @@ def add_fixed_world_joint(sim):
     fixed_joint.CreateCollisionEnabledAttr(False)
 
 
-
 def make_actuated_dof_specs(robot_cfg):
     """Build target joint specs from FORREST_CFG.actuators.
 
@@ -197,11 +197,7 @@ def make_actuated_dof_specs(robot_cfg):
             actuator_group = DOF_TO_ACTUATOR_GROUP[dof]
             actuator_cfg = robot_cfg.actuators[actuator_group]
 
-            matches = [
-                expr
-                for expr in actuator_cfg.joint_names_expr
-                if expr.startswith(side_prefix)
-            ]
+            matches = [expr for expr in actuator_cfg.joint_names_expr if expr.startswith(side_prefix)]
 
             if len(matches) != 1:
                 raise RuntimeError(
@@ -228,8 +224,7 @@ def find_actuated_joint_indices(robot, actuated_dof_specs):
 
     if len(joint_indices) != len(joint_exprs):
         raise RuntimeError(
-            f"Could not find all actuated joints. "
-            f"Requested: {joint_exprs}; found: {found_joint_names}"
+            f"Could not find all actuated joints. " f"Requested: {joint_exprs}; found: {found_joint_names}"
         )
 
     print("Actuated controller DOFs:")
@@ -340,11 +335,7 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
     print(f"Torch CUDA:        {torch.cuda.is_available()}")
     print(f"Physics dt:        {sim_cfg.dt:.6f} s")
     print(f"Duration:          {args.duration:.3f} s ({num_steps} steps)")
-    virtual_ground_str = (
-        "disabled"
-        if VIRTUAL_GROUND_HEIGHT is None
-        else f"{VIRTUAL_GROUND_HEIGHT:.3f} m"
-    )
+    virtual_ground_str = "disabled" if VIRTUAL_GROUND_HEIGHT is None else f"{VIRTUAL_GROUND_HEIGHT:.3f} m"
 
     print(f"Virtual ground:    {virtual_ground_str}")
     print(f"Video recording:   {'on' if args.record_video else 'off'}")
@@ -374,10 +365,7 @@ def maybe_print_status(
 
     elapsed = max(time.perf_counter() - wall_start, 1.0e-9)
     steps_per_sec = (iteration + 1) / elapsed
-    prefix = (
-        f"[{mode}] step {iteration + 1:5d}/{num_steps} | "
-        f"t={sim_time:6.3f}s | {steps_per_sec:7.1f} steps/s"
-    )
+    prefix = f"[{mode}] step {iteration + 1:5d}/{num_steps} | " f"t={sim_time:6.3f}s | {steps_per_sec:7.1f} steps/s"
 
     if debug_info is None:
         print(prefix)
@@ -387,7 +375,9 @@ def maybe_print_status(
     for key in ("tendon_torques_left", "tendon_torques_right"):
         value = debug_info.get(key)
         if isinstance(value, torch.Tensor):
-            torque_stats.append(f"{key.replace('tendon_torques_', '')}_|tau|max={value.detach().abs().max().item():.3e}")
+            torque_stats.append(
+                f"{key.replace('tendon_torques_', '')}_|tau|max={value.detach().abs().max().item():.3e}"
+            )
 
     if torque_stats:
         print(prefix + " | " + " | ".join(torque_stats))
@@ -411,9 +401,7 @@ def main():
     robot = Articulation(robot_cfg)
 
     sim_utils.GroundPlaneCfg().func("/World/defaultGroundPlane", sim_utils.GroundPlaneCfg())
-    sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func(
-        "/World/Light", sim_utils.DomeLightCfg()
-    )
+    sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func("/World/Light", sim_utils.DomeLightCfg())
 
     debug_left_path = None
     debug_right_path = None

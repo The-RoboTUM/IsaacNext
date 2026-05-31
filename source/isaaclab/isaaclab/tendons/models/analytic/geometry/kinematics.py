@@ -80,8 +80,7 @@ def compute_tendon_coordinates(joint_angles: torch.Tensor, tendon_data: TendonDa
 
     qhats = torch.empty_like(tendon_data.tendon_offsets_qhat_thetahat)
     qhats[:, tids.I_QHAT_EDT2_6] = (
-        theta_hats[:, tids.I_THETA_ALL_6]
-        + tendon_data.tendon_offsets_qhat_thetahat[:, tids.I_QHAT_EDT2_6]
+        theta_hats[:, tids.I_THETA_ALL_6] + tendon_data.tendon_offsets_qhat_thetahat[:, tids.I_QHAT_EDT2_6]
     )
 
     return TendonCoordinates(

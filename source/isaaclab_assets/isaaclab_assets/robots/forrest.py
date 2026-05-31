@@ -14,6 +14,7 @@ import isaaclab.sim as sim_utils
 import numpy as np
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
+
 # from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 ##
@@ -28,7 +29,7 @@ actuator_damping = 0.1
 FORREST_CFG = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/forrest_urdf_latest",
     spawn=sim_utils.UsdFileCfg(
-    usd_path=os.path.join(os.getcwd(), "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"),
+        usd_path=os.path.join(os.getcwd(), "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"),
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -77,56 +78,56 @@ FORREST_CFG = ArticulationCfg(
         joint_vel={".*": 0.0},
     ),
     actuators={
-                # Spring: Rest 63,5mm, Compressed 20mm, => travel 43,5mm 128 N/mm
-                "pantograph": ImplicitActuatorCfg(
-                    joint_names_expr=[
-                        "rp1_pantograph",
-                        "rp2_pantograph", # TODO: rename and create a new URDF
-                    ],
-                    effort_limit_sim=1e6,
-                    velocity_limit_sim=100.0,
-                    stiffness=128e3,
-                    damping=0.1,
-                ),
-                "hip_swing": ImplicitActuatorCfg(
-                    joint_names_expr=[
-                        "r2_pseudo_acetabulofemoral_flexion",
-                        "l2_pseudo_acetabulofemoral_flexion",
-                    ],
-                    effort_limit_sim=10.0e6,
-                    velocity_limit_sim=100.0,
-                    stiffness=actuator_stiffness,
-                    damping=actuator_damping,
-                ),
-                "hip_roll": ImplicitActuatorCfg(
-                    joint_names_expr=[
-                        "r0_acetabulofemoral_roll",
-                        "l0_acetabulofemoral_roll",
-                    ],
-                    effort_limit_sim=10.0e6,
-                    velocity_limit_sim=100.0,
-                    stiffness=actuator_stiffness,
-                    damping=actuator_damping,
-                ),
-                "hip_lateral": ImplicitActuatorCfg(
-                    joint_names_expr=[
-                        "r1_acetabulofemoral_lateral",
-                        "l1_acetabulofemoral_lateral",
-                    ],
-                    effort_limit_sim=10.0e6,
-                    velocity_limit_sim=100.0,
-                    stiffness=actuator_stiffness*10,
-                    damping=actuator_damping,
-                ),
-                "knee_flex": ImplicitActuatorCfg(
-                    joint_names_expr=[
-                        "r8_knee_flexor",
-                        "l8_knee_flexor",
-                    ],
-                    effort_limit_sim=10.0e6,
-                    velocity_limit_sim=100.0,
-                    stiffness=actuator_stiffness,
-                    damping=actuator_damping,
-                ),
-            },
+        # Spring: Rest 63,5mm, Compressed 20mm, => travel 43,5mm 128 N/mm
+        "pantograph": ImplicitActuatorCfg(
+            joint_names_expr=[
+                "rp1_pantograph",
+                "rp2_pantograph",  # TODO: rename and create a new URDF
+            ],
+            effort_limit_sim=1e6,
+            velocity_limit_sim=100.0,
+            stiffness=128e3,
+            damping=0.1,
+        ),
+        "hip_swing": ImplicitActuatorCfg(
+            joint_names_expr=[
+                "r2_pseudo_acetabulofemoral_flexion",
+                "l2_pseudo_acetabulofemoral_flexion",
+            ],
+            effort_limit_sim=10.0e6,
+            velocity_limit_sim=100.0,
+            stiffness=actuator_stiffness,
+            damping=actuator_damping,
+        ),
+        "hip_roll": ImplicitActuatorCfg(
+            joint_names_expr=[
+                "r0_acetabulofemoral_roll",
+                "l0_acetabulofemoral_roll",
+            ],
+            effort_limit_sim=10.0e6,
+            velocity_limit_sim=100.0,
+            stiffness=actuator_stiffness,
+            damping=actuator_damping,
+        ),
+        "hip_lateral": ImplicitActuatorCfg(
+            joint_names_expr=[
+                "r1_acetabulofemoral_lateral",
+                "l1_acetabulofemoral_lateral",
+            ],
+            effort_limit_sim=10.0e6,
+            velocity_limit_sim=100.0,
+            stiffness=actuator_stiffness * 10,
+            damping=actuator_damping,
+        ),
+        "knee_flex": ImplicitActuatorCfg(
+            joint_names_expr=[
+                "r8_knee_flexor",
+                "l8_knee_flexor",
+            ],
+            effort_limit_sim=10.0e6,
+            velocity_limit_sim=100.0,
+            stiffness=actuator_stiffness,
+            damping=actuator_damping,
+        ),
+    },
 )

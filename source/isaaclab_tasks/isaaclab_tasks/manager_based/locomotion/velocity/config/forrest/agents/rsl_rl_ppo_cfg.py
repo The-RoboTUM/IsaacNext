@@ -17,8 +17,8 @@ class ForrestRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.6,
-        actor_hidden_dims=[128*4, 128*2, 128*1],
-        critic_hidden_dims=[128*4, 128*2, 128*1],
+        actor_hidden_dims=[128 * 4, 128 * 2, 128 * 1],
+        critic_hidden_dims=[128 * 4, 128 * 2, 128 * 1],
         activation="elu",
     )
     algorithm = RslRlPpoAlgorithmCfg(

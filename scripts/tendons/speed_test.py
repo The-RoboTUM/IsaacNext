@@ -23,9 +23,7 @@ grad_out = torch.ones(q_torch.shape[0], device=q_torch.device)
 def V_torch(q):
     q1 = q[..., 0]
     q2 = q[..., 1]
-    return m1 * g * l1 * (1 - torch.cos(q1)) + m2 * g * (
-        l1 * (1 - torch.cos(q1)) + l2 * (1 - torch.cos(q1 + q2))
-    )
+    return m1 * g * l1 * (1 - torch.cos(q1)) + m2 * g * (l1 * (1 - torch.cos(q1)) + l2 * (1 - torch.cos(q1 + q2)))
 
 
 # ------- benchmark utility -------

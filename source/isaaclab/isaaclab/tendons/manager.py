@@ -35,7 +35,9 @@ class TendonManager:
     ):
         self.robot = robot
         self.device = robot.device
-        self.tendon_data = tendon_data if tendon_data is not None else TendonData(robot.num_instances, dummy_randomization)
+        self.tendon_data = (
+            tendon_data if tendon_data is not None else TendonData(robot.num_instances, dummy_randomization)
+        )
         self.model = model if model is not None else AnalyticTendonEnergyModel(self.tendon_data)
         self.robot_io = robot_io if robot_io is not None else TendonRobotIO(robot)
         self.torque_mapper = torque_mapper if torque_mapper is not None else TendonTorqueMapper(self.device)
@@ -94,7 +96,7 @@ class TendonManager:
 
             damping = self._damping_potential(output.delta_lengths, dt)
             total_energy = output.energy + damping
-
+            total_energy = output.energy + damping
             left, right = self._compute_torques_from_energy(joint_angles, total_energy)
 
             self._store_delta_lengths(output.delta_lengths)
@@ -183,15 +185,12 @@ class TendonManager:
         return None
 
     def _store_delta_lengths(self, deltas: dict[str, torch.Tensor]):
-        self._prev_delta_lengths = {
-            name: delta.detach().clone()
-            for name, delta in deltas.items()
-        }
+        self._prev_delta_lengths = {name: delta.detach().clone() for name, delta in deltas.items()}
 
     def _damping_potential(
-            self,
-            deltas: dict[str, torch.Tensor],
-            dt: float,
+        self,
+        deltas: dict[str, torch.Tensor],
+        dt: float,
     ) -> torch.Tensor:
         # First step: no velocity yet.
         if self._prev_delta_lengths is None or dt <= 0.0:
@@ -216,7 +215,7 @@ class TendonManager:
                 dtype=delta.dtype,
             )
 
-            coeff = - c * delta_dot * active
+            coeff = -c * delta_dot * active
 
             # Gradient of this gives: c * delta_dot * d(delta_l)/dq
             term = (coeff.detach() * delta).sum()
@@ -226,8 +225,8 @@ class TendonManager:
         return damping
 
     def _delta_tuple_to_dict(
-            self,
-            deltas: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+        self,
+        deltas: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
     ) -> dict[str, torch.Tensor]:
         return {
             "gst": deltas[0],

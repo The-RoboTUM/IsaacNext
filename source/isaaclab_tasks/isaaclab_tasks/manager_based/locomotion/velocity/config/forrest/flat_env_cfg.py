@@ -9,6 +9,7 @@ from isaaclab.utils import configclass
 
 from .rough_env_cfg import ForrestRoughEnvCfg
 
+
 @configclass
 class ForrestFlatEnvCfg(ForrestRoughEnvCfg):
     def __post_init__(self):
@@ -23,7 +24,6 @@ class ForrestFlatEnvCfg(ForrestRoughEnvCfg):
         # no height scan
         # self.scene.height_scanner = None
         # self.observations.policy.height_scan = None
-
 
         # Rewards
         # self.rewards.lin_vel_z_l2.weight = 0.0  # disables vertical velocity penalty

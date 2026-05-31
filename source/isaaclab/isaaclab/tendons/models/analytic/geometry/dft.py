@@ -36,22 +36,12 @@ def compute_dft_delta_l_core(
     thetas = coords.thetas
     qs = coords.qs
 
-    DFT_h5_B_disengaged = (
-        geom.DFT_h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_5]
-    )
-    DFT_h5_C_disengaged = (
-        geom.DFT_h5_C > tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_5]
-    )
-    DFT_h6_C_disengaged = (
-        geom.DFT_h6_C > tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_6]
-    )
-    DFT_h6_D_disengaged = (
-        geom.DFT_h6_D > tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_6]
-    )
+    DFT_h5_B_disengaged = geom.DFT_h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_5]
+    DFT_h5_C_disengaged = geom.DFT_h5_C > tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_5]
+    DFT_h6_C_disengaged = geom.DFT_h6_C > tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_6]
+    DFT_h6_D_disengaged = geom.DFT_h6_D > tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_6]
 
-    DFT_state_C = (DFT_h5_B_disengaged & DFT_h6_C_disengaged) | (
-        DFT_h6_D_disengaged & DFT_h5_C_disengaged
-    )
+    DFT_state_C = (DFT_h5_B_disengaged & DFT_h6_C_disengaged) | (DFT_h6_D_disengaged & DFT_h5_C_disengaged)
     DFT_state_B = ~DFT_state_C & DFT_h5_B_disengaged
     DFT_state_D = ~DFT_state_C & DFT_h6_D_disengaged
     DFT_state_A = ~(DFT_state_B | DFT_state_C | DFT_state_D)
@@ -122,9 +112,7 @@ def compute_dft_delta_l_core(
     )
 
 
-def compute_dft_delta_l(
-    coords, geom, tendon_data, *, debug: bool = False
-) -> TendonLengthOutput:
+def compute_dft_delta_l(coords, geom, tendon_data, *, debug: bool = False) -> TendonLengthOutput:
     core = compute_dft_delta_l_core(coords, geom, tendon_data)
     debug_info = None
     if debug:
