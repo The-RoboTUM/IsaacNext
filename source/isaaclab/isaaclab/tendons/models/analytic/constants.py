@@ -10,18 +10,18 @@ import torch
 N_CHAIN_LINKS_PER_LEG: int = 6  # -> number of links in the kinematic chain of the leg
 N_CONNECTOR_OFFSETS: int = 6  # -> GST, DFT, EDT2, KFT have a connector not on the ji-ji+1 axis; EDT1 has two
 N_LINK_LENGTHS_PER_LEG: int = (
-    N_CHAIN_LINKS_PER_LEG
-    + N_CONNECTOR_OFFSETS  # -> number of link lengths per leg (including virtual links for tendon attachment points)
+        N_CHAIN_LINKS_PER_LEG
+        + N_CONNECTOR_OFFSETS
+    # -> number of link lengths per leg (including virtual links for tendon attachment points)
 )
 N_JOINTS: int = 5
 N_RADII: int = 11  # -> number of pulley radii
-
 
 N_TENDON_SECTION_LENGTHS: int = (
     11  # lengths between two pulleys in contact, or between pulley and tendon attachment point if only one pulley
 )
 N_TENDON_THETA_OFFSETS: int = (
-    N_JOINTS + N_CONNECTOR_OFFSETS
+        N_JOINTS + N_CONNECTOR_OFFSETS
 )  # -> number of raw joint angle offsets: 5 for joints, 6 for connectors
 N_Q_OFFSETS: int = 6  # -> number of joint angle theta offsets to wrapping angles : 4 for GST, 2 for DFT
 N_QHAT_OFFSETS: int = (
@@ -33,7 +33,6 @@ N_TENDON_TANGENCY_ANGLES: int = 9  # number of fixed tendon tangency angles used
 JOINT_AXIS_IDX: int = 0  # axis index for joint torques around x-axis
 
 dev = "cuda"
-
 
 link_names_right = list_from_dict(
     {
@@ -101,16 +100,26 @@ actuated_joint_names = [
 all_joint_names_right = [
     "r0_acetabulofemoral_roll,"  # j0, position/torque control
     "r1_acetabulofemoral_lateral",  # j1, position/torque control
-    "rp1_pantograph",  # pantograph, actuated but always set to 0.0, stiffness? blockhöhe?     "s12p_pantograph_spring_assy_topv2_1" -> "s12p_pantograph_spring_assy_botv1_1"
-    "r2_pseudo_acetabulofemoral_flexion",  # j2 -> position control, stiffness? damping?       "outside_hip_v2_assyv28_1" -> "knee_assyv9_1"
-    "r3b_femorotibial_back",  # excluded from articulation (fourbar), between j2 and j3        "knee_assyv9_1" -> "s12p_pantograph_spring_assy_topv2_1"
-    "r3f_femorotibial_front",  # j3 -> torque control, applied alongside other tendon torques  "knee_assyv9_1" -> "s12_front_assyv6_1"
-    "r4f_intertarsal_front",  # only shows the pulley position q4' -> fix                      "s12_front_assyv6_1" -> "main_gst_pully_assyv4_1"
-    "r4b_intertarsal_back",  # not actuated (fourbar), above j4                                "s12p_pantograph_spring_assy_botv1_1" -> "s23_assyv18_1_virtual"
-    "r4p_intertarsal_pulley",  # j4, not actuated but affected by tendon                       "s12_front_assyv6_1" -> "s23_assyv18_1"
-    "r5_metatarsophalangeal",  # j5, not actuated but affected by tendon                       "s23_assyv18_1" -> "s34_foot_connector_assyv20_1"
-    "r6_interphalangeal",  # j6, not actuated but affected by tendon                           "s34_foot_connector_assyv20_1" -> "s45_digit_assyv2_1"
-    "virtual_s23_assyv18_1_anchor",  # necessary for the urdf exporter but not actuated        "s23_assyv18_1" -> "s23_assyv18_1_virtual"
+    "rp1_pantograph",
+    # pantograph, actuated but always set to 0.0, stiffness? blockhöhe?     "s12p_pantograph_spring_assy_topv2_1" -> "s12p_pantograph_spring_assy_botv1_1"
+    "r2_pseudo_acetabulofemoral_flexion",
+    # j2 -> position control, stiffness? damping?       "outside_hip_v2_assyv28_1" -> "knee_assyv9_1"
+    "r3b_femorotibial_back",
+    # excluded from articulation (fourbar), between j2 and j3        "knee_assyv9_1" -> "s12p_pantograph_spring_assy_topv2_1"
+    "r3f_femorotibial_front",
+    # j3 -> torque control, applied alongside other tendon torques  "knee_assyv9_1" -> "s12_front_assyv6_1"
+    "r4f_intertarsal_front",
+    # only shows the pulley position q4' -> fix                      "s12_front_assyv6_1" -> "main_gst_pully_assyv4_1"
+    "r4b_intertarsal_back",
+    # not actuated (fourbar), above j4                                "s12p_pantograph_spring_assy_botv1_1" -> "s23_assyv18_1_virtual"
+    "r4p_intertarsal_pulley",
+    # j4, not actuated but affected by tendon                       "s12_front_assyv6_1" -> "s23_assyv18_1"
+    "r5_metatarsophalangeal",
+    # j5, not actuated but affected by tendon                       "s23_assyv18_1" -> "s34_foot_connector_assyv20_1"
+    "r6_interphalangeal",
+    # j6, not actuated but affected by tendon                           "s34_foot_connector_assyv20_1" -> "s45_digit_assyv2_1"
+    "virtual_s23_assyv18_1_anchor",
+    # necessary for the urdf exporter but not actuated        "s23_assyv18_1" -> "s23_assyv18_1_virtual"
     "r8_knee_flexor",  # j8, position/torque control
 ]
 
@@ -120,8 +129,9 @@ all_joint_names_right = [
 class TendonConstants:
     """Fixed baseline mathematical constants for our tendon model: link lengths and pulley radii etc."""
 
-    gst_stiffness: float = 128e1 * 0  # FIXME: Reduced for simulation stability by 10x
-    dft_stiffness: float = 20e2 * 1  # FIXME: find out real value
+    # gst_stiffness: float = 128e3 * 0  # FIXME: Reduced for simulation stability by 10x
+    gst_stiffness: float = 20e1 * 1
+    dft_stiffness: float = 20e3 * 1  # FIXME: find out real value
     edt1_stiffness: float = 20e4 * 1  # FIXME: find out real value
     edt2_stiffness: float = 20e4 * 1  # FIXME: find out real value
     kft_stiffness: float = 20e4 * 1  # FIXME: find out real value
@@ -129,10 +139,13 @@ class TendonConstants:
     gst_spring_rest_length: float = 0.06
     upper_gst_length: float = 0.6367  # FIXME: measure correct value
     lower_gst_length: float = 0.6314  # FIXME: measure correct value
-    dft_length: float = 0.345  # FIXME: measure correct value
-    edt1_length: float = 0.55  # FIXME: measure correct value
-    edt2_length: float = 0.66  # FIXME: measure correct value
-    kft_length: float = 0.402  # FIXME: measure correct value
+    # dft_length: float = 0.345  # FIXME: measure correct value
+    dft_length: float = 0.34  # FIXME: measure correct value
+    # edt1_length: float = 0.55  # FIXME: measure correct value
+    # edt2_length: float = 0.66  # FIXME: measure correct value
+    edt1_length: float = 0.48  # FIXME: measure correct value
+    edt2_length: float = 0.58  # FIXME: measure correct value
+    kft_length: float = 0.452  # FIXME: measure correct value
 
     joint_offsets_theta: torch.Tensor = torch.deg2rad(  # between joint-to-joint links, offsets to raw joint angles
         torch.tensor(

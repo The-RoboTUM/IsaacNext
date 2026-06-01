@@ -8,7 +8,6 @@
 from __future__ import annotations
 from pathlib import Path
 
-
 import os
 import isaaclab.sim as sim_utils
 import numpy as np
@@ -46,7 +45,7 @@ FORREST_CFG = ArticulationCfg(
     ),
     soft_joint_pos_limit_factor=0.9,
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 1.45),
+        pos=(0.0, 0.0, 1.4),
         joint_pos={
             # Left leg
             "rp2_pantograph": 0.0,

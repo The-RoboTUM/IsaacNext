@@ -34,7 +34,6 @@ with open("outputs/gst_data_left.jsonl", "r") as f:
     for line in f:
         all_data.append(json.loads(line))
 
-
 # draw the leg, starting at joint 2
 alpha_2 = np.deg2rad(300)
 
@@ -127,7 +126,7 @@ def compute_joint_locations(alphas):
     j2 = np.zeros(2)
     j3 = j2 + rotate_by(
         alpha_2,
-        np.array([td.link_lengths[0, tids.I_CONNECTOR_LINK_GST_23].item(), 0.0]),
+        np.array([td.link_lengths[0, tids.I_LINK_23].item(), 0.0]),
     )
     j4 = j3 + rotate_by(alpha_3, np.array([td.link_lengths[0, tids.I_LINK_34].item(), 0.0]))
     j5 = j4 + rotate_by(alpha_4, np.array([td.link_lengths[0, tids.I_LINK_4prime5].item(), 0.0]))
@@ -153,12 +152,12 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
     q5_D = data["GST_q5_D"]
     direction_angle = alpha_2 - np.deg2rad(8.86)  # computed manually
     starting_point = (
-        rotate_by(
-            alpha_2,
-            rotate_by(np.deg2rad(49.5), np.array([0.059407, 0.0]))
-            + np.array([0.19, 0.0]),  # compensate for c23 != link_length_23
-        )
-        + j2
+            rotate_by(
+                alpha_2,
+                rotate_by(np.deg2rad(49.5), np.array([0.059407, 0.0]))
+                + np.array([0.19, 0.0]),  # compensate for c23 != link_length_23
+            )
+            + j2
     )
     p3_i = starting_point + rotate_by(
         direction_angle,
@@ -181,38 +180,39 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
         ),
     )
     p4_o = (
-        rotate_by(
-            q4 + np.deg2rad(45),  # note: added extra angle to avoid issues with negative values
-            p4_i - j4,
-        )
-        + j4
+            rotate_by(
+                q4 + np.deg2rad(45),  # note: added extra angle to avoid issues with negative values
+                p4_i - j4,
+            )
+            + j4
     )
     direction_angle += q4
     radius_4 = np.linalg.norm(p4_o - j4)
     assert (
-        abs(radius_4 - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()) < 0.001
+            abs(radius_4 - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()) < 0.001
     ), f"Expected radius at 4 {td.pulley_radii[0, tids.I_RADIUS_GST_4].item()}, got {radius_4}"
     p4prime_i = (
-        rotate_by(
-            np.deg2rad(-45),  # note: to compensate for extended upper tendon drawing
-            (
-                (p4_o - j4)
-                * (
-                    radius_4
-                    - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()
-                    + td.pulley_radii[0, tids.I_RADIUS_GST_4prime].item()
-                )
-                / radius_4
-            ),
-        )
-        + j4
+            rotate_by(
+                np.deg2rad(-45),  # note: to compensate for extended upper tendon drawing
+                (
+                        (p4_o - j4)
+                        * (
+                                radius_4
+                                - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()
+                                + td.pulley_radii[0, tids.I_RADIUS_GST_4prime].item()
+                        )
+                        / radius_4
+                ),
+            )
+            + j4
     )
     p4prime_o = rotate_by(q4prime, p4prime_i - j4) + j4
     direction_angle += q4prime
 
     upper_tendon_points = [starting_point, p3_i, p3_o, p4_i, p4_o]
     upper_tendon_joints = [j3, j4]
-    upper_tendon_q_positives = [q3 >= 0, q4 >= 0, q4 >= 0]
+    # upper_tendon_q_positives = [q3 >= 0, q4 >= 0, q4 >= 0]
+    upper_tendon_q_positives = [q3 >= 0, q4 >= 0]  # todo: check correctness
 
     lower_tendon_points = [p4prime_i, p4prime_o]
     lower_tendon_joints = [j4]
@@ -306,11 +306,11 @@ def compute_kft_points(alpha_8, joint_locations, data, r8):
     [j2, j3, j4, j5, j6, _] = joint_locations
     q8 = data["KFT_q8"]
     p8_i = (
-        rotate_by(
-            alpha_8,
-            np.array([r8, 0.0]),
-        )
-        + j2
+            rotate_by(
+                alpha_8,
+                np.array([r8, 0.0]),
+            )
+            + j2
     )
     p8_o = j2 + rotate_by(
         alpha_8 - q8,
@@ -338,6 +338,7 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
     [_j2, _j3, j4, j5, j6, p7] = joint_locations
     alpha_2, alpha_3, alpha_4, alpha_5, alpha_6, alpha_8 = alphas
     dft_state = get_dft_state(data)
+
     # starting point is from j5 going offset length to j4 and orthogonally
     pc5 = j5 - rotate_by(
         alpha_4,
@@ -406,30 +407,83 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
         q_positives = [q5 >= 0, q6 >= 0]
 
     elif dft_state == "b":
+        q6 = data["DFT_q6_B"]
+
+        # First tangent point: connector C5 -> pulley j6
         p6_i = pc5 + rotate_by(
             direction_angle,
-            np.array(
-                [
-                    data["DFT_l_c6"],
-                    0.0,
-                ]
-            ),
+            np.array([data["DFT_l_c6"], 0.0]),
         )
-        q6 = data["DFT_q6_B"]
-        p6_o = j6 + rotate_by(
-            q6,
-            p6_i - j6,
-        )
+
+        # Second tangent point: pulley j6 -> distal attachment p7
+        # Compute it backwards from the known endpoint p7.
+        out_dir = p7 - j6
+        out_dir = out_dir / np.linalg.norm(out_dir)
+
+        # Tangent radius is perpendicular to the outgoing tendon segment.
+        # Try this sign first.
+        p6_o = j6 + rotate_by(-np.pi / 2, out_dir) * tc.pulley_radii[tids.I_RADIUS_DFT_6].item()
+        # Debug: both pulley points should lie on radius r6.
+        assert np.isclose(
+            np.linalg.norm(p6_i - j6),
+            tc.pulley_radii[tids.I_RADIUS_DFT_6].item(),
+            atol=1e-3,
+        ), f"DFT B: p6_i not on pulley r6"
+
+        assert np.isclose(
+            np.linalg.norm(p6_o - j6),
+            tc.pulley_radii[tids.I_RADIUS_DFT_6].item(),
+            atol=1e-3,
+        ), f"DFT B: p6_o not on pulley r6"
 
         tendon_points = [pc5, p6_i, p6_o, p7]
         tendon_joints = [j6]
         q_positives = [q6 >= 0]
-    elif dft_state == "c":
-        p7 = pc5 + rotate_by(direction_angle, np.array([np.sqrt(data["DFT_l_c7_squared"]), 0.0]))
+
+        expected_len = data["DFT_l_c6"]
+        actual_len = np.linalg.norm(p6_i - pc5)
+        assert np.isclose(actual_len, expected_len, atol=1e-3), (
+            f"DFT B: expected lc6={expected_len}, got {actual_len}"
+        )
+    # elif dft_state == "c":
+    #     p7 = pc5 + rotate_by(direction_angle, np.array([np.sqrt(data["DFT_l_c7_squared"]), 0.0]))
+    #     tendon_points = [pc5, p7]
+    #     tendon_joints = []
+    #     q_positives = []
+    elif dft_state == "c":  # todo: check this
+        expected_len = np.sqrt(data["DFT_l_c7_squared"])
+        actual_len = np.linalg.norm(p7 - pc5)
+        assert np.isclose(actual_len, expected_len, atol=1e-3), (
+            f"DFT C: expected c7={expected_len}, got {actual_len}"
+        )
+
         tendon_points = [pc5, p7]
         tendon_joints = []
         q_positives = []
-    elif dft_state == "d":
+    # elif dft_state == "d":
+    #     p5_i = pc5 + rotate_by(
+    #         direction_angle,
+    #         np.array(
+    #             [
+    #                 td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_DFT_C5].item(),
+    #                 0.0,
+    #             ]
+    #         ),
+    #     )
+    #     q5 = data["DFT_q5_D"]
+    #     p5_o = j5 + rotate_by(
+    #         q5,
+    #         p5_i - j5,
+    #     )
+    #     direction_angle += q5
+    #     p7 = p5_o + rotate_by(
+    #         direction_angle,
+    #         np.array([data["DFT_l_57"], 0.0]),
+    #     )
+    #     tendon_points = [pc5, p5_i, p5_o, p7]
+    #     tendon_joints = [j5]
+    #     q_positives = [q5 >= 0]
+    elif dft_state == "d":  # todo: check this
         p5_i = pc5 + rotate_by(
             direction_angle,
             np.array(
@@ -440,15 +494,14 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
             ),
         )
         q5 = data["DFT_q5_D"]
-        p5_o = j5 + rotate_by(
-            q5,
-            p5_i - j5,
+        p5_o = j5 + rotate_by(q5, p5_i - j5)
+
+        expected_len = data["DFT_l_57"]
+        actual_len = np.linalg.norm(p7 - p5_o)
+        assert np.isclose(actual_len, expected_len, atol=1e-3), (
+            f"DFT D: expected l57={expected_len}, got {actual_len}"
         )
-        direction_angle += q5
-        p7 = p5_o + rotate_by(
-            direction_angle,
-            np.array([data["DFT_l_57"], 0.0]),
-        )
+
         tendon_points = [pc5, p5_i, p5_o, p7]
         tendon_joints = [j5]
         q_positives = [q5 >= 0]
@@ -535,10 +588,10 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
     elif edt2_state == "b":
         # 3pi = (2pi - theta5) + (2pi - theta4) + phi6 + pi/2 + phi4
         phi4 = (
-            -1.5 * np.pi
-            - data["EDT2_phi_6_B"]
-            + data["thetas"][tids.I_THETA_EDT2_5]
-            + data["thetas"][tids.I_THETA_EDT2_4]
+                -1.5 * np.pi
+                - data["EDT2_phi_6_B"]
+                + data["thetas"][tids.I_THETA_EDT2_5]
+                + data["thetas"][tids.I_THETA_EDT2_4]
         )
     elif edt2_state == "c":
         phi4 = data["EDT2_phi_4_d"] + (np.pi - data["EDT2_thetatilde_6_a"] - data["EDT2_thetatilde_4"])
@@ -636,16 +689,16 @@ def validate_ls(joint_locations, l4prime6, l4prime7, l57):
     [_j2, _j3, j4, j5, j6, p7] = joint_locations
     x46_inf = np.linalg.norm(j6 - j4)
     l46_inf = np.sqrt(
-        x46_inf**2 - ((tc.pulley_radii[tids.I_RADIUS_GST_4prime] - tc.pulley_radii[tids.I_RADIUS_GST_6]) ** 2).item()
+        x46_inf ** 2 - ((tc.pulley_radii[tids.I_RADIUS_GST_4prime] - tc.pulley_radii[tids.I_RADIUS_GST_6]) ** 2).item()
     )
     assert abs(l46_inf - l4prime6) < 0.001, f"Expected l4'6={l46_inf}, got {l4prime6}"
 
     x47_inf = np.linalg.norm(p7 - j4)
-    l47_inf = np.sqrt(x47_inf**2 - (tc.pulley_radii[tids.I_RADIUS_GST_4prime] ** 2).item())
+    l47_inf = np.sqrt(x47_inf ** 2 - (tc.pulley_radii[tids.I_RADIUS_GST_4prime] ** 2).item())
     assert abs(l47_inf - l4prime7) < 0.001, f"Expected l4'7={l47_inf}, got {l4prime7}"
 
     x57_inf = np.linalg.norm(p7 - j5)
-    l57_inf = np.sqrt(x57_inf**2 - (tc.pulley_radii[tids.I_RADIUS_GST_5] ** 2).item())
+    l57_inf = np.sqrt(x57_inf ** 2 - (tc.pulley_radii[tids.I_RADIUS_GST_5] ** 2).item())
     assert abs(l57_inf - l57) < 0.001, f"Expected l57={l57_inf}, got {l57}"
 
 
@@ -662,7 +715,7 @@ def arc_from_3_points(c, p1, p2, ccw=True, q_positive=True, tol=1e-4):
         theta_2 += 2 * np.pi
     if theta_1 < theta_2 and ccw and not q_positive:
         theta_1 += 2 * np.pi
-    # if theta_1 < theta_2 and not ccw and q_positive:
+    # if theta_1 < theta_2 and not ccw and q_positive:  # todo: check here
     #     theta_1 += 2 * np.pi
     if theta_2 < theta_1 and not ccw and not q_positive:
         theta_2 += 2 * np.pi
@@ -705,6 +758,7 @@ class KinematicChainAnimator:
         all_thetas = [d["thetas"] for d in all_data]
         self.all_thetas = np.array(all_thetas)
         self.alpha_2 = alpha_2
+        self.all_data = all_data
         self.num_frames = len(all_thetas)
         self.current_frame = 0
         self.is_playing = True
@@ -995,6 +1049,16 @@ class KinematicChainAnimator:
             fontfamily="monospace",
             fontsize=16,
         )
+        self.dft_state_text = self.ax[0, 1].text(
+            0.98,
+            0.02,
+            "",
+            transform=self.ax[0, 1].transAxes,
+            verticalalignment="bottom",
+            horizontalalignment="right",
+            fontfamily="monospace",
+            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+        )
         self.edt1_delta_l_text = self.ax[1, 0].text(
             0.5,
             0.98,
@@ -1101,12 +1165,12 @@ class KinematicChainAnimator:
         return xs, ys
 
     def tendon_path_general(
-        self,
-        tendon_points: list,
-        tendon_joints: list,
-        tendon_q_positives: list,
-        joint_ccws: list,
-        start_with_arc=False,
+            self,
+            tendon_points: list,
+            tendon_joints: list,
+            tendon_q_positives: list,
+            joint_ccws: list,
+            start_with_arc=False,
     ):
         arc = start_with_arc
         last_point = tendon_points.pop(0)
@@ -1141,7 +1205,9 @@ class KinematicChainAnimator:
         """Update function for animation."""
         if frame_idx % 100 == 0:
             print(f"frame {frame_idx}")
-        current_data = all_data[frame_idx]
+
+        current_data = self.all_data[frame_idx]
+
         gst_state = get_gst_state(current_data)
         thetas = self.all_thetas[frame_idx]
         alphas = compute_alphas(self.alpha_2, thetas)
@@ -1185,7 +1251,7 @@ class KinematicChainAnimator:
             lower_tendon_points,
             lower_tendon_joints,
             lower_q_positives,
-        ) = compute_gst_attachment_points(alpha_2, joints, current_data)
+        ) = compute_gst_attachment_points(self.alpha_2, joints, current_data)
         upper_gst_xs, upper_gst_ys = self.tendon_path(upper_tendon_points, upper_tendon_joints, upper_tendon=True)
         lower_gst_xs, lower_gst_ys = self.tendon_path(
             copy.copy(lower_tendon_points), lower_tendon_joints, upper_tendon=False
@@ -1290,6 +1356,17 @@ class KinematicChainAnimator:
 
         # Draw helper lines for DFT
         dft_state = get_dft_state(current_data)
+        dft_h5_b_disengaged = current_data["DFT_h5_B"] > tc.pulley_radii[tids.I_RADIUS_DFT_5].item()
+        dft_h5_c_disengaged = current_data["DFT_h5_C"] > tc.pulley_radii[tids.I_RADIUS_DFT_5].item()
+        dft_h6_c_disengaged = current_data["DFT_h6_C"] > tc.pulley_radii[tids.I_RADIUS_DFT_6].item()
+        dft_h6_d_disengaged = current_data["DFT_h6_D"] > tc.pulley_radii[tids.I_RADIUS_DFT_6].item()
+        self.dft_state_text.set_text(
+            f"DFT State: {dft_state}\n"
+            f"h5_B > r5: {dft_h5_b_disengaged}\n"
+            f"h5_C > r5: {dft_h5_c_disengaged}\n"
+            f"h6_C > r6: {dft_h6_c_disengaged}\n"
+            f"h6_D > r6: {dft_h6_d_disengaged}"
+        )
         if dft_state == "a":
             self.dft_h_5_line.set_data([], [])
             self.dft_h_6_line.set_data([], [])
@@ -1453,7 +1530,7 @@ class KinematicChainAnimator:
 
         # Update title and info
         status = "▶ Playing" if self.is_playing else "⏸ Paused"
-        gst_state = get_gst_state(all_data[frame_idx])
+        gst_state = get_gst_state(self.all_data[frame_idx])
         self.gst_title.set_text(f"Kinematic Chain Animation - Frame {frame_idx + 1}/{self.num_frames}")
         self.gst_info_text.set_text(
             f"{status}\n"
@@ -1464,66 +1541,66 @@ class KinematicChainAnimator:
             f"θ₆: {np.rad2deg(thetas[3]):.1f}°"
         )
         # Update delta l text with conditional coloring
-        delta_l = all_data[frame_idx]["GST_delta_L_s"]
+        delta_l = self.all_data[frame_idx]["GST_delta_L_s"]
         delta_l_color = "grey" if delta_l > 0 else "green"
         self.gst_delta_l_text.set_text(f"$\\Delta L={delta_l * 1000:02.3f}$ mm")
         self.gst_delta_l_text.set_color(delta_l_color)
 
-        kft_delta_l = all_data[frame_idx]["KFT_delta_L_s"]
+        kft_delta_l = self.all_data[frame_idx]["KFT_delta_L_s"]
         kft_delta_l_color = "grey" if kft_delta_l > 0 else "green"
         self.kft_delta_l_text.set_text(f"KFT $\\Delta L={kft_delta_l * 1000:02.3f}$ mm")
         self.kft_delta_l_text.set_color(kft_delta_l_color)
 
-        dft_delta_l = all_data[frame_idx]["DFT_delta_L_s"]
+        dft_delta_l = self.all_data[frame_idx]["DFT_delta_L_s"]
         dft_delta_l_color = "grey" if dft_delta_l > 0 else "green"
         self.dft_delta_l_text.set_text(f"DFT $\\Delta L={dft_delta_l * 1000:02.3f}$ mm")
         self.dft_delta_l_text.set_color(dft_delta_l_color)
 
-        edt1_delta_l = all_data[frame_idx]["EDT1_delta_L_s"]
+        edt1_delta_l = self.all_data[frame_idx]["EDT1_delta_L_s"]
         edt1_delta_l_color = "grey" if edt1_delta_l > 0 else "green"
         self.edt1_delta_l_text.set_text(f"EDT1 $\\Delta L={edt1_delta_l * 1000:02.3f}$ mm")
         self.edt1_delta_l_text.set_color(edt1_delta_l_color)
 
-        edt2_state = get_edt2_state(all_data[frame_idx])
+        edt2_state = get_edt2_state(self.all_data[frame_idx])
         self.edt2_state_text.set_text(f"EDT2 State: {edt2_state}")
 
-        edt2_delta_l = all_data[frame_idx]["EDT2_delta_L_s"]
+        edt2_delta_l = self.all_data[frame_idx]["EDT2_delta_L_s"]
         edt2_delta_l_color = "grey" if edt2_delta_l > 0 else "green"
         self.edt2_delta_l_text.set_text(f"EDT2 $\\Delta L={edt2_delta_l * 1000:02.3f}$ mm")
         self.edt2_delta_l_text.set_color(edt2_delta_l_color)
 
         # Return all artists for blitting
         artists = (
-            self.skeleton_lines
-            + self.joints_scatters
-            + self.end_effectors
-            + [self.gst_upper_tendon_line, self.gst_lower_tendon_line]
-            + [self.gst_x_4prime6_line, self.gst_x_4prime7_line, self.gst_x_57_line]
-            + [self.gst_h_5_line, self.gst_h_6_line]
-            + [self.kft_tendon_line, self.dft_tendon_line]
-            + list(self.gst_pulley_circles.values())
-            + list(self.kft_dft_pulley_circles.values())
-            + list(self.edt1_pulley_circles.values())
-            + list(self.edt2_pulley_circles.values())
-            + [self.gst_title, self.gst_info_text, self.gst_delta_l_text]
-            + [self.kft_delta_l_text, self.dft_delta_l_text, self.edt1_delta_l_text]
-            + [self.edt2_state_text, self.edt2_delta_l_text]
-            + [self.edt1_tendon_line, self.edt1_h_5_line, self.edt1_x_c5_line]
-            + [
-                self.edt2_tendon_line,
-                self.edt2_h_5_line,
-                self.edt2_h_6_line,
-                self.edt2_x_c5_line,
-                self.edt2_x_c6_line,
-                self.edt2_x_46_line,
-                self.edt2_x_5c_line,
-            ]
-            + [
-                self.dft_x_57_line,
-                self.dft_x_c6_line,
-                self.dft_h_5_line,
-                self.dft_h_6_line,
-            ]
+                self.skeleton_lines
+                + self.joints_scatters
+                + self.end_effectors
+                + [self.gst_upper_tendon_line, self.gst_lower_tendon_line]
+                + [self.gst_x_4prime6_line, self.gst_x_4prime7_line, self.gst_x_57_line]
+                + [self.gst_h_5_line, self.gst_h_6_line]
+                + [self.kft_tendon_line, self.dft_tendon_line]
+                + list(self.gst_pulley_circles.values())
+                + list(self.kft_dft_pulley_circles.values())
+                + list(self.edt1_pulley_circles.values())
+                + list(self.edt2_pulley_circles.values())
+                + [self.gst_title, self.gst_info_text, self.gst_delta_l_text]
+                + [self.kft_delta_l_text, self.dft_delta_l_text, self.dft_state_text, self.edt1_delta_l_text]
+                + [self.edt2_state_text, self.edt2_delta_l_text]
+                + [self.edt1_tendon_line, self.edt1_h_5_line, self.edt1_x_c5_line]
+                + [
+                    self.edt2_tendon_line,
+                    self.edt2_h_5_line,
+                    self.edt2_h_6_line,
+                    self.edt2_x_c5_line,
+                    self.edt2_x_c6_line,
+                    self.edt2_x_46_line,
+                    self.edt2_x_5c_line,
+                ]
+                + [
+                    self.dft_x_57_line,
+                    self.dft_x_c6_line,
+                    self.dft_h_5_line,
+                    self.dft_h_6_line,
+                ]
         )
         return artists
 
