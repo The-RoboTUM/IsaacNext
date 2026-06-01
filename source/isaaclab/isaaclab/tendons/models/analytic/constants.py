@@ -10,8 +10,8 @@ import torch
 N_CHAIN_LINKS_PER_LEG: int = 6  # -> number of links in the kinematic chain of the leg
 N_CONNECTOR_OFFSETS: int = 6  # -> GST, DFT, EDT2, KFT have a connector not on the ji-ji+1 axis; EDT1 has two
 N_LINK_LENGTHS_PER_LEG: int = (
-        N_CHAIN_LINKS_PER_LEG
-        + N_CONNECTOR_OFFSETS
+    N_CHAIN_LINKS_PER_LEG
+    + N_CONNECTOR_OFFSETS
     # -> number of link lengths per leg (including virtual links for tendon attachment points)
 )
 N_JOINTS: int = 5
@@ -21,7 +21,7 @@ N_TENDON_SECTION_LENGTHS: int = (
     11  # lengths between two pulleys in contact, or between pulley and tendon attachment point if only one pulley
 )
 N_TENDON_THETA_OFFSETS: int = (
-        N_JOINTS + N_CONNECTOR_OFFSETS
+    N_JOINTS + N_CONNECTOR_OFFSETS
 )  # -> number of raw joint angle offsets: 5 for joints, 6 for connectors
 N_Q_OFFSETS: int = 6  # -> number of joint angle theta offsets to wrapping angles : 4 for GST, 2 for DFT
 N_QHAT_OFFSETS: int = (

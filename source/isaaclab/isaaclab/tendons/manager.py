@@ -25,13 +25,13 @@ class TendonManager:
     """
 
     def __init__(
-            self,
-            robot: Articulation,
-            tendon_data: TendonData | None = None,
-            *,
-            model: TendonEnergyModel | None = None,
-            robot_io: TendonRobotIO | None = None,
-            torque_mapper: TendonTorqueMapper | None = None,
+        self,
+        robot: Articulation,
+        tendon_data: TendonData | None = None,
+        *,
+        model: TendonEnergyModel | None = None,
+        robot_io: TendonRobotIO | None = None,
+        torque_mapper: TendonTorqueMapper | None = None,
     ):
         self.robot = robot
         self.device = robot.device
@@ -188,9 +188,9 @@ class TendonManager:
         self._prev_delta_lengths = {name: delta.detach().clone() for name, delta in deltas.items()}
 
     def _damping_potential(
-            self,
-            deltas: dict[str, torch.Tensor],
-            dt: float,
+        self,
+        deltas: dict[str, torch.Tensor],
+        dt: float,
     ) -> torch.Tensor:
         # First step: no velocity yet.
         if self._prev_delta_lengths is None or dt <= 0.0:
@@ -225,8 +225,8 @@ class TendonManager:
         return damping
 
     def _delta_tuple_to_dict(
-            self,
-            deltas: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+        self,
+        deltas: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
     ) -> dict[str, torch.Tensor]:
         return {
             "gst": deltas[0],

@@ -152,12 +152,12 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
     q5_D = data["GST_q5_D"]
     direction_angle = alpha_2 - np.deg2rad(8.86)  # computed manually
     starting_point = (
-            rotate_by(
-                alpha_2,
-                rotate_by(np.deg2rad(49.5), np.array([0.059407, 0.0]))
-                + np.array([0.19, 0.0]),  # compensate for c23 != link_length_23
-            )
-            + j2
+        rotate_by(
+            alpha_2,
+            rotate_by(np.deg2rad(49.5), np.array([0.059407, 0.0]))
+            + np.array([0.19, 0.0]),  # compensate for c23 != link_length_23
+        )
+        + j2
     )
     p3_i = starting_point + rotate_by(
         direction_angle,
@@ -180,31 +180,31 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
         ),
     )
     p4_o = (
-            rotate_by(
-                q4 + np.deg2rad(45),  # note: added extra angle to avoid issues with negative values
-                p4_i - j4,
-            )
-            + j4
+        rotate_by(
+            q4 + np.deg2rad(45),  # note: added extra angle to avoid issues with negative values
+            p4_i - j4,
+        )
+        + j4
     )
     direction_angle += q4
     radius_4 = np.linalg.norm(p4_o - j4)
     assert (
-            abs(radius_4 - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()) < 0.001
+        abs(radius_4 - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()) < 0.001
     ), f"Expected radius at 4 {td.pulley_radii[0, tids.I_RADIUS_GST_4].item()}, got {radius_4}"
     p4prime_i = (
-            rotate_by(
-                np.deg2rad(-45),  # note: to compensate for extended upper tendon drawing
-                (
-                        (p4_o - j4)
-                        * (
-                                radius_4
-                                - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()
-                                + td.pulley_radii[0, tids.I_RADIUS_GST_4prime].item()
-                        )
-                        / radius_4
-                ),
-            )
-            + j4
+        rotate_by(
+            np.deg2rad(-45),  # note: to compensate for extended upper tendon drawing
+            (
+                (p4_o - j4)
+                * (
+                    radius_4
+                    - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()
+                    + td.pulley_radii[0, tids.I_RADIUS_GST_4prime].item()
+                )
+                / radius_4
+            ),
+        )
+        + j4
     )
     p4prime_o = rotate_by(q4prime, p4prime_i - j4) + j4
     direction_angle += q4prime
@@ -306,11 +306,11 @@ def compute_kft_points(alpha_8, joint_locations, data, r8):
     [j2, j3, j4, j5, j6, _] = joint_locations
     q8 = data["KFT_q8"]
     p8_i = (
-            rotate_by(
-                alpha_8,
-                np.array([r8, 0.0]),
-            )
-            + j2
+        rotate_by(
+            alpha_8,
+            np.array([r8, 0.0]),
+        )
+        + j2
     )
     p8_o = j2 + rotate_by(
         alpha_8 - q8,
@@ -442,9 +442,7 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
 
         expected_len = data["DFT_l_c6"]
         actual_len = np.linalg.norm(p6_i - pc5)
-        assert np.isclose(actual_len, expected_len, atol=1e-3), (
-            f"DFT B: expected lc6={expected_len}, got {actual_len}"
-        )
+        assert np.isclose(actual_len, expected_len, atol=1e-3), f"DFT B: expected lc6={expected_len}, got {actual_len}"
     # elif dft_state == "c":
     #     p7 = pc5 + rotate_by(direction_angle, np.array([np.sqrt(data["DFT_l_c7_squared"]), 0.0]))
     #     tendon_points = [pc5, p7]
@@ -453,9 +451,7 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
     elif dft_state == "c":  # todo: check this
         expected_len = np.sqrt(data["DFT_l_c7_squared"])
         actual_len = np.linalg.norm(p7 - pc5)
-        assert np.isclose(actual_len, expected_len, atol=1e-3), (
-            f"DFT C: expected c7={expected_len}, got {actual_len}"
-        )
+        assert np.isclose(actual_len, expected_len, atol=1e-3), f"DFT C: expected c7={expected_len}, got {actual_len}"
 
         tendon_points = [pc5, p7]
         tendon_joints = []
@@ -498,9 +494,7 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
 
         expected_len = data["DFT_l_57"]
         actual_len = np.linalg.norm(p7 - p5_o)
-        assert np.isclose(actual_len, expected_len, atol=1e-3), (
-            f"DFT D: expected l57={expected_len}, got {actual_len}"
-        )
+        assert np.isclose(actual_len, expected_len, atol=1e-3), f"DFT D: expected l57={expected_len}, got {actual_len}"
 
         tendon_points = [pc5, p5_i, p5_o, p7]
         tendon_joints = [j5]
@@ -588,10 +582,10 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
     elif edt2_state == "b":
         # 3pi = (2pi - theta5) + (2pi - theta4) + phi6 + pi/2 + phi4
         phi4 = (
-                -1.5 * np.pi
-                - data["EDT2_phi_6_B"]
-                + data["thetas"][tids.I_THETA_EDT2_5]
-                + data["thetas"][tids.I_THETA_EDT2_4]
+            -1.5 * np.pi
+            - data["EDT2_phi_6_B"]
+            + data["thetas"][tids.I_THETA_EDT2_5]
+            + data["thetas"][tids.I_THETA_EDT2_4]
         )
     elif edt2_state == "c":
         phi4 = data["EDT2_phi_4_d"] + (np.pi - data["EDT2_thetatilde_6_a"] - data["EDT2_thetatilde_4"])
@@ -689,16 +683,16 @@ def validate_ls(joint_locations, l4prime6, l4prime7, l57):
     [_j2, _j3, j4, j5, j6, p7] = joint_locations
     x46_inf = np.linalg.norm(j6 - j4)
     l46_inf = np.sqrt(
-        x46_inf ** 2 - ((tc.pulley_radii[tids.I_RADIUS_GST_4prime] - tc.pulley_radii[tids.I_RADIUS_GST_6]) ** 2).item()
+        x46_inf**2 - ((tc.pulley_radii[tids.I_RADIUS_GST_4prime] - tc.pulley_radii[tids.I_RADIUS_GST_6]) ** 2).item()
     )
     assert abs(l46_inf - l4prime6) < 0.001, f"Expected l4'6={l46_inf}, got {l4prime6}"
 
     x47_inf = np.linalg.norm(p7 - j4)
-    l47_inf = np.sqrt(x47_inf ** 2 - (tc.pulley_radii[tids.I_RADIUS_GST_4prime] ** 2).item())
+    l47_inf = np.sqrt(x47_inf**2 - (tc.pulley_radii[tids.I_RADIUS_GST_4prime] ** 2).item())
     assert abs(l47_inf - l4prime7) < 0.001, f"Expected l4'7={l47_inf}, got {l4prime7}"
 
     x57_inf = np.linalg.norm(p7 - j5)
-    l57_inf = np.sqrt(x57_inf ** 2 - (tc.pulley_radii[tids.I_RADIUS_GST_5] ** 2).item())
+    l57_inf = np.sqrt(x57_inf**2 - (tc.pulley_radii[tids.I_RADIUS_GST_5] ** 2).item())
     assert abs(l57_inf - l57) < 0.001, f"Expected l57={l57_inf}, got {l57}"
 
 
@@ -1165,12 +1159,12 @@ class KinematicChainAnimator:
         return xs, ys
 
     def tendon_path_general(
-            self,
-            tendon_points: list,
-            tendon_joints: list,
-            tendon_q_positives: list,
-            joint_ccws: list,
-            start_with_arc=False,
+        self,
+        tendon_points: list,
+        tendon_joints: list,
+        tendon_q_positives: list,
+        joint_ccws: list,
+        start_with_arc=False,
     ):
         arc = start_with_arc
         last_point = tendon_points.pop(0)
@@ -1571,36 +1565,36 @@ class KinematicChainAnimator:
 
         # Return all artists for blitting
         artists = (
-                self.skeleton_lines
-                + self.joints_scatters
-                + self.end_effectors
-                + [self.gst_upper_tendon_line, self.gst_lower_tendon_line]
-                + [self.gst_x_4prime6_line, self.gst_x_4prime7_line, self.gst_x_57_line]
-                + [self.gst_h_5_line, self.gst_h_6_line]
-                + [self.kft_tendon_line, self.dft_tendon_line]
-                + list(self.gst_pulley_circles.values())
-                + list(self.kft_dft_pulley_circles.values())
-                + list(self.edt1_pulley_circles.values())
-                + list(self.edt2_pulley_circles.values())
-                + [self.gst_title, self.gst_info_text, self.gst_delta_l_text]
-                + [self.kft_delta_l_text, self.dft_delta_l_text, self.dft_state_text, self.edt1_delta_l_text]
-                + [self.edt2_state_text, self.edt2_delta_l_text]
-                + [self.edt1_tendon_line, self.edt1_h_5_line, self.edt1_x_c5_line]
-                + [
-                    self.edt2_tendon_line,
-                    self.edt2_h_5_line,
-                    self.edt2_h_6_line,
-                    self.edt2_x_c5_line,
-                    self.edt2_x_c6_line,
-                    self.edt2_x_46_line,
-                    self.edt2_x_5c_line,
-                ]
-                + [
-                    self.dft_x_57_line,
-                    self.dft_x_c6_line,
-                    self.dft_h_5_line,
-                    self.dft_h_6_line,
-                ]
+            self.skeleton_lines
+            + self.joints_scatters
+            + self.end_effectors
+            + [self.gst_upper_tendon_line, self.gst_lower_tendon_line]
+            + [self.gst_x_4prime6_line, self.gst_x_4prime7_line, self.gst_x_57_line]
+            + [self.gst_h_5_line, self.gst_h_6_line]
+            + [self.kft_tendon_line, self.dft_tendon_line]
+            + list(self.gst_pulley_circles.values())
+            + list(self.kft_dft_pulley_circles.values())
+            + list(self.edt1_pulley_circles.values())
+            + list(self.edt2_pulley_circles.values())
+            + [self.gst_title, self.gst_info_text, self.gst_delta_l_text]
+            + [self.kft_delta_l_text, self.dft_delta_l_text, self.dft_state_text, self.edt1_delta_l_text]
+            + [self.edt2_state_text, self.edt2_delta_l_text]
+            + [self.edt1_tendon_line, self.edt1_h_5_line, self.edt1_x_c5_line]
+            + [
+                self.edt2_tendon_line,
+                self.edt2_h_5_line,
+                self.edt2_h_6_line,
+                self.edt2_x_c5_line,
+                self.edt2_x_c6_line,
+                self.edt2_x_46_line,
+                self.edt2_x_5c_line,
+            ]
+            + [
+                self.dft_x_57_line,
+                self.dft_x_c6_line,
+                self.dft_h_5_line,
+                self.dft_h_6_line,
+            ]
         )
         return artists
 
