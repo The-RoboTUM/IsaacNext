@@ -20,8 +20,9 @@ from isaaclab.assets import ArticulationCfg
 # Configuration
 ##
 
-actuator_stiffness = 200
+actuator_stiffness = 500 * 1
 actuator_damping = 0.1
+flexor_angle = 0
 
 """Configuration for RoboTUM's Forrest robot."""
 
@@ -45,7 +46,7 @@ FORREST_CFG = ArticulationCfg(
     ),
     soft_joint_pos_limit_factor=0.9,
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 1.4),
+        pos=(0.0, 0.0, 1.45),
         joint_pos={
             # Left leg
             "rp2_pantograph": 0.0,
@@ -59,7 +60,7 @@ FORREST_CFG = ArticulationCfg(
             "l4p_intertarsal_pulley": 0.0,
             "l5_metatarsophalangeal": float(np.deg2rad(-19.9)),
             "l6_interphalangeal": float(np.deg2rad(25.0)),
-            "l8_knee_flexor": 0.0,
+            "l8_knee_flexor": float(np.deg2rad(flexor_angle)),
             # Right leg
             "rp1_pantograph": 0.0,
             "r0_acetabulofemoral_roll": 0.0,
@@ -72,7 +73,7 @@ FORREST_CFG = ArticulationCfg(
             "r4p_intertarsal_pulley": 0.0,
             "r5_metatarsophalangeal": float(np.deg2rad(-19.9)),
             "r6_interphalangeal": float(np.deg2rad(25.0)),
-            "r8_knee_flexor": 0.0,
+            "r8_knee_flexor": float(np.deg2rad(flexor_angle)),
         },
         joint_vel={".*": 0.0},
     ),
@@ -115,7 +116,7 @@ FORREST_CFG = ArticulationCfg(
             ],
             effort_limit_sim=10.0e6,
             velocity_limit_sim=100.0,
-            stiffness=actuator_stiffness * 10,
+            stiffness=actuator_stiffness,
             damping=actuator_damping,
         ),
         "knee_flex": ImplicitActuatorCfg(

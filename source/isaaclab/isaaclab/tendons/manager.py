@@ -51,12 +51,13 @@ class TendonManager:
         self.foot_link_indices = self.robot_io.foot_link_indices
 
         # numerical damping for stability
+        damping_coef = 2.0
         self.tendon_damping = {
-            "gst": 5.0,
-            "dft": 1.0,
-            "kft": 1.0,
-            "edt1": 1.0,
-            "edt2": 1.0,
+            "gst": damping_coef,
+            "dft": damping_coef,
+            "kft": damping_coef,
+            "edt1": damping_coef,
+            "edt2": damping_coef,
         }
         self._prev_delta_lengths = None
 

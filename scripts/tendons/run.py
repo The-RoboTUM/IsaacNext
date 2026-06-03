@@ -78,6 +78,7 @@ USD_PATH = "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"
 VIRTUAL_GROUND_HEIGHT = None
 SIM_DT = 0.0024
 
+
 # Enable this while hunting for autograd issues in the tendon model.
 # torch.autograd.set_detect_anomaly(True)
 
@@ -280,7 +281,7 @@ def make_cpg_legs() -> tuple[BirdBotCPGLeg, BirdBotCPGLeg]:
 def make_sinusoidal_legs() -> tuple[SinusoidalLegController, SinusoidalLegController]:
     """Create left/right sinusoidal controllers over the same logical DOFs."""
     common = dict(
-        f_hz=1.0,
+        f_hz=3.0,
         amplitude_deg={
             "hip_roll": 0.0,
             "hip_yaw": 0.0,

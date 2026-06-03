@@ -57,9 +57,9 @@ class ForrestFlatEnvCfg_PLAY(ForrestFlatEnvCfg):
         # self.scene.num_envs = 50
         # self.scene.env_spacing = 2.5
 
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 0.5)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
+        # self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 0.5)
+        # self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
+        # self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
 
         # disable randomization for play
         self.observations.policy.enable_corruption = False

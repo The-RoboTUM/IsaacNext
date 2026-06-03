@@ -130,22 +130,23 @@ class TendonConstants:
     """Fixed baseline mathematical constants for our tendon model: link lengths and pulley radii etc."""
 
     # gst_stiffness: float = 128e3 * 0  # FIXME: Reduced for simulation stability by 10x
-    gst_stiffness: float = 20e1 * 1
-    dft_stiffness: float = 20e3 * 1  # FIXME: find out real value
-    edt1_stiffness: float = 20e4 * 1  # FIXME: find out real value
-    edt2_stiffness: float = 20e4 * 1  # FIXME: find out real value
-    kft_stiffness: float = 20e4 * 1  # FIXME: find out real value
+    n = 3
+    gst_stiffness: float = 2 * (10 ** (n + 2)) * 1
+    dft_stiffness: float = 5 * (10 ** (n + 1)) * 1  # FIXME: find out real value
+    edt1_stiffness: float = 5 * (10 ** (n + 2)) * 1  # FIXME: find out real value
+    edt2_stiffness: float = 5 * (10 ** (n + 2)) * 1  # FIXME: find out real value
+    kft_stiffness: float = 5 * (10 ** (n + 2)) * 1  # FIXME: find out real value
 
     gst_spring_rest_length: float = 0.06
-    upper_gst_length: float = 0.6367  # FIXME: measure correct value
+    upper_gst_length: float = 0.6367 + 0.055  # FIXME: measure correct value
     lower_gst_length: float = 0.6314  # FIXME: measure correct value
     # dft_length: float = 0.345  # FIXME: measure correct value
-    dft_length: float = 0.34  # FIXME: measure correct value
-    # edt1_length: float = 0.55  # FIXME: measure correct value
-    # edt2_length: float = 0.66  # FIXME: measure correct value
-    edt1_length: float = 0.48  # FIXME: measure correct value
-    edt2_length: float = 0.58  # FIXME: measure correct value
-    kft_length: float = 0.452  # FIXME: measure correct value
+    dft_length: float = 0.345 + 0.039  # FIXME: measure correct value
+    edt1_length: float = 0.55 - 0.01  # FIXME: measure correct value
+    edt2_length: float = 0.66 - 0.01  # FIXME: measure correct value
+    # edt1_length: float = 0.48  # FIXME: measure correct value
+    # edt2_length: float = 0.58  # FIXME: measure correct value
+    kft_length: float = 0.402 + 0.05  # FIXME: measure correct value
 
     joint_offsets_theta: torch.Tensor = torch.deg2rad(  # between joint-to-joint links, offsets to raw joint angles
         torch.tensor(
@@ -256,14 +257,22 @@ class TendonConstantRandomizationRanges:
     edt2_stiffness: tuple[float, float] = (0.0, 0.0)
     kft_stiffness: tuple[float, float] = (0.0, 0.0)
 
-    dft_length: tuple[float, float] = (-0.005, 0.005)
-    edt1_length: tuple[float, float] = (-0.005, 0.005)
-    edt2_length: tuple[float, float] = (-0.005, 0.005)
-    kft_length: tuple[float, float] = (-0.005, 0.005)
+    # dft_length: tuple[float, float] = (-0.005, 0.005)
+    # edt1_length: tuple[float, float] = (-0.005, 0.005)
+    # edt2_length: tuple[float, float] = (-0.005, 0.005)
+    # kft_length: tuple[float, float] = (-0.005, 0.005)
+    dft_length: tuple[float, float] = (-0.000, 0.000)
+    edt1_length: tuple[float, float] = (-0.000, 0.00)
+    edt2_length: tuple[float, float] = (-0.00, 0.00)
+    kft_length: tuple[float, float] = (-0.00, 0.00)
 
-    gst_spring_rest_length: tuple[float, float] = (-0.005, 0.005)
-    upper_gst_length: tuple[float, float] = (-0.01, 0.01)
-    lower_gst_length: tuple[float, float] = (-0.01, 0.01)
+    # gst_spring_rest_length: tuple[float, float] = (-0.005, 0.005)
+    # upper_gst_length: tuple[float, float] = (-0.01, 0.01)
+    # lower_gst_length: tuple[float, float] = (-0.01, 0.01)
+
+    gst_spring_rest_length: tuple[float, float] = (-0.00, 0.00)
+    upper_gst_length: tuple[float, float] = (-0.0, 0.0)
+    lower_gst_length: tuple[float, float] = (-0.0, 0.0)
 
     joint_offsets_theta: list[tuple[float, float]] = field(
         default_factory=lambda: list_from_dict(
