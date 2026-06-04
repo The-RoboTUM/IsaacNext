@@ -13,7 +13,7 @@ from isaaclab.tendons.models.analytic.tendon_data import TendonData
 DEFAULT_ALPHA_2 = np.deg2rad(300)
 
 # Keep these module-level objects so the split code behaves like the original script.
-tc = TendonConstants()
-td = TendonData(1, dummy_randomization)
 
-__all__ = ["DEFAULT_ALPHA_2", "tc", "td", "tids"]
+td = TendonData(1, TendonConstants(), dummy_randomization)
+
+__all__ = ["DEFAULT_ALPHA_2", "td", "tids"]

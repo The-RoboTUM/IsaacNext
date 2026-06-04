@@ -47,6 +47,12 @@ parser.add_argument(
     default="cpg",
     help="Leg controller to use for actuated joints.",
 )
+parser.add_argument(
+    "--parameters_file",
+    type=str,
+    default="",
+    help="Directory used for debug JSONL logs and optional video output.",
+)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -236,12 +242,12 @@ def find_actuated_joint_indices(robot, actuated_dof_specs):
 
 
 def controller_command_tensor(
-    *,
-    t: float,
-    left_controller: LegControllerBase,
-    right_controller: LegControllerBase,
-    actuated_dof_specs,
-    device,
+        *,
+        t: float,
+        left_controller: LegControllerBase,
+        right_controller: LegControllerBase,
+        actuated_dof_specs,
+        device,
 ) -> torch.Tensor:
     controllers = {
         "left": left_controller,
@@ -349,14 +355,14 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
 
 
 def maybe_print_status(
-    *,
-    iteration: int,
-    num_steps: int,
-    sim_time: float,
-    wall_start: float,
-    status_interval: int,
-    mode: str,
-    debug_info: dict | None = None,
+        *,
+        iteration: int,
+        num_steps: int,
+        sim_time: float,
+        wall_start: float,
+        status_interval: int,
+        mode: str,
+        debug_info: dict | None = None,
 ):
     """Print a compact progress line in both debug and JIT mode."""
     if status_interval <= 0:

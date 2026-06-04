@@ -2,16 +2,20 @@
 
 from dataclasses import dataclass, field
 
+from sympy.solvers.diophantine.diophantine import parametrize_ternary_quadratic
+
 import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.tendons.models.analytic.utils import list_from_dict
 import numpy as np
 import torch
 
+from isaaclab.tendons.parameter_loader import ForrestParameterConfig
+
 N_CHAIN_LINKS_PER_LEG: int = 6  # -> number of links in the kinematic chain of the leg
 N_CONNECTOR_OFFSETS: int = 6  # -> GST, DFT, EDT2, KFT have a connector not on the ji-ji+1 axis; EDT1 has two
 N_LINK_LENGTHS_PER_LEG: int = (
-    N_CHAIN_LINKS_PER_LEG
-    + N_CONNECTOR_OFFSETS
+        N_CHAIN_LINKS_PER_LEG
+        + N_CONNECTOR_OFFSETS
     # -> number of link lengths per leg (including virtual links for tendon attachment points)
 )
 N_JOINTS: int = 5
@@ -21,7 +25,7 @@ N_TENDON_SECTION_LENGTHS: int = (
     11  # lengths between two pulleys in contact, or between pulley and tendon attachment point if only one pulley
 )
 N_TENDON_THETA_OFFSETS: int = (
-    N_JOINTS + N_CONNECTOR_OFFSETS
+        N_JOINTS + N_CONNECTOR_OFFSETS
 )  # -> number of raw joint angle offsets: 5 for joints, 6 for connectors
 N_Q_OFFSETS: int = 6  # -> number of joint angle theta offsets to wrapping angles : 4 for GST, 2 for DFT
 N_QHAT_OFFSETS: int = (
@@ -239,6 +243,24 @@ class TendonConstants:
         np.deg2rad(98.874)
     )  # angle between link 23 and line from joint 3 to the tangency point of the GST on pulley 3
     angle_4prime5_to_j44prime = np.deg2rad(124.069)  # angle between link 4'5 and line from joint 4 to 4-4' transition
+
+    @classmethod
+    def from_forrest_parameters(cls, parameters: ForrestParameterConfig):
+        return cls(
+            gst_stiffness=parameters.gst_stiffness,
+            dft_stiffness=parameters.dft_stiffness,
+            edt1_stiffness=parameters.edt1_stiffness,
+            edt2_stiffness=parameters.edt2_stiffness,
+            kft_stiffness=parameters.kft_stiffness,
+
+            dft_length=parameters.dft_length,
+            edt1_length=parameters.edt1_length,
+            edt2_length=parameters.edt2_length,
+            kft_length=parameters.kft_length,
+            upper_gst_length=parameters.upper_gst_length,
+            lower_gst_length=parameters.lower_gst_length,
+            gst_spring_rest_length=parameters.gst_spring_rest_length,
+        )
 
 
 @dataclass
