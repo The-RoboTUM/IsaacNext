@@ -37,9 +37,10 @@ simulation_app = app_launcher.app
 
 """Rest everything follows."""
 
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 import torch
 
 import isaaclab.sim as sim_utils
@@ -138,7 +139,10 @@ def save_images_grid(
     ncol = int(np.ceil(n_images / nrow))
 
     fig, axes = plt.subplots(nrow, ncol, figsize=(ncol * 2, nrow * 2))
-    axes = axes.flatten()
+    if isinstance(axes, np.ndarray):
+        axes = axes.flatten()
+    else:
+        axes = np.array([axes])
 
     # plot images
     for idx, (img, ax) in enumerate(zip(images, axes)):

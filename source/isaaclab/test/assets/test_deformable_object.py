@@ -17,12 +17,12 @@ simulation_app = AppLauncher(headless=True).app
 """Rest everything follows."""
 
 import ctypes
+
+import pytest
 import torch
+from flaky import flaky
 
 import carb
-import isaacsim.core.utils.prims as prim_utils
-import pytest
-from flaky import flaky
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
@@ -58,7 +58,7 @@ def generate_cubes_scene(
     origins = torch.tensor([(i * 1.0, 0, height) for i in range(num_cubes)]).to(device)
     # Create Top-level Xforms, one for each cube
     for i, origin in enumerate(origins):
-        prim_utils.create_prim(f"/World/Table_{i}", "Xform", translation=origin)
+        sim_utils.create_prim(f"/World/Table_{i}", "Xform", translation=origin)
 
     # Resolve spawn configuration
     if has_api:

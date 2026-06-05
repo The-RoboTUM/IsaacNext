@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import argparse
-import numpy as np
 
 from isaaclab.app import AppLauncher
 
@@ -22,6 +21,7 @@ simulation_app = app_launcher.app
 
 """Rest everything follows."""
 
+import numpy as np
 import torch
 
 import isaaclab.sim as sim_utils
@@ -83,7 +83,6 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
 
     # Simulate physics
     while simulation_app.is_running():
-
         if count % 500 == 0:
             # reset counter
             count = 0

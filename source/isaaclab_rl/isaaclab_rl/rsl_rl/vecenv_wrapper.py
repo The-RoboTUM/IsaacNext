@@ -5,10 +5,10 @@
 
 import gymnasium as gym
 import torch
-from tensordict import TensorDict
 
 # from rsl_rl.rsl_rl.env import VecEnv
 from rsl_rl.env import VecEnv
+from tensordict import TensorDict
 
 from isaaclab.envs import DirectRLEnv, ManagerBasedRLEnv
 

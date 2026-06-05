@@ -29,11 +29,12 @@ simulation_app = AppLauncher(headless=True, enable_cameras=True).app
 
 """Rest everything follows."""
 
-import gymnasium as gym
 import sys
 
-import omni.usd
+import gymnasium as gym
 import pytest
+
+import omni.usd
 
 from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg, ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from isaaclab.sensors import save_images_to_file

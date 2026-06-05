@@ -62,7 +62,7 @@ _build
 /.pretrained_checkpoints/
 
 # Teleop Recorded Dataset
-datasets
+/datasets/
 
 # Tests
 tests/
@@ -74,3 +74,7 @@ tests/
 
 saved_models/
 assets/
+
+# TacSL sensor
+**/tactile_record/*
+**/gelsight_r15_data/*

@@ -14,13 +14,14 @@ simulation_app = app_launcher.app
 
 """Rest everything follows."""
 
-import gymnasium as gym
 import os
+
+import gymnasium as gym
+import pytest
 import torch
 
 import carb
 import omni.usd
-import pytest
 
 from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent
 

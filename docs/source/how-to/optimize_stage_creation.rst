@@ -9,7 +9,7 @@ What These Features Do
 
 **Fabric Cloning**
 
-- Clones environments using Fabric library (see `USD Fabric USDRT Documentation <https://docs.omniverse.nvidia.com/kit/docs/usdrt/latest/docs/usd_fabric_usdrt.html>`_)
+- Clones environments using Fabric library (see `USD Fabric USDRT Documentation <https://docs.omniverse.nvidia.com/kit/docs/usdrt.scenegraph/latest/usd_fabric_usdrt.html>`_)
 - Partially supported and enabled by default on some environments (see `Limitations`_ section for a list)
 
 **Stage in Memory**
@@ -21,7 +21,7 @@ What These Features Do
 Usage Examples
 --------------
 
-Fabric cloning can be toggled by setting the ``clone_in_fabric`` flag in the ``InteractiveSceneCfg`` configuration.
+Fabric cloning can be toggled by setting the :attr:`isaaclab.scene.InteractiveSceneCfg.clone_in_fabric` flag.
 
 **Using Fabric Cloning with a RL environment**
 
@@ -34,7 +34,7 @@ Fabric cloning can be toggled by setting the ``clone_in_fabric`` flag in the ``I
     env = ManagerBasedRLEnv(cfg=env_cfg)
 
 
-Stage in memory can be toggled by setting the ``create_stage_in_memory`` in the ``SimulationCfg`` configuration.
+Stage in memory can be toggled by setting the :attr:`isaaclab.sim.SimulationCfg.create_stage_in_memory` flag.
 
 **Using Stage in Memory with a RL environment**
 
@@ -47,9 +47,10 @@ Stage in memory can be toggled by setting the ``create_stage_in_memory`` in the 
     # create env with stage in memory
     env = ManagerBasedRLEnv(cfg=cfg)
 
-Note, if stage in memory is enabled without using an existing RL environment class, a few more steps are need.
+Note, if stage in memory is enabled without using an existing RL environment class, a few more steps are needed.
 The stage creation steps should be wrapped in a ``with`` statement to set the stage context.
-If the stage needs to be attached, the ``attach_stage_to_usd_context`` function should be called after the stage is created.
+If the stage needs to be attached, the :meth:`~isaaclab.sim.utils.attach_stage_to_usd_context` function should
+be called after the stage is created.
 
 **Using Stage in Memory with a manual scene setup**
 

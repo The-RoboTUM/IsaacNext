@@ -175,7 +175,8 @@ class DirectMARLEnvCfg:
     """
 
     observation_noise_model: dict[AgentID, NoiseModelCfg | None] | None = None
-    """The noise model to apply to the computed observations from the environment. Default is None, which means no noise is added.
+    """The noise model to apply to the computed observations from the environment. Default is None,
+    which means no noise is added.
 
     Please refer to the :class:`isaaclab.utils.noise.NoiseModel` class for more details.
     """
@@ -212,7 +213,8 @@ class DirectMARLEnvCfg:
     """
 
     action_noise_model: dict[AgentID, NoiseModelCfg | None] | None = None
-    """The noise model applied to the actions provided to the environment. Default is None, which means no noise is added.
+    """The noise model applied to the actions provided to the environment. Default is None,
+    which means no noise is added.
 
     Please refer to the :class:`isaaclab.utils.noise.NoiseModel` class for more details.
     """
@@ -225,3 +227,6 @@ class DirectMARLEnvCfg:
 
     xr: XrCfg | None = None
     """Configuration for viewing and interacting with the environment through an XR device."""
+
+    log_dir: str | None = None
+    """Directory for logging experiment artifacts. Defaults to None, in which case no specific log directory is set."""

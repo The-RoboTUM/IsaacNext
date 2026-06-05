@@ -8,8 +8,8 @@
 import itertools
 import os
 import platform
-import toml
 
+import toml
 from setuptools import setup
 
 # Obtain the extension data from the extension.toml file
@@ -57,6 +57,7 @@ setup(
         "Programming Language :: Python :: 3.11",
         "Isaac Sim :: 4.5.0",
         "Isaac Sim :: 5.0.0",
+        "Isaac Sim :: 5.1.0",
     ],
     zip_safe=False,
 )

@@ -31,8 +31,6 @@ When parsing physics material properties on an object, the following priority is
 Usage:
     .. code-block:: python
 
-        import isaacsim.core.utils.prims as prim_utils
-
         import isaaclab.sim as sim_utils
 
         # create a visual material
@@ -49,7 +47,7 @@ Usage:
 
 .. _Material Definition Language (MDL): https://raytracing-docs.nvidia.com/mdl/introduction/index.html#mdl_introduction#
 .. _Materials: https://docs.omniverse.nvidia.com/materials-and-rendering/latest/materials.html
-.. _physics material: https://docs.omniverse.nvidia.com/extensions/latest/ext_physics/simulation-control/physics-settings.html#physics-materials
+.. _physics material: https://isaac-sim.github.io/IsaacLab/main/source/api/lab/isaaclab.sim.html#isaaclab.sim.SimulationCfg.physics_material
 .. _USD Material Binding API: https://openusd.org/dev/api/class_usd_shade_material_binding_a_p_i.html
 .. _Physics Scene: https://openusd.org/dev/api/usd_physics_page_front.html
 """

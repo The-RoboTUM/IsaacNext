@@ -9,22 +9,23 @@ from __future__ import annotations
 
 import inspect
 import re
-import torch
 import weakref
 from abc import abstractmethod
 from collections.abc import Sequence
-from prettytable import PrettyTable
 from typing import TYPE_CHECKING, Any
+
+import torch
+from prettytable import PrettyTable
 
 import omni.kit.app
 
-from isaaclab.assets import AssetBase
 from isaaclab.envs.utils.io_descriptors import GenericActionIODescriptor
 
 from .manager_base import ManagerBase, ManagerTermBase
 from .manager_term_cfg import ActionTermCfg
 
 if TYPE_CHECKING:
+    from isaaclab.assets import AssetBase
     from isaaclab.envs import ManagerBasedEnv
 
 
