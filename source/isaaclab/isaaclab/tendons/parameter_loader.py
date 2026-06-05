@@ -90,6 +90,19 @@ class RobotAssetParameters:
 
 
 @dataclass
+class BoomParameters:
+    """Planar boom constraint parameters for Forrest manager-based envs."""
+
+    body_path_template: str = "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected"
+    joint_path_template: str = "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected_planar_boom_joint"
+    locked_axes: tuple[str, ...] = ("transX", "rotY", "rotZ")
+    lock_x_angle: bool = False
+    body_anchor_pos: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    body_anchor_rot_wxyz: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
+    debug: bool = False
+
+
+@dataclass
 class RigidBodyPhysicsParameters:
     disable_gravity: bool = False
     retain_accelerations: bool = False
@@ -515,6 +528,7 @@ class TrainingParameters:
 class ForrestParameterConfig:
     schema_version: int = 1
     robot: RobotAssetParameters = field(default_factory=RobotAssetParameters)
+    boom: BoomParameters = field(default_factory=BoomParameters)
     physics: PhysicsParameters = field(default_factory=PhysicsParameters)
     actuation: ActuationParameters = field(default_factory=ActuationParameters)
     tendons: TendonParameters = field(default_factory=TendonParameters)

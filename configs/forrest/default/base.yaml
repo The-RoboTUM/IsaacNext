@@ -28,6 +28,15 @@ robot:
   fixed_world_joint_local_pos0: null  # null reads current body world position; set explicitly only for anchor debugging.
   fixed_world_joint_local_rot0_wxyz: null  # null reads current body world orientation as wxyz quaternion.
 
+boom:
+  body_path_template: "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected"  # Rigid body constrained by the boom.
+  joint_path_template: "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected_planar_boom_joint"  # Boom joint prim path.
+  locked_axes: [ "transX", "rotY", "rotZ" ]  # D6 axes locked by the planar boom.
+  lock_x_angle: true  # Also lock rotX when true.
+  body_anchor_pos: [ 0.0, 0.0, 0.0 ]  # Joint anchor position in the constrained body frame.
+  body_anchor_rot_wxyz: [ 1.0, 0.0, 0.0, 0.0 ]  # Joint anchor orientation in the constrained body frame.
+  debug: false  # Print created boom joints and locked axes.
+
 physics:
   sim_dt: 0.0024  # Physics simulation timestep in seconds.
   gravity: [ 0.0, 0.0, -9.81 ]  # World gravity vector in m/s^2.

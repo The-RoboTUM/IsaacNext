@@ -18,13 +18,13 @@
 - [ ] Create a new USD (Make a list of mods for everything first) (DOCUMENT) (+++)
 - [ ] Ask chatgpt about how to run better projects (+++)
 
-# Now
+## Now
 
 - [ ] Build a run script with a fake boom (+++)
-- [ ] Centralized config file (+++)
 
 ## Done
 
+- [x] Centralized config file (+++)
 - [x] Solve the problems with the sources and warnings in pycharm from isaac (+++)
 - [x] Updating isaac's repo (+)
 - [x] Automate the linting + pycharm handling (+++)

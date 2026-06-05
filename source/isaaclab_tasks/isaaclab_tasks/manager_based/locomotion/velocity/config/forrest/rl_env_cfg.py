@@ -8,10 +8,8 @@ import math
 import torch
 
 from isaaclab.envs import ManagerBasedRLEnv
-from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg, TerminationTermCfg
-from isaaclab.sensors import ContactSensorCfg
+from isaaclab.managers import SceneEntityCfg
 
 # Experimental
 from isaaclab.tendons.models.analytic.constants import actuated_joint_names
@@ -20,16 +18,7 @@ from isaaclab.tendons.plugin.action_term_cfg import TendonActionTermHybridCfg
 from isaaclab.utils import configclass
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
-from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg, RewardsCfg
-
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
-
-from isaaclab_assets.robots.forrest import get_forrest_cfg  # isort: skip
-
+from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import RewardsCfg
 
 # -----------------------------------------------------------------------------
 # Centralized Forrest parameters
@@ -578,155 +567,3 @@ class ForrestActionsCfg:
         randomization_ranges=FORREST_TENDON_RANDOMIZATION,
         parameters_file=None,
     )
-
-
-@configclass
-class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
-    rewards: ForrestRewards = ForrestRewards()
-    actions: ForrestActionsCfg = ForrestActionsCfg()
-
-    def __post_init__(self):
-        # post init of parent
-        super().__post_init__()
-
-        if TRAINING_PARAMS.episode_length_s is not None:
-            self.episode_length_s = TRAINING_PARAMS.episode_length_s
-
-        # Scene
-        self.scene.robot = get_forrest_cfg(FORREST_PARAMS).replace(prim_path=FORREST_PARAMS.robot.prim_path)
-        self.scene.height_scanner.prim_path = FORREST_PARAMS.robot.height_scanner_prim_path
-
-        # TEMP (Used only to make flat env model work)
-        # self.scene.height_scanner = None
-        # self.observations.policy.height_scan = None
-        # self.curriculum.terrain_levels = None
-
-        # Solve issue with dropping contacts
-        self.sim.physx.gpu_collision_stack_size = FORREST_PARAMS.physics.physx_gpu_collision_stack_size
-        # self.sim.physx.gpu_max_rigid_patch_count = 400000
-
-        # Sensors
-        # self.scene.base_contact = ContactSensorCfg(
-        #     prim_path="{ENV_REGEX_NS}/Forrest_URDF/Base_Assy_V2v18_1",
-        #     update_period=0.0,
-        #     history_length=1,
-        #     debug_vis=True,
-        #     track_air_time=True,
-        # )
-        self.scene.contact_forces = ContactSensorCfg(
-            prim_path=f"{FORREST_PARAMS.robot.prim_path}/{_body_name_regex(CONTACT_PARAMS.contact_sensor_body_names)}",
-            update_period=CONTACT_PARAMS.update_period,
-            history_length=CONTACT_PARAMS.history_length,
-            debug_vis=CONTACT_PARAMS.debug_vis,
-            track_air_time=CONTACT_PARAMS.track_air_time,
-        )
-
-        # Randomization
-        if TRAINING_PARAMS.events.disable_push_robot:
-            self.events.push_robot = None
-        if TRAINING_PARAMS.events.disable_add_base_mass:
-            self.events.add_base_mass = None
-        self.events.reset_robot_joints.params["position_range"] = (
-            TRAINING_PARAMS.events.reset_robot_joint_position_range
-        )
-        self.events.base_external_force_torque.params["asset_cfg"].body_names = list(
-            TRAINING_PARAMS.events.external_force_body_names
-        )
-        self.events.reset_base.params = {
-            "pose_range": TRAINING_PARAMS.events.reset_base_pose_range,
-            "velocity_range": TRAINING_PARAMS.events.reset_base_velocity_range,
-        }
-        if TRAINING_PARAMS.events.randomize_initial_base_pose:
-            self.events.startup_reset_base = EventTerm(
-                func=reset_root_state_uniform_all_envs_on_startup,
-                mode="startup",
-                params={
-                    "pose_range": TRAINING_PARAMS.events.reset_base_pose_range,
-                    "velocity_range": TRAINING_PARAMS.events.reset_base_velocity_range,
-                },
-            )
-        self.events.base_com.params["asset_cfg"].body_names = list(TRAINING_PARAMS.events.base_com_body_names)
-
-        # Rewards
-        self.rewards.lin_vel_z_l2.weight = REWARD_WEIGHTS["lin_vel_z_l2"]  # disables vertical velocity penalty
-        self.rewards.undesired_contacts = None  # removes undesired contacts penalty
-        self.rewards.flat_orientation_l2.weight = REWARD_WEIGHTS["flat_orientation_l2"]  # keeps base upright
-        # self.rewards.flat_orientation_l2.weight = -0.0  # keeps base upright
-        # self.rewards.action_rate_l2.weight = -0.005  # penalizes fast changes in actions
-        self.rewards.action_rate_l2.weight = REWARD_WEIGHTS["action_rate_l2"]  # penalizes fast changes in actions
-
-        # DOF accelerations penalty
-        self.rewards.dof_acc_l2.weight = REWARD_WEIGHTS["dof_acc_l2"]
-        # self.rewards.dof_acc_l2.weight = 0.0
-        self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg(
-            "robot",
-            joint_names=[
-                "l0_acetabulofemoral_roll",
-                "l1_acetabulofemoral_lateral",
-                "l2_pseudo_acetabulofemoral_flexion",
-                # "l3f_femorotibial_front",
-                "r0_acetabulofemoral_roll",
-                "r1_acetabulofemoral_lateral",
-                "r2_pseudo_acetabulofemoral_flexion",
-                # "r3f_femorotibial_front",
-            ],
-        )
-
-        # DOF torques penalty for actuated joints.
-        self.rewards.dof_torques_l2.weight = REWARD_WEIGHTS["dof_torques_l2"]
-        self.rewards.dof_torques_l2.params["asset_cfg"] = SceneEntityCfg(
-            "robot",
-            joint_names=actuated_joint_names,
-        )
-
-        # terminations
-        self.terminations.base_contact.params["sensor_cfg"].body_names = CONTACT_PARAMS.base_termination_body_names
-
-        self.terminations.base_too_low = TerminationTermCfg(
-            func=terminate_if_base_too_low,
-            params={"minimum_height": TRAINING_PARAMS.terminations.base_too_low_height},
-        )
-
-        # Commands
-        self.commands.base_velocity.ranges.lin_vel_x = TRAINING_PARAMS.commands.lin_vel_x
-        self.commands.base_velocity.ranges.lin_vel_y = TRAINING_PARAMS.commands.lin_vel_y
-        self.commands.base_velocity.ranges.ang_vel_z = TRAINING_PARAMS.commands.ang_vel_z
-
-        # # DEBUG
-        # self.observations.policy.enable_corruption = False
-        # # remove random pushing
-        # self.events.base_external_force_torque = None
-        # self.events.push_robot = None
-
-
-@configclass
-class ForrestRoughEnvCfg_PLAY(ForrestRoughEnvCfg):
-    def __post_init__(self):
-        # post init of parent
-        super().__post_init__()
-
-        # make a smaller scene for play
-        # self.scene.num_envs = 50
-        # self.scene.env_spacing = 2.5
-        self.episode_length_s = TRAINING_PARAMS.play_episode_length_s
-
-        # spawn the robot randomly in the grid (instead of their terrain levels)
-        self.scene.terrain.max_init_terrain_level = None
-
-        # reduce the number of terrains to save memory
-        if self.scene.terrain.terrain_generator is not None:
-            self.scene.terrain.terrain_generator.num_rows = 3
-            self.scene.terrain.terrain_generator.num_cols = 3
-            self.scene.terrain.terrain_generator.curriculum = False
-
-        # self.commands.base_velocity.ranges.lin_vel_x = (-0.0, -0.0)
-        # self.commands.base_velocity.ranges.lin_vel_y = (-5.0, -5.0)
-        # self.commands.base_velocity.ranges.ang_vel_z = (-0.0, 0.0)
-        # self.commands.base_velocity.ranges.heading = (0.0, 0.0)
-
-        # disable randomization for play
-        self.observations.policy.enable_corruption = False
-
-        # remove random pushing
-        self.events.base_external_force_torque = None
-        self.events.push_robot = None
