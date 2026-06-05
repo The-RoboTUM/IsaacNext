@@ -72,86 +72,75 @@ Before installing Isaac Sim and Isaac Lab, please make sure your system meets th
 | **Status** | ✅ Fully compatible and tested for both Isaac Sim and Isaac Lab RL training |
 
 
-### Install Isaac Sim and Isaac Lab (please make sure to use pip for the installation).
-
-You can download them from the official NVIDIA link below: \
-https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html
-
-It also includes instructions on how to create a conda virtual environment.
-
-After creating and activating the `sim` environment, install the Isaac Lab source extensions and Git hooks from the
-repository root:
-
-```bash
-conda activate sim
-./isaaclab.sh -i
-pre-commit install
-```
-
-
 ### Clone the repositories
-Step 1: Clone the IsaacNext workspace
+
+Step 1: Clone the IsaacNext workspace.
+
 ```bash
-# You can clone it anywhere on your machine
+mkdir -p humanoid_workspace
+cd humanoid_workspace
 git clone https://github.com/The-RoboTUM/IsaacNext.git
 ```
-This repository is your main working environment.
 
-Step 2: Clone the URDF source repository
+Step 2: Clone the URDF source repository next to IsaacNext.
+
 ```bash
-# You can clone it anywhere on your machine
 git clone https://github.com/The-RoboTUM/urdfheim.git
 ```
 
-Inside that repo, you will find Forrest’s URDF file at:
+The setup script assumes this layout:
+
 ```bash
-urdfheim/complex/Forrest_URDF_description/urdf/
+humanoid_workspace/
+├── IsaacNext/
+└── urdfheim/
 ```
 
 ### Convert URDF to USD in Isaac Sim
 
-In Isaacsim, we need to USD file, so we need to convert URDF file to USD file.
+Forrest is loaded from a USD file, so the URDF in `urdfheim` must be converted before training or playing.
 
-Nest, let's go through the operation steps in detail:
-
-- Launch Isaacsim.
+- Launch Isaac Sim.
 ```bash
 cd path/to/IsaacNext
 isaacsim
 ```
-- Use the URDF Importer to import the Forrest URDF file, **but before importing, please change the following settings**:
+- Use the URDF Importer to import Forrest from:
+```bash
+../urdfheim/complex/forrest_urdf_latest_description/urdf/
+```
+- Before importing, use these settings:
 ![See the screenshot](images/urdf_import_setting.png)
   - Choose `Moveable Base`
   - Create `Collisions From Visuals`
   - Choose `Convex Decomposition`
-- after you finish doing above steps, Isaacsim will generate a folder: `Forrest_URDF`, at the same place of the urdf file.
-
-### (First-Time Setup) Create the symlinks Folder
-Go back to your IsaacNext repo:
-
+- The generated USD folder must be:
 ```bash
-cd path/to/IsaacNext
-mkdir -p symlinks
+../urdfheim/complex/forrest_urdf_latest_description/urdf/forrest_urdf_latest/
 ```
-The symlinks folder will store shortcuts (symbolic links) to external robot asset directories —
-this way, you don’t need to move or copy large generated files.
-
-
-Create a Symbolic Link to Forrest’s Generated USD Folder
-Now link the generated Forrest_URDF folder into IsaacNext/symlinks/.
-
+- The expected USD file is:
 ```bash
-cd IsaacNext/symlinks
-ln -s /absolute/path/to/urdfheim/complex/Forrest_URDF_description/urdf/Forrest_URDF Forrest_URDF
-
+../urdfheim/complex/forrest_urdf_latest_description/urdf/forrest_urdf_latest/forrest_urdf_latest.usd
 ```
 
+### Run the Automatic Setup
 
-Your structure should now look like:
+From the IsaacNext repository root:
+
 ```bash
-IsaacNext/
-├── symlinks/
-│   └── Forrest_URDF -> /absolute/path/to/.../Forrest_URDF
+./scripts/setup_repo.sh
+```
+
+This script:
+- creates or updates the `sim` conda environment from `environment.yml`
+- installs the Isaac Lab source extensions with `./isaaclab.sh -i`
+- installs the Git pre-commit hooks
+- creates `symlinks/forrest_urdf_latest`
+
+After setup, activate the environment:
+
+```bash
+conda activate sim
 ```
 
 ## Joints Parameter Settings
