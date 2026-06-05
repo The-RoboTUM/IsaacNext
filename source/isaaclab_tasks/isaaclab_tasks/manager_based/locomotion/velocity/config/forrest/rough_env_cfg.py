@@ -36,16 +36,21 @@ from isaaclab.tendons.plugin.action_term_cfg import TendonActionTermHybridCfg
 # for future debugging and logging.
 REWARD_WEIGHTS = {
     # Custom reward terms defined in ForrestRewards.
-    "alive": 0.1,
+    "alive": 0.0,
     "termination_penalty": -200.0,
     "track_base_height_exp": 0.0,
-    "track_lin_vel_xy_exp": 5.0,  # original: 1.0; currently disabled for debugging
+    "track_lin_vel_xy_exp": 2.0,  # original: 1.0; currently disabled for debugging
     "track_ang_vel_z_exp": 0.1,
+    "feet_crossing": -0.0,
+    # "feet_crossing": -2.0,
+    "feet_parallel_contact": -0.0,
+    # "feet_parallel_contact": -1.0,
     "feet_air_time": 0.0,
     "feet_slide": 0.0,
     "joint_deviation_l1": -0.1,  # original: -0.1; currently disabled for debugging
     "hip_deviation_l1": -0.3,  # original: -0.3; currently disabled for debugging
-    "gait_symetry": -1.0,  # original: -1.0; keep spelling to match existing logs/config
+    "gait_symmetry": -0.1,  # original: -1.0; keep spelling to match existing logs/config
+    # "gait_symmetry": -1.0,  # original: -1.0; keep spelling to match existing logs/config
     "foot_connector_contact": -1.0,  # original: -1.0; currently disabled for debugging
     # Inherited reward terms configured in __post_init__.
     "lin_vel_z_l2": -0.1,  # disables vertical velocity penalty
@@ -65,13 +70,49 @@ FOOT_CONNECTOR_CFG = SceneEntityCfg(
     body_names=("s34_foot_connector_assy_1", "s34_foot_connector_assy_2"),
 )
 
+# Foot order in FEET_CFG. Keep these as parameters so swapping bodies later is easy.
+#   s45_digit_assy_1 = right foot
+#   s45_digit_assy_2 = left foot
+RIGHT_FOOT_INDEX = 0
+LEFT_FOOT_INDEX = 1
+
+# Foot reward frame convention.
+# Current model:
+#   forward = -Y  -> (0, -1, 0)
+#   lateral = +X  -> (1,  0, 0)
+# After fixing the USD so robot +X is front, change to:
+#   FEET_FORWARD_DIR_B = (1.0, 0.0, 0.0)
+#   FEET_LATERAL_DIR_B = (0.0, 1.0, 0.0)
+FEET_FORWARD_DIR_B = (0.0, -1.0, 0.0)
+FEET_LATERAL_DIR_B = (1.0, 0.0, 0.0)
+
+# Kept for compatibility with older code/comments.
+FORWARD_AXIS = 1
+FORWARD_SIGN = -1.0
+LATERAL_AXIS = 0
+LEFT_SIGN = 1.0
+
 
 def quat_to_rot_matrix(q: torch.Tensor) -> torch.Tensor:
-    """Convert quaternions to rotation matrices."""
-    # q: [N, 4] in (x, y, z, w) order (check Isaac Lab ordering!)
-    x, y, z, w = q.unbind(-1)
+    """Convert Isaac Lab quaternions from (w, x, y, z) to rotation matrices.
 
-    # rotation matrix components
+    Kept with the original function name so existing code can call it safely.
+    Isaac Lab stores body/root quaternions in wxyz order.
+    """
+    return quat_to_rot_matrix_wxyz(q)
+
+
+def quat_to_rot_matrix_wxyz(q: torch.Tensor) -> torch.Tensor:
+    """Convert Isaac Lab quaternions from (w, x, y, z) to rotation matrices.
+
+    Supports shape:
+        [N, 4]
+        [N, B, 4]
+    Returns:
+        [N, 3, 3] or [N, B, 3, 3]
+    """
+    w, x, y, z = q.unbind(-1)
+
     xx, yy, zz = x * x, y * y, z * z
     xy, xz, yz = x * y, x * z, y * z
     wx, wy, wz = w * x, w * y, w * z
@@ -81,70 +122,267 @@ def quat_to_rot_matrix(q: torch.Tensor) -> torch.Tensor:
             1 - 2 * (yy + zz),
             2 * (xy - wz),
             2 * (xz + wy),
+
             2 * (xy + wz),
             1 - 2 * (xx + zz),
             2 * (yz - wx),
+
             2 * (xz - wy),
             2 * (yz + wx),
             1 - 2 * (xx + yy),
         ],
         dim=-1,
     )
-    return rot.view(-1, 3, 3)
+
+    return rot.reshape(*q.shape[:-1], 3, 3)
+
+
+def _unit_vec(
+        values: tuple[float, float, float],
+        device: torch.device | str,
+        dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    """Return a finite unit vector on the requested device."""
+    vec = torch.tensor(values, device=device, dtype=dtype)
+    norm = torch.norm(vec).clamp(min=1e-8)
+    return torch.nan_to_num(vec / norm, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def _project_along(values: torch.Tensor, direction: torch.Tensor) -> torch.Tensor:
+    """Project [..., 3] vectors onto a unit direction."""
+    return torch.sum(values * direction, dim=-1)
+
+
+def _safe_nonnegative_reward(value: torch.Tensor, max_value: float | None = None) -> torch.Tensor:
+    """Make custom penalty terms finite so they cannot poison PPO."""
+    if max_value is None:
+        value = torch.nan_to_num(value, nan=0.0, posinf=0.0, neginf=0.0)
+        return torch.clamp(value, min=0.0)
+
+    value = torch.nan_to_num(value, nan=0.0, posinf=max_value, neginf=0.0)
+    return torch.clamp(value, min=0.0, max=max_value)
+
+
+def _debug_index(env: ManagerBasedRLEnv, debug_env_id: int) -> int:
+    """Clamp debug env index so prints cannot crash small play runs."""
+    return int(max(0, min(debug_env_id, env.num_envs - 1)))
+
+
+def feet_crossing_penalty(
+        env: ManagerBasedRLEnv,
+        asset_cfg: SceneEntityCfg = FEET_CFG,
+        min_lateral_separation: float = 0.03,
+        lateral_dir_b: tuple[float, float, float] = FEET_LATERAL_DIR_B,
+        expected_foot0_lateral_order: float = -1.0,
+        side_margin: float = 0.02,
+        max_crossing_error: float = 0.25,
+        debug: bool = False,
+        debug_every: int = 100,
+        debug_env_id: int = 0,
+) -> torch.Tensor:
+    """Penalize feet crossing using explicit foot-0/foot-1 lateral ordering.
+
+    This avoids the previous left/right-index ambiguity.
+
+    ``expected_foot0_lateral_order`` means:
+        -1.0: foot 0 should be on the negative side of foot 1 along ``lateral_dir_b``.
+              With current settings this means foot 0 should have smaller +X than foot 1.
+        +1.0: foot 0 should be on the positive side of foot 1 along ``lateral_dir_b``.
+
+    For your debug logs, crossed poses had foot_0_lateral > foot_1_lateral, so the
+    correct setting is the default: ``expected_foot0_lateral_order = -1.0``.
+    """
+    pos_b, _ = get_feet_pose_base(env, asset_cfg)
+
+    lateral_dir = _unit_vec(lateral_dir_b, env.device)
+    lateral_coord = _project_along(pos_b, lateral_dir)  # [num_envs, 2]
+
+    # Make this a scalar tensor so all math stays on device.
+    order_sign = torch.tensor(
+        1.0 if expected_foot0_lateral_order >= 0.0 else -1.0,
+        device=env.device,
+        dtype=torch.float32,
+    )
+
+    # Positive signed_separation means the feet are in the desired order.
+    # For order_sign = -1: desired is foot0 < foot1.
+    # For order_sign = +1: desired is foot0 > foot1.
+    delta_01 = lateral_coord[:, 0] - lateral_coord[:, 1]
+    signed_separation = order_sign * delta_01
+
+    order_error = torch.clamp(
+        min_lateral_separation - signed_separation,
+        min=0.0,
+        max=max_crossing_error,
+    )
+
+    # Extra centerline term: foot 0 and foot 1 should stay on their expected sides
+    # of the body, not only maintain relative ordering. This makes crossing much
+    # harder to game.
+    desired_side_signs = torch.stack((order_sign, -order_sign))  # [2]
+    side_score = lateral_coord * desired_side_signs[None, :]
+    side_error = torch.clamp(
+        side_margin - side_score,
+        min=0.0,
+        max=max_crossing_error,
+    )
+
+    penalty = order_error.square() + 0.5 * side_error.square().mean(dim=1)
+    penalty = _safe_nonnegative_reward(penalty, max_crossing_error ** 2 * 1.5)
+
+    if debug and hasattr(env, "common_step_counter") and debug_every > 0:
+        if env.common_step_counter % debug_every == 0:
+            i = _debug_index(env, debug_env_id)
+            print("\n[feet_crossing_penalty]")
+            print(f"  step: {env.common_step_counter}")
+            print(f"  lateral_dir_b: {lateral_dir_b}")
+            print(f"  expected_foot0_lateral_order: {expected_foot0_lateral_order}")
+            print(f"  foot_0_pos_b: {pos_b[i, 0].detach().cpu().numpy()}")
+            print(f"  foot_1_pos_b: {pos_b[i, 1].detach().cpu().numpy()}")
+            print(f"  foot_0_lateral: {lateral_coord[i, 0].item():.4f}")
+            print(f"  foot_1_lateral: {lateral_coord[i, 1].item():.4f}")
+            print(f"  delta_01: {delta_01[i].item():.4f}")
+            print(f"  signed_separation_good_if_positive: {signed_separation[i].item():.4f}")
+            print(f"  order_error: {order_error[i].item():.4f}")
+            print(f"  side_score: {side_score[i].detach().cpu().numpy()}")
+            print(f"  side_error: {side_error[i].detach().cpu().numpy()}")
+            print(f"  penalty_unweighted: {penalty[i].item():.6f}")
+
+    return penalty
+
+
+def feet_parallel_contact_penalty(
+        env: ManagerBasedRLEnv,
+        asset_cfg: SceneEntityCfg = FEET_CFG,
+        sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces", body_names=FEET_CFG.body_names),
+        contact_threshold: float = 1.0,
+        sole_normal_axis: tuple[float, float, float] = (0.0, 0.0, 1.0),
+        ground_normal_w: tuple[float, float, float] = (0.0, 0.0, 1.0),
+        debug: bool = False,
+        debug_every: int = 100,
+        debug_env_id: int = 0,
+) -> torch.Tensor:
+    """Penalize foot-ground contact when the foot sole is tilted.
+
+    The only frame-specific parameter is ``sole_normal_axis``: the local foot
+    axis normal to the sole. The sign does not matter because the dot product is
+    absolute-valued.
+    """
+    robot = env.scene[asset_cfg.name]
+    contact_sensor = env.scene.sensors[sensor_cfg.name]
+
+    foot_ids = asset_cfg.body_ids
+    foot_quat_w = robot.data.body_quat_w[:, foot_ids, :]
+    foot_quat_w = foot_quat_w / torch.norm(foot_quat_w, dim=-1, keepdim=True).clamp(min=1e-8)
+
+    foot_rot_w = quat_to_rot_matrix_wxyz(foot_quat_w)
+
+    local_axis = _unit_vec(sole_normal_axis, env.device)
+    sole_normal_w = torch.einsum("nbij,j->nbi", foot_rot_w, local_axis)
+    sole_normal_w = torch.nan_to_num(sole_normal_w, nan=0.0, posinf=0.0, neginf=0.0)
+
+    ground_normal = _unit_vec(ground_normal_w, env.device)
+
+    cos_angle = torch.sum(sole_normal_w * ground_normal, dim=-1).abs()
+    cos_angle = torch.nan_to_num(cos_angle, nan=0.0, posinf=1.0, neginf=0.0)
+    cos_angle = torch.clamp(cos_angle, 0.0, 1.0)
+
+    angle_error = torch.acos(cos_angle)  # [num_envs, 2], in [0, pi/2] because of abs()
+
+    contact_force = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :]
+    contact_norm = torch.norm(contact_force, dim=-1)
+    contact_norm = torch.nan_to_num(contact_norm, nan=0.0, posinf=0.0, neginf=0.0)
+    in_contact = contact_norm > contact_threshold
+
+    penalty_per_foot = angle_error.square() * in_contact.float()
+    num_contacts = in_contact.float().sum(dim=1).clamp(min=1.0)
+    penalty = penalty_per_foot.sum(dim=1) / num_contacts
+    penalty = _safe_nonnegative_reward(penalty, (math.pi / 2.0) ** 2)
+
+    if debug and hasattr(env, "common_step_counter") and debug_every > 0:
+        if env.common_step_counter % debug_every == 0:
+            i = _debug_index(env, debug_env_id)
+            print("\n[feet_parallel_contact_penalty]")
+            print(f"  step: {env.common_step_counter}")
+            print(f"  sole_normal_axis: {sole_normal_axis}")
+            print(f"  ground_normal_w: {ground_normal_w}")
+            print(f"  contact_norm: {contact_norm[i].detach().cpu().numpy()}")
+            print(f"  in_contact: {in_contact[i].detach().cpu().numpy()}")
+            print(f"  sole_normal_w foot 0: {sole_normal_w[i, 0].detach().cpu().numpy()}")
+            print(f"  sole_normal_w foot 1: {sole_normal_w[i, 1].detach().cpu().numpy()}")
+            print(f"  angle_error_deg: {torch.rad2deg(angle_error[i]).detach().cpu().numpy()}")
+            print(f"  penalty_unweighted: {penalty[i].item():.6f}")
+
+    return penalty
 
 
 def get_feet_pose_base(env, feet_cfg: SceneEntityCfg = FEET_CFG):
     robot = env.scene[feet_cfg.name]
-    ids = feet_cfg.body_ids  # get the ids of the feet
+    ids = feet_cfg.body_ids
 
-    # in the world frame
-    pos_w = robot.data.body_pos_w[:, ids, :]  # [N, 2, 3] position of the 2 feet in the world frame
-    quat_w = robot.data.body_quat_w[:, ids, :]  # [N, 2, 4] quaternion of the 2 feet in the world frame
+    pos_w = robot.data.body_pos_w[:, ids, :]
+    quat_w = robot.data.body_quat_w[:, ids, :]
 
-    base_pos = robot.data.root_pos_w[:, None, :]  # [N, 1, 3]
-    base_quat = robot.data.root_quat_w  # [N, 4]
+    base_pos = robot.data.root_pos_w[:, None, :]
+    base_quat = robot.data.root_quat_w
+    base_quat = base_quat / torch.norm(base_quat, dim=-1, keepdim=True).clamp(min=1e-8)
 
-    # relative in world frame
-    rel = pos_w - base_pos  # [N, 2, 3]
+    rel = pos_w - base_pos
 
-    # rotate into base frame
-    rot = quat_to_rot_matrix(base_quat)  # [N, 3, 3]
+    rot = quat_to_rot_matrix(base_quat)
     rel_b = torch.einsum("nij,nkj->nki", rot.transpose(1, 2), rel)
+    rel_b = torch.nan_to_num(rel_b, nan=0.0, posinf=0.0, neginf=0.0)
 
-    # for orientations, you can skip for now if you only need positions
     return rel_b, quat_w
 
 
 def feet_symmetry_penalty(
-    env: ManagerBasedRLEnv,
-    asset_cfg: SceneEntityCfg = FEET_CFG,
-    alpha: float = 0.01,
+        env: ManagerBasedRLEnv,
+        asset_cfg: SceneEntityCfg = FEET_CFG,
+        alpha: float = 0.01,  # kept for backward compatibility; unused by this direct penalty
+        forward_dir_b: tuple[float, float, float] = FEET_FORWARD_DIR_B,
+        max_forward_separation: float = 0.25,
+        max_forward_error: float = 0.75,
+        debug: bool = False,
+        debug_every: int = 100,
+        debug_env_id: int = 0,
 ) -> torch.Tensor:
-    # initialize EMA if not already present
-    # EMA: Exponential Moving Average
-    if not hasattr(env, "_feet_avg"):
-        env._feet_avg = {
-            "left": torch.zeros(env.num_envs, device=env.device),
-            "right": torch.zeros(env.num_envs, device=env.device),
-        }
+    """Penalize excessive fore/aft foot split.
 
-    # get base-frame foot positions
-    pos_b, _ = get_feet_pose_base(env, asset_cfg)  # this is in the robotic body frame
-    x = pos_b[:, :, 0]
+    The old EMA "which foot is ahead" term stayed near zero for short rollouts
+    and did not push against the observed static one-leg-ahead posture. This
+    direct term is still order-agnostic, but immediately penalizes excessive
+    separation along the robot forward axis.
+    """
+    pos_b, _ = get_feet_pose_base(env, asset_cfg)
 
-    # indicators
-    left_ahead = (x[:, 0] > x[:, 1]).float()
-    right_ahead = 1.0 - left_ahead
+    forward_dir = _unit_vec(forward_dir_b, env.device)
+    forward_coord = _project_along(pos_b, forward_dir)  # [num_envs, 2]
 
-    # EMA update
-    env._feet_avg["left"] = (1 - alpha) * env._feet_avg["left"] + alpha * left_ahead
-    env._feet_avg["right"] = (1 - alpha) * env._feet_avg["right"] + alpha * right_ahead
+    forward_separation = torch.abs(forward_coord[:, 0] - forward_coord[:, 1])
+    forward_error = torch.clamp(
+        forward_separation - max_forward_separation,
+        min=0.0,
+        max=max_forward_error,
+    )
+    penalty = _safe_nonnegative_reward(forward_error.square(), max_forward_error ** 2)
 
-    # symmetry difference
-    diff = env._feet_avg["left"] - env._feet_avg["right"]
+    if debug and hasattr(env, "common_step_counter") and debug_every > 0:
+        if env.common_step_counter % debug_every == 0:
+            i = _debug_index(env, debug_env_id)
+            print("\n[feet_symmetry_penalty]")
+            print(f"  step: {env.common_step_counter}")
+            print(f"  forward_dir_b: {forward_dir_b}")
+            print(f"  foot_0_pos_b: {pos_b[i, 0].detach().cpu().numpy()}")
+            print(f"  foot_1_pos_b: {pos_b[i, 1].detach().cpu().numpy()}")
+            print(f"  foot_0_forward: {forward_coord[i, 0].item():.4f}")
+            print(f"  foot_1_forward: {forward_coord[i, 1].item():.4f}")
+            print(f"  forward_separation: {forward_separation[i].item():.4f}")
+            print(f"  max_forward_separation: {max_forward_separation:.4f}")
+            print(f"  forward_error: {forward_error[i].item():.4f}")
+            print(f"  penalty_unweighted: {penalty[i].item():.6f}")
 
-    # L2 penalty
-    return diff.pow(2)
+    return penalty
 
 
 def terminate_if_base_too_low(env, minimum_height: float = 0.8):
@@ -159,10 +397,10 @@ def terminate_if_base_too_low(env, minimum_height: float = 0.8):
 
 
 def track_base_height_exp(
-    env: ManagerBasedRLEnv,
-    target_height: float = 1.4,
-    std: float = 0.2,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        env: ManagerBasedRLEnv,
+        target_height: float = 1.4,
+        std: float = 0.2,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     """Reward the robot for keeping its base/root height near target_height.
 
@@ -178,12 +416,43 @@ def track_base_height_exp(
 
     height_error = base_z - target_height
 
-    return torch.exp(-height_error.square() / std**2)
+    return torch.exp(-height_error.square() / std ** 2)
 
 
 @configclass
 class ForrestRewards(RewardsCfg):
     # Reward terms for the MDP.
+
+    feet_crossing = RewTerm(
+        func=feet_crossing_penalty,
+        weight=REWARD_WEIGHTS["feet_crossing"],
+        params={
+            "asset_cfg": FEET_CFG,
+            "min_lateral_separation": 0.10,
+            "lateral_dir_b": FEET_LATERAL_DIR_B,
+            "expected_foot0_lateral_order": -1.0,
+            "side_margin": 0.02,
+            "max_crossing_error": 0.25,
+            "debug": False,
+            "debug_every": 10,
+            "debug_env_id": 0,
+        },
+    )
+
+    feet_parallel_contact = RewTerm(
+        func=feet_parallel_contact_penalty,
+        weight=REWARD_WEIGHTS["feet_parallel_contact"],
+        params={
+            "asset_cfg": FEET_CFG,
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=FEET_CFG.body_names),
+            "contact_threshold": 1.0,
+            "sole_normal_axis": (0.0, 0.0, 1.0),
+            "ground_normal_w": (0.0, 0.0, 1.0),
+            "debug": False,
+            "debug_every": 100,
+            "debug_env_id": 0,
+        },
+    )
 
     track_base_height_exp = RewTerm(
         func=track_base_height_exp,
@@ -262,12 +531,17 @@ class ForrestRewards(RewardsCfg):
         },
     )
 
-    gait_symetry = RewTerm(
+    gait_symmetry = RewTerm(
         func=feet_symmetry_penalty,
-        weight=REWARD_WEIGHTS["gait_symetry"],
+        weight=REWARD_WEIGHTS["gait_symmetry"],
         params={
             "asset_cfg": FEET_CFG,
-            "alpha": 0.001,
+            "forward_dir_b": FEET_FORWARD_DIR_B,
+            "max_forward_separation": 0.25,
+            "max_forward_error": 0.75,
+            "debug": False,
+            "debug_every": 10,
+            "debug_env_id": 0,
         },
     )
 
@@ -294,7 +568,7 @@ class ForrestActionsCfg:
         # },
         scale={
             ".*roll": math.radians(15),
-            ".*lateral": math.radians(15),
+            ".*lateral": math.radians(5),
             ".*flexion": math.radians(20),
             ".*flexor": math.radians(45),
         },
@@ -396,11 +670,6 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             joint_names=actuated_joint_names,
         )
 
-        # Commands
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-7.0, -3.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.0, 0.0)
-
         # terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = (
             "base_assy_v2_1",
@@ -414,6 +683,11 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             func=terminate_if_base_too_low,
             params={"minimum_height": 0.2},
         )
+
+        # Commands
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-4.0, -2.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
 
         # # DEBUG
         # self.observations.policy.enable_corruption = False
