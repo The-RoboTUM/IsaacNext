@@ -1,14 +1,16 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
 
 import torch
 
 from isaaclab.tendons.models.analytic.geometry.lengths import compute_all_tendon_delta_lengths
-from isaaclab.tendons.models.base import TendonEnergyModel, TendonModelOutput
+from isaaclab.tendons.models.analytic.jit_model import compute_analytic_tendon_energy_jit, compute_delta_l_s_jit
 from isaaclab.tendons.models.analytic.spring_energy import SpringEnergyModel
-from isaaclab.tendons.models.analytic.jit_model import (
-    compute_analytic_tendon_energy_jit,
-    compute_delta_l_s_jit,
-)
+from isaaclab.tendons.models.base import TendonEnergyModel, TendonModelOutput
 
 
 class AnalyticTendonEnergyModel(TendonEnergyModel):

@@ -1,13 +1,18 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
 
 import torch
 
 from isaaclab.assets.articulation import Articulation
-from isaaclab.tendons.models.analytic.constants import dummy_randomization
 from isaaclab.tendons.models.analytic.analytic_energy_model import AnalyticTendonEnergyModel
+from isaaclab.tendons.models.analytic.constants import dummy_randomization
+from isaaclab.tendons.models.analytic.tendon_data import TendonData
 from isaaclab.tendons.models.base import TendonEnergyModel
 from isaaclab.tendons.robot_io import TendonRobotIO
-from isaaclab.tendons.models.analytic.tendon_data import TendonData
 from isaaclab.tendons.torque_mapper import TendonTorqueMapper
 
 
@@ -183,7 +188,6 @@ class TendonManager:
             torques=link_torques,
             body_ids=self.link_indices_left_right,
         )
-        return None
 
     def _store_delta_lengths(self, deltas: dict[str, torch.Tensor]):
         self._prev_delta_lengths = {name: delta.detach().clone() for name, delta in deltas.items()}

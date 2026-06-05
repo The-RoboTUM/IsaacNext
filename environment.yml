@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -20,5 +20,10 @@ dependencies:
       - isaacsim[all,extscache]==5.1.0
       - torch==2.7.0
       - torchvision==0.22.0
-      - black
-      - -e .
+      - black==24.3.0
+      - flake8==7.0.0
+      - flake8-return
+      - flake8-simplify
+      - isort==5.13.2
+      - pre-commit
+      - ruff==0.14.10

@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Matplotlib animator for tendon actuation/debug data."""
 
 from __future__ import annotations
@@ -119,7 +124,6 @@ class KinematicChainAnimator:
 
         helper_line_alpha = 0.7
 
-        current_data = all_data[0]
         thetas = self.all_thetas[0]
         alphas = compute_alphas(self.alpha_2, thetas)
         joints = compute_joint_locations(alphas)

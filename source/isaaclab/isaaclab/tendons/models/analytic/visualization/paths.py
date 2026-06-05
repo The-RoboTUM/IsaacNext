@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Tendon attachment and path-point construction for visualization.
 
 The comments in this file are intentionally kept close to the original massive
@@ -69,9 +74,9 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
     )
     direction_angle += q4
     radius_4 = np.linalg.norm(p4_o - j4)
-    assert (
-        abs(radius_4 - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()) < 0.001
-    ), f"Expected radius at 4 {td.pulley_radii[0, tids.I_RADIUS_GST_4].item()}, got {radius_4}"
+    assert abs(radius_4 - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()) < 0.001, (
+        f"Expected radius at 4 {td.pulley_radii[0, tids.I_RADIUS_GST_4].item()}, got {radius_4}"
+    )
     p4prime_i = (
         rotate_by(
             np.deg2rad(-45),  # note: to compensate for extended upper tendon drawing
@@ -309,13 +314,13 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
             np.linalg.norm(p6_i - j6),
             tc.pulley_radii[tids.I_RADIUS_DFT_6].item(),
             atol=1e-3,
-        ), f"DFT B: p6_i not on pulley r6"
+        ), "DFT B: p6_i not on pulley r6"
 
         assert np.isclose(
             np.linalg.norm(p6_o - j6),
             tc.pulley_radii[tids.I_RADIUS_DFT_6].item(),
             atol=1e-3,
-        ), f"DFT B: p6_o not on pulley r6"
+        ), "DFT B: p6_o not on pulley r6"
 
         tendon_points = [pc5, p6_i, p6_o, p7]
         tendon_joints = [j6]

@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Run the Forrest tendon simulation in either debug or TorchScript/JIT mode.
 
 Debug mode keeps rich tendon diagnostics and writes JSONL logs.
@@ -8,7 +13,6 @@ JIT mode runs the fast tensor-only tendon path and prints lightweight progress.
 
 import argparse
 import json
-import os
 import time
 from pathlib import Path
 
@@ -59,24 +63,22 @@ args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
-import carb
 import cv2
 import numpy as np
 import torch
+
+import carb
+
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.sensors.camera import TiledCamera, TiledCameraCfg
 from isaaclab.sim import SimulationContext
-from isaaclab.tendons.controllers.base import (
-    DOF_ORDER,
-    DOF_SIGN,
-    DOF_TO_ACTUATOR_GROUP,
-    LegControllerBase,
-)
+from isaaclab.tendons.controllers.base import DOF_ORDER, DOF_SIGN, DOF_TO_ACTUATOR_GROUP, LegControllerBase
 from isaaclab.tendons.controllers.cpg import BirdBotCPGLeg, CPGParams
 from isaaclab.tendons.controllers.sinusoidal import SinusoidalLegController, SinusoidalParams
 from isaaclab.tendons.manager import TendonManager
 from isaaclab.tendons.models.analytic.constants import joint_names_left, joint_names_right
+
 from isaaclab_assets.robots.forrest import FORREST_CFG
 
 USD_PATH = "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"
@@ -230,9 +232,7 @@ def find_actuated_joint_indices(robot, actuated_dof_specs):
     joint_indices, found_joint_names = robot.find_joints(joint_exprs, preserve_order=True)
 
     if len(joint_indices) != len(joint_exprs):
-        raise RuntimeError(
-            f"Could not find all actuated joints. " f"Requested: {joint_exprs}; found: {found_joint_names}"
-        )
+        raise RuntimeError(f"Could not find all actuated joints. Requested: {joint_exprs}; found: {found_joint_names}")
 
     print("Actuated controller DOFs:")
     for spec, joint_name in zip(actuated_dof_specs, found_joint_names):
@@ -242,12 +242,12 @@ def find_actuated_joint_indices(robot, actuated_dof_specs):
 
 
 def controller_command_tensor(
-        *,
-        t: float,
-        left_controller: LegControllerBase,
-        right_controller: LegControllerBase,
-        actuated_dof_specs,
-        device,
+    *,
+    t: float,
+    left_controller: LegControllerBase,
+    right_controller: LegControllerBase,
+    actuated_dof_specs,
+    device,
 ) -> torch.Tensor:
     controllers = {
         "left": left_controller,
@@ -355,14 +355,14 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
 
 
 def maybe_print_status(
-        *,
-        iteration: int,
-        num_steps: int,
-        sim_time: float,
-        wall_start: float,
-        status_interval: int,
-        mode: str,
-        debug_info: dict | None = None,
+    *,
+    iteration: int,
+    num_steps: int,
+    sim_time: float,
+    wall_start: float,
+    status_interval: int,
+    mode: str,
+    debug_info: dict | None = None,
 ):
     """Print a compact progress line in both debug and JIT mode."""
     if status_interval <= 0:
@@ -372,7 +372,7 @@ def maybe_print_status(
 
     elapsed = max(time.perf_counter() - wall_start, 1.0e-9)
     steps_per_sec = (iteration + 1) / elapsed
-    prefix = f"[{mode}] step {iteration + 1:5d}/{num_steps} | " f"t={sim_time:6.3f}s | {steps_per_sec:7.1f} steps/s"
+    prefix = f"[{mode}] step {iteration + 1:5d}/{num_steps} | t={sim_time:6.3f}s | {steps_per_sec:7.1f} steps/s"
 
     if debug_info is None:
         print(prefix)

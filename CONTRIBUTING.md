@@ -1,20 +1,20 @@
-# 📘 CONTRIBUTING.md  
-**RoboTUM Software Team | Development Collaboration Guidelines**  
+# 📘 CONTRIBUTING.md
+**RoboTUM Software Team | Development Collaboration Guidelines**
 
 ---
 
-## 🧭 Core Principle  
+## 🧭 Core Principle
 
-All our development follows one simple rule:  
+All our development follows one simple rule:
 
-> 💡 **Every new feature = a new branch.**  
+> 💡 **Every new feature = a new branch.**
 
-The `main` branch must always remain stable, buildable, and ready to demonstrate.  
+The `main` branch must always remain stable, buildable, and ready to demonstrate.
 Any new feature or modification should start from a new branch created from `main`.
 
 ---
 
-## 🚀 1. Branch Naming Rules  
+## 🚀 1. Branch Naming Rules
 
 All new feature branches follow this format:
 
@@ -27,7 +27,7 @@ All new feature branches follow this format:
 
 ---
 
-## 👥 2. Collaborative Development on the Same Feature  
+## 👥 2. Collaborative Development on the Same Feature
 
 When multiple team members are working on the same feature (e.g., algorithm, GUI, testing), please follow this workflow:
 
@@ -72,8 +72,8 @@ feature(controller): add sim2real calibration module
 
 - Each Pull Request should include:
 
-  - Purpose and key changes 
-  - Whether local testing is completed 
+  - Purpose and key changes
+  - Whether local testing is completed
   - Whether a code review is needed
 
 - If the feature is still in progress, you can open a Draft Pull Request to keep others informed.
@@ -177,5 +177,3 @@ tests/
 > 🪄 One feature, one branch.
 If multiple people work on the same feature, each creates their own sub-branch.
 All changes are merged through Pull Requests.
-
-

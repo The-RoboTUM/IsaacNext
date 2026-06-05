@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -6,11 +6,12 @@
 """Configuration for RoboTUM's Forrest robot."""
 
 from __future__ import annotations
-from pathlib import Path
 
 import os
-import isaaclab.sim as sim_utils
+
 import numpy as np
+
+import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
 from isaaclab.tendons.parameter_loader import ForrestParameterConfig
@@ -20,6 +21,10 @@ from isaaclab.tendons.parameter_loader import ForrestParameterConfig
 ##
 # Configuration
 ##
+
+actuator_stiffness = 500
+actuator_damping = 0.1
+flexor_angle = 0
 
 """Configuration for RoboTUM's Forrest robot."""
 

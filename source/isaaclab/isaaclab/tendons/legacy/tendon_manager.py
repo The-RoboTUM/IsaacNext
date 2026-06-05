@@ -1,24 +1,28 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Tendon manager implementation for all tendons.
 
 PATCHED_BOOL_MASKS_V3: boolean masks use direct comparisons.
 """
 
-from isaaclab.utils.math import quat_apply_inverse
 import torch
 
+import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.assets.articulation import Articulation
 from isaaclab.tendons.models.analytic.constants import (
+    JOINT_AXIS_IDX,
+    N_CHAIN_LINKS_PER_LEG,
     dummy_randomization,
-    link_names_left,
-    link_names_right,
     joint_names_left,
     joint_names_right,
-    N_CHAIN_LINKS_PER_LEG,
-    JOINT_AXIS_IDX,
+    link_names_left,
+    link_names_right,
 )
 from isaaclab.tendons.models.analytic.tendon_data import TendonData, TendonDataJIT
-
-import isaaclab.tendons.models.analytic.indices as tids
+from isaaclab.utils.math import quat_apply_inverse
 
 
 # todo comment
@@ -88,7 +92,7 @@ def compute_delta_l_s_jit(
         theta_hats[:, tids.I_THETA_ALL_6] + tendon_data.tendon_offsets_qhat_thetahat[:, tids.I_QHAT_EDT2_6]
     )
 
-    ### --------------- GST --------------- ###
+    # --------------- GST ---------------
     # 1) evaluate conditions
     # 1a) compute h5^B
     GST_x_4prime6_squared = (
@@ -185,9 +189,9 @@ def compute_delta_l_s_jit(
     GST_state_C = (GST_h5_B_disengaged & GST_h6_C_disengaged) | (GST_h6_D_disengaged & GST_h5_C_disengaged)
     GST_state_B = ~GST_state_C & GST_h5_B_disengaged
     GST_state_D = ~GST_state_C & GST_h6_D_disengaged
-    assert (
-        GST_state_B.sum() + GST_state_D.sum() == (GST_state_B | GST_state_D).sum()
-    ), "States B and D are active simultaneously"
+    assert GST_state_B.sum() + GST_state_D.sum() == (GST_state_B | GST_state_D).sum(), (
+        "States B and D are active simultaneously"
+    )
     GST_state_A = ~(GST_state_B | GST_state_C | GST_state_D)
 
     # 2) compute energy with conditional function for lower tendon state length
@@ -277,7 +281,7 @@ def compute_delta_l_s_jit(
         - GST_q4 * tendon_data.pulley_radii[:, tids.I_RADIUS_GST_4]
     )
 
-    ### --------- DFT ---------- ###
+    # --------- DFT ----------
     DFT_q5 = qs[:, tids.I_Q_DFT_5]
     DFT_q6 = qs[:, tids.I_Q_DFT_6]
     DFT_l_c5 = tendon_data.tendon_section_lengths[:, tids.I_TENDON_SECTION_LENGTH_DFT_C5]
@@ -293,7 +297,7 @@ def compute_delta_l_s_jit(
         - DFT_l_6c
     )
 
-    ### --------- KFT ---------- ###
+    # --------- KFT ----------
     KFT_l_8c_j_squared = (
         tendon_data.link_lengths_squared[:, tids.I_LINK_38]
         + tendon_data.link_lengths_squared[:, tids.I_LINK_KFT_3C]
@@ -313,7 +317,7 @@ def compute_delta_l_s_jit(
 
     KFT_delta_L_s = tendon_data.kft_length - KFT_q8 * tendon_data.pulley_radii[:, tids.I_RADIUS_KFT_8] - KFT_l_8c
 
-    ### ------------- EDT1 ------------- ###
+    # ------------- EDT1 -------------
 
     EDT1_x_c5_squared = (
         tendon_data.link_lengths_squared[:, tids.I_LINK_EDT1_C4]
@@ -359,7 +363,6 @@ def compute_delta_l_s_jit(
     )
 
     EDT1_state_B = EDT1_h5_B > tendon_data.pulley_radii[:, tids.I_RADIUS_EDT1_5]
-    EDT1_state_A = ~EDT1_state_B
 
     EDT1_L_s = torch.where(
         EDT1_state_B,
@@ -371,7 +374,7 @@ def compute_delta_l_s_jit(
 
     EDT1_delta_L_s = tendon_data.edt1_length - EDT1_L_s
 
-    ### ------------- EDT2 ------------- ###
+    # ------------- EDT2 -------------
     EDT2_x_c5_squared = (
         tendon_data.link_lengths_squared[:, tids.I_LINK_EDT2_C4]
         + tendon_data.link_lengths_squared[:, tids.I_LINK_4prime5]
@@ -380,7 +383,6 @@ def compute_delta_l_s_jit(
         * tendon_data.link_lengths[:, tids.I_LINK_4prime5]
         * torch.cos(theta_hats[:, tids.I_THETA_EDT2_4])
     )
-    EDT2_x_c5 = torch.sqrt(EDT2_x_c5_squared)
     EDT2_phi_4_a = angle_from_sws(
         tendon_data.link_lengths[:, tids.I_LINK_EDT2_C4],
         tendon_data.link_lengths[:, tids.I_LINK_4prime5],
@@ -499,7 +501,6 @@ def compute_delta_l_s_jit(
         * tendon_data.link_lengths[:, tids.I_LINK_67]
         * torch.cos(theta_hats[:, tids.I_THETA_ALL_6])
     )
-    EDT2_x_56 = torch.sqrt(EDT2_x_56_squared)
     EDT2_l_5c_D = torch.sqrt(EDT2_x_56_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_EDT2_5])
     EDT2_phi_56_a = angle_from_sws(
         tendon_data.link_lengths[:, tids.I_LINK_56],
@@ -691,7 +692,7 @@ class TendonManager:
             theta_hats[:, (tids.I_THETA_ALL_6,)] + tendon_data.tendon_offsets_qhat_thetahat[:, (tids.I_QHAT_EDT2_6,)]
         )
 
-        ### --------------- GST --------------- ###
+        # --------------- GST ---------------
         # 1) evaluate conditions
         # 1a) compute h5^B
         GST_x_4prime6_squared = (
@@ -789,9 +790,9 @@ class TendonManager:
         GST_state_C = (GST_h5_B_disengaged & GST_h6_C_disengaged) | (GST_h6_D_disengaged & GST_h5_C_disengaged)
         GST_state_B = ~GST_state_C & GST_h5_B_disengaged
         GST_state_D = ~GST_state_C & GST_h6_D_disengaged
-        assert (
-            GST_state_B.sum() + GST_state_D.sum() == (GST_state_B | GST_state_D).sum()
-        ), "States B and D are active simultaneously"
+        assert GST_state_B.sum() + GST_state_D.sum() == (GST_state_B | GST_state_D).sum(), (
+            "States B and D are active simultaneously"
+        )
         GST_state_A = ~(GST_state_B | GST_state_C | GST_state_D)
 
         # 2) compute energy with conditional function for lower tendon state length
@@ -881,7 +882,7 @@ class TendonManager:
             - GST_q4 * tendon_data.pulley_radii[:, tids.I_RADIUS_GST_4]
         )
 
-        ### --------- DFT ---------- ###
+        # --------- DFT ----------
         DFT_q5 = qs[:, tids.I_Q_DFT_5]
         DFT_q6 = qs[:, tids.I_Q_DFT_6]
         DFT_l_c5 = tendon_data.tendon_section_lengths[:, tids.I_TENDON_SECTION_LENGTH_DFT_C5]
@@ -897,7 +898,7 @@ class TendonManager:
             - DFT_l_6c
         )
 
-        ### --------- KFT ---------- ###
+        # --------- KFT ----------
         KFT_l_8c_j_squared = (
             tendon_data.link_lengths_squared[:, tids.I_LINK_38]
             + tendon_data.link_lengths_squared[:, tids.I_LINK_KFT_3C]
@@ -917,7 +918,7 @@ class TendonManager:
 
         KFT_delta_L_s = tendon_data.kft_length - KFT_q8 * tendon_data.pulley_radii[:, tids.I_RADIUS_KFT_8] - KFT_l_8c
 
-        ### ------------- EDT1 ------------- ###
+        # ------------- EDT1 -------------
 
         EDT1_x_c5_squared = (
             tendon_data.link_lengths_squared[:, tids.I_LINK_EDT1_C4]
@@ -975,7 +976,7 @@ class TendonManager:
 
         EDT1_delta_L_s = tendon_data.edt1_length - EDT1_L_s
 
-        ### ------------- EDT2 ------------- ###
+        # ------------- EDT2 -------------
         EDT2_x_c5_squared = (
             tendon_data.link_lengths_squared[:, tids.I_LINK_EDT2_C4]
             + tendon_data.link_lengths_squared[:, tids.I_LINK_4prime5]
@@ -1193,7 +1194,6 @@ class TendonManager:
                 "KFT_phi_8": KFT_phi_8,
                 "KFT_phi_8_a": KFT_phi_8_a,
                 "KFT_q8": KFT_q8,
-                "EDT1_x_c5": EDT1_x_c5,
                 "EDT1_x_c5": EDT1_x_c5,
                 "EDT1_phi_4_a": EDT1_phi_4_a,
                 "EDT1_thetahat_5_a": EDT1_thetahat_5_a,
@@ -1413,9 +1413,9 @@ class TendonManager:
         tendon_torques_links[:, (tids.I_CHAIN_LINK_23,), JOINT_AXIS_IDX] += tendon_torques_joints_left[
             :, (tids.I_JOINT_8,)
         ]
-        tendon_torques_links[
-            :, (tids.I_CHAIN_LINK_23 + N_CHAIN_LINKS_PER_LEG,), JOINT_AXIS_IDX
-        ] += tendon_torques_joints_right[:, (tids.I_JOINT_8,)]
+        tendon_torques_links[:, (tids.I_CHAIN_LINK_23 + N_CHAIN_LINKS_PER_LEG,), JOINT_AXIS_IDX] += (
+            tendon_torques_joints_right[:, (tids.I_JOINT_8,)]
+        )
 
         # Subtract from child link
         tendon_torques_links[

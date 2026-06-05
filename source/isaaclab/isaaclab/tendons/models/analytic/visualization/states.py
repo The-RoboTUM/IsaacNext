@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """State extraction helpers for tendon debug frames."""
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ def get_gst_state(data):
     elif state_d:
         return "d"
     else:
-        raise ValueError(f"GST: no state is true")
+        raise ValueError("GST: no state is true")
 
 
 def get_dft_state(data):
@@ -34,7 +39,7 @@ def get_dft_state(data):
     elif state_d:
         return "d"
     else:
-        raise ValueError(f"DFT: no state is true")
+        raise ValueError("DFT: no state is true")
 
 
 def get_edt1_state(data):
@@ -45,7 +50,7 @@ def get_edt1_state(data):
     elif state_b:
         return "b"
     else:
-        raise ValueError(f"EDT1: no state is true")
+        raise ValueError("EDT1: no state is true")
 
 
 def get_edt2_state(data):
@@ -62,4 +67,4 @@ def get_edt2_state(data):
     elif state_d:
         return "d"
     else:
-        raise ValueError(f"EDT2: no state is true")
+        raise ValueError("EDT2: no state is true")

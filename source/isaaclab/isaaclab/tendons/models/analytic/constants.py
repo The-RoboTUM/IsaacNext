@@ -1,21 +1,22 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Constants for our tendon model."""
 
 from dataclasses import dataclass, field
 
-from sympy.solvers.diophantine.diophantine import parametrize_ternary_quadratic
-
-import isaaclab.tendons.models.analytic.indices as tids
-from isaaclab.tendons.models.analytic.utils import list_from_dict
 import numpy as np
 import torch
 
-from isaaclab.tendons.parameter_loader import ForrestParameterConfig
+import isaaclab.tendons.models.analytic.indices as tids
+from isaaclab.tendons.models.analytic.utils import list_from_dict
 
 N_CHAIN_LINKS_PER_LEG: int = 6  # -> number of links in the kinematic chain of the leg
 N_CONNECTOR_OFFSETS: int = 6  # -> GST, DFT, EDT2, KFT have a connector not on the ji-ji+1 axis; EDT1 has two
 N_LINK_LENGTHS_PER_LEG: int = (
-        N_CHAIN_LINKS_PER_LEG
-        + N_CONNECTOR_OFFSETS
+    N_CHAIN_LINKS_PER_LEG + N_CONNECTOR_OFFSETS
     # -> number of link lengths per leg (including virtual links for tendon attachment points)
 )
 N_JOINTS: int = 5
@@ -25,7 +26,7 @@ N_TENDON_SECTION_LENGTHS: int = (
     11  # lengths between two pulleys in contact, or between pulley and tendon attachment point if only one pulley
 )
 N_TENDON_THETA_OFFSETS: int = (
-        N_JOINTS + N_CONNECTOR_OFFSETS
+    N_JOINTS + N_CONNECTOR_OFFSETS
 )  # -> number of raw joint angle offsets: 5 for joints, 6 for connectors
 N_Q_OFFSETS: int = 6  # -> number of joint angle theta offsets to wrapping angles : 4 for GST, 2 for DFT
 N_QHAT_OFFSETS: int = (
@@ -105,25 +106,25 @@ all_joint_names_right = [
     "r0_acetabulofemoral_roll,"  # j0, position/torque control
     "r1_acetabulofemoral_lateral",  # j1, position/torque control
     "rp1_pantograph",
-    # pantograph, actuated but always set to 0.0, stiffness? blockhöhe?     "s12p_pantograph_spring_assy_topv2_1" -> "s12p_pantograph_spring_assy_botv1_1"
+    # pantograph, actuated but always set to 0.0
     "r2_pseudo_acetabulofemoral_flexion",
-    # j2 -> position control, stiffness? damping?       "outside_hip_v2_assyv28_1" -> "knee_assyv9_1"
+    # j2, position control
     "r3b_femorotibial_back",
-    # excluded from articulation (fourbar), between j2 and j3        "knee_assyv9_1" -> "s12p_pantograph_spring_assy_topv2_1"
+    # fourbar link between j2 and j3, excluded from articulation
     "r3f_femorotibial_front",
-    # j3 -> torque control, applied alongside other tendon torques  "knee_assyv9_1" -> "s12_front_assyv6_1"
+    # j3, torque control applied with tendon torques
     "r4f_intertarsal_front",
-    # only shows the pulley position q4' -> fix                      "s12_front_assyv6_1" -> "main_gst_pully_assyv4_1"
+    # pulley position q4'
     "r4b_intertarsal_back",
-    # not actuated (fourbar), above j4                                "s12p_pantograph_spring_assy_botv1_1" -> "s23_assyv18_1_virtual"
+    # fourbar link above j4, not actuated
     "r4p_intertarsal_pulley",
-    # j4, not actuated but affected by tendon                       "s12_front_assyv6_1" -> "s23_assyv18_1"
+    # j4, not actuated but affected by tendon
     "r5_metatarsophalangeal",
-    # j5, not actuated but affected by tendon                       "s23_assyv18_1" -> "s34_foot_connector_assyv20_1"
+    # j5, not actuated but affected by tendon
     "r6_interphalangeal",
-    # j6, not actuated but affected by tendon                           "s34_foot_connector_assyv20_1" -> "s45_digit_assyv2_1"
+    # j6, not actuated but affected by tendon
     "virtual_s23_assyv18_1_anchor",
-    # necessary for the urdf exporter but not actuated        "s23_assyv18_1" -> "s23_assyv18_1_virtual"
+    # exporter anchor, not actuated
     "r8_knee_flexor",  # j8, position/torque control
 ]
 
@@ -243,24 +244,6 @@ class TendonConstants:
         np.deg2rad(98.874)
     )  # angle between link 23 and line from joint 3 to the tangency point of the GST on pulley 3
     angle_4prime5_to_j44prime = np.deg2rad(124.069)  # angle between link 4'5 and line from joint 4 to 4-4' transition
-
-    @classmethod
-    def from_forrest_parameters(cls, parameters: ForrestParameterConfig):
-        return cls(
-            gst_stiffness=parameters.gst_stiffness,
-            dft_stiffness=parameters.dft_stiffness,
-            edt1_stiffness=parameters.edt1_stiffness,
-            edt2_stiffness=parameters.edt2_stiffness,
-            kft_stiffness=parameters.kft_stiffness,
-
-            dft_length=parameters.dft_length,
-            edt1_length=parameters.edt1_length,
-            edt2_length=parameters.edt2_length,
-            kft_length=parameters.kft_length,
-            upper_gst_length=parameters.upper_gst_length,
-            lower_gst_length=parameters.lower_gst_length,
-            gst_spring_rest_length=parameters.gst_spring_rest_length,
-        )
 
 
 @dataclass

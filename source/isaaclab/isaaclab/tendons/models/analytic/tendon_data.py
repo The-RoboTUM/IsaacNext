@@ -1,29 +1,33 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Tendon data for parallel training."""
 
-from isaaclab.tendons.models.analytic.utils import list_from_dict
 import torch
 
+import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.tendons.models.analytic.constants import (
     N_CHAIN_LINKS_PER_LEG,
     N_CONNECTOR_OFFSETS,
+    N_JOINTS,
     N_Q_OFFSETS,
     N_QHAT_OFFSETS,
+    N_RADII,
     N_TENDON_SECTION_LENGTHS,
-    N_TENDON_THETA_OFFSETS,
     N_TENDON_TANGENCY_ANGLES,
+    N_TENDON_THETA_OFFSETS,
     TendonConstantRandomizationRanges,
     TendonConstants,
     dev,
-    N_JOINTS,
-    N_RADII,
     dummy_randomization,
 )
-
-import isaaclab.tendons.models.analytic.indices as tids
+from isaaclab.tendons.models.analytic.utils import list_from_dict
 
 
 def same_sided_wrap(
-        r_a: torch.Tensor, r_b: torch.Tensor, l_ab_j: torch.Tensor
+    r_a: torch.Tensor, r_b: torch.Tensor, l_ab_j: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Compute same-sided wrap angle around two pulleys.
 
@@ -43,7 +47,7 @@ def same_sided_wrap(
 
 
 def opposite_sided_wrap(
-        r_a: torch.Tensor, r_b: torch.Tensor, l_ab_j: torch.Tensor
+    r_a: torch.Tensor, r_b: torch.Tensor, l_ab_j: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Compute opposite-sided wrap angle around two pulleys.
 
@@ -64,29 +68,29 @@ def opposite_sided_wrap(
 @torch.jit.script
 class TendonDataJIT:
     def __init__(
-            self,
-            gst_stiffness: torch.Tensor,
-            gst_spring_rest_length: torch.Tensor,
-            upper_gst_length: torch.Tensor,
-            lower_gst_length: torch.Tensor,
-            dft_stiffness: torch.Tensor,
-            dft_length: torch.Tensor,
-            edt1_stiffness: torch.Tensor,
-            edt1_length: torch.Tensor,
-            edt2_stiffness: torch.Tensor,
-            edt2_length: torch.Tensor,
-            kft_stiffness: torch.Tensor,
-            kft_length: torch.Tensor,
-            joint_directions: torch.Tensor,
-            pulley_radii: torch.Tensor,
-            pulley_radii_squared: torch.Tensor,
-            link_lengths: torch.Tensor,
-            link_lengths_squared: torch.Tensor,
-            tendon_offsets_theta: torch.Tensor,
-            tendon_offsets_q_theta: torch.Tensor,
-            tendon_offsets_qhat_thetahat: torch.Tensor,
-            tendon_section_lengths: torch.Tensor,
-            tendon_tangency_angles: torch.Tensor,
+        self,
+        gst_stiffness: torch.Tensor,
+        gst_spring_rest_length: torch.Tensor,
+        upper_gst_length: torch.Tensor,
+        lower_gst_length: torch.Tensor,
+        dft_stiffness: torch.Tensor,
+        dft_length: torch.Tensor,
+        edt1_stiffness: torch.Tensor,
+        edt1_length: torch.Tensor,
+        edt2_stiffness: torch.Tensor,
+        edt2_length: torch.Tensor,
+        kft_stiffness: torch.Tensor,
+        kft_length: torch.Tensor,
+        joint_directions: torch.Tensor,
+        pulley_radii: torch.Tensor,
+        pulley_radii_squared: torch.Tensor,
+        link_lengths: torch.Tensor,
+        link_lengths_squared: torch.Tensor,
+        tendon_offsets_theta: torch.Tensor,
+        tendon_offsets_q_theta: torch.Tensor,
+        tendon_offsets_qhat_thetahat: torch.Tensor,
+        tendon_section_lengths: torch.Tensor,
+        tendon_tangency_angles: torch.Tensor,
     ) -> None:
         """Convert tensor inputs into a JIT-compatible TendonDataJIT."""
         self.gst_stiffness = gst_stiffness
@@ -128,10 +132,10 @@ class TendonData:
     """
 
     def __init__(
-            self,
-            batch_size: int,
-            randomization_ranges: TendonConstantRandomizationRanges,
-            tc: TendonConstants | None = None,
+        self,
+        batch_size: int,
+        randomization_ranges: TendonConstantRandomizationRanges,
+        tc: TendonConstants | None = None,
     ) -> None:
         """Initialize tendon data."""
         batch_size *= 2  # for left and right legs
@@ -194,7 +198,7 @@ class TendonData:
 
         # ----------------------connector link lengths------------------ #
         connector_link_lengths = torch.sqrt(
-            connector_link_lengths_longitudinal ** 2 + connector_link_lengths_lateral ** 2
+            connector_link_lengths_longitudinal**2 + connector_link_lengths_lateral**2
         )  # (B, N_CONNECTOR_OFFSETS)
 
         # ----------------------GST ------------------ #
@@ -243,7 +247,7 @@ class TendonData:
         gst_q_5_offset = -gst_phi_4prime5_j5 - gst_phi_56_j5
         gst_q_6_offset = -gst_phi_56_j6 - gst_phi_67_j6
 
-        # Note: we randomize upper and lower tendon lengths after computing other offsets because of manufacturing tolerances.
+        # Randomize tendon lengths after computing offsets to model manufacturing tolerances.
         upper_gst_length = tc.upper_gst_length + torch.empty(batch_size, device=dev).uniform_(
             *randomization_ranges.upper_gst_length
         )
@@ -272,9 +276,7 @@ class TendonData:
             chain_link_lengths[:, tids.I_CHAIN_LINK_67],
         )
 
-        dft_theta_offset_5 = joint_offsets_theta[
-                                 :, tids.I_JOINT_5
-                             ] - torch.atan2(
+        dft_theta_offset_5 = joint_offsets_theta[:, tids.I_JOINT_5] - torch.atan2(
             # smaller theta because connector is on the side where link-theta is measured
             connector_link_lengths_lateral[:, tids.I_CONNECTOR_LINK_DFT_C5],
             connector_link_lengths_longitudinal[:, tids.I_CONNECTOR_LINK_DFT_C5],
@@ -289,16 +291,12 @@ class TendonData:
             *randomization_ranges.edt1_stiffness
         )
 
-        edt1_theta_offset_4 = joint_offsets_theta[
-                                  :, tids.I_JOINT_4
-                              ] + torch.atan2(
+        edt1_theta_offset_4 = joint_offsets_theta[:, tids.I_JOINT_4] + torch.atan2(
             # larger theta because connector is opposite to the side where link-theta is measured
             connector_link_lengths_lateral[:, tids.I_CONNECTOR_LINK_EDT1_C4],
             connector_link_lengths_longitudinal[:, tids.I_CONNECTOR_LINK_EDT1_C4],
         )
-        edt1_theta_offset_5 = joint_offsets_theta[
-                                  :, tids.I_JOINT_5
-                              ] + torch.atan2(
+        edt1_theta_offset_5 = joint_offsets_theta[:, tids.I_JOINT_5] + torch.atan2(
             # larger theta because connector is opposite to the side where link-theta is measured
             connector_link_lengths_lateral[:, tids.I_CONNECTOR_LINK_EDT1_5C],
             connector_link_lengths_longitudinal[:, tids.I_CONNECTOR_LINK_EDT1_5C],
@@ -328,9 +326,7 @@ class TendonData:
             chain_link_lengths[:, tids.I_CHAIN_LINK_67],
         )
 
-        edt2_theta_offset_4 = joint_offsets_theta[
-                                  :, tids.I_JOINT_4
-                              ] + torch.atan2(
+        edt2_theta_offset_4 = joint_offsets_theta[:, tids.I_JOINT_4] + torch.atan2(
             # larger theta because connector is opposite to the side where link-theta is measured
             connector_link_lengths_lateral[:, tids.I_CONNECTOR_LINK_EDT2_C4],
             connector_link_lengths_longitudinal[:, tids.I_CONNECTOR_LINK_EDT2_C4],
@@ -344,9 +340,7 @@ class TendonData:
             *randomization_ranges.kft_stiffness
         )
 
-        kft_theta_offset_3 = joint_offsets_theta[
-                                 :, tids.I_JOINT_3
-                             ] - torch.atan2(
+        kft_theta_offset_3 = joint_offsets_theta[:, tids.I_JOINT_3] - torch.atan2(
             # smaller theta because connector is on the same side as where link-theta is measured
             connector_link_lengths_lateral[:, tids.I_CONNECTOR_LINK_KFT_3C],
             connector_link_lengths_longitudinal[:, tids.I_CONNECTOR_LINK_KFT_3C],
@@ -456,9 +450,9 @@ class TendonData:
         self.joint_directions = tc.joint_directions
 
         self.pulley_radii = pulley_radii
-        self.pulley_radii_squared = pulley_radii ** 2
+        self.pulley_radii_squared = pulley_radii**2
         self.link_lengths = torch.cat((chain_link_lengths, connector_link_lengths), dim=1)
-        self.link_lengths_squared = self.link_lengths ** 2
+        self.link_lengths_squared = self.link_lengths**2
 
         self.tendon_offsets_theta = tendon_offsets_theta
         self.tendon_offsets_q_theta = tendon_offsets_q_theta
