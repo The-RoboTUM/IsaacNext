@@ -189,9 +189,9 @@ def compute_delta_l_s_jit(
     GST_state_C = (GST_h5_B_disengaged & GST_h6_C_disengaged) | (GST_h6_D_disengaged & GST_h5_C_disengaged)
     GST_state_B = ~GST_state_C & GST_h5_B_disengaged
     GST_state_D = ~GST_state_C & GST_h6_D_disengaged
-    assert (
-        GST_state_B.sum() + GST_state_D.sum() == (GST_state_B | GST_state_D).sum()
-    ), "States B and D are active simultaneously"
+    assert GST_state_B.sum() + GST_state_D.sum() == (GST_state_B | GST_state_D).sum(), (
+        "States B and D are active simultaneously"
+    )
     GST_state_A = ~(GST_state_B | GST_state_C | GST_state_D)
 
     # 2) compute energy with conditional function for lower tendon state length
@@ -790,9 +790,9 @@ class TendonManager:
         GST_state_C = (GST_h5_B_disengaged & GST_h6_C_disengaged) | (GST_h6_D_disengaged & GST_h5_C_disengaged)
         GST_state_B = ~GST_state_C & GST_h5_B_disengaged
         GST_state_D = ~GST_state_C & GST_h6_D_disengaged
-        assert (
-            GST_state_B.sum() + GST_state_D.sum() == (GST_state_B | GST_state_D).sum()
-        ), "States B and D are active simultaneously"
+        assert GST_state_B.sum() + GST_state_D.sum() == (GST_state_B | GST_state_D).sum(), (
+            "States B and D are active simultaneously"
+        )
         GST_state_A = ~(GST_state_B | GST_state_C | GST_state_D)
 
         # 2) compute energy with conditional function for lower tendon state length
@@ -1195,7 +1195,6 @@ class TendonManager:
                 "KFT_phi_8_a": KFT_phi_8_a,
                 "KFT_q8": KFT_q8,
                 "EDT1_x_c5": EDT1_x_c5,
-                "EDT1_x_c5": EDT1_x_c5,
                 "EDT1_phi_4_a": EDT1_phi_4_a,
                 "EDT1_thetahat_5_a": EDT1_thetahat_5_a,
                 "EDT1_l_c5_A": EDT1_l_c5_A,
@@ -1414,9 +1413,9 @@ class TendonManager:
         tendon_torques_links[:, (tids.I_CHAIN_LINK_23,), JOINT_AXIS_IDX] += tendon_torques_joints_left[
             :, (tids.I_JOINT_8,)
         ]
-        tendon_torques_links[
-            :, (tids.I_CHAIN_LINK_23 + N_CHAIN_LINKS_PER_LEG,), JOINT_AXIS_IDX
-        ] += tendon_torques_joints_right[:, (tids.I_JOINT_8,)]
+        tendon_torques_links[:, (tids.I_CHAIN_LINK_23 + N_CHAIN_LINKS_PER_LEG,), JOINT_AXIS_IDX] += (
+            tendon_torques_joints_right[:, (tids.I_JOINT_8,)]
+        )
 
         # Subtract from child link
         tendon_torques_links[

@@ -9,15 +9,15 @@ import torch
 
 import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.assets.articulation import Articulation
-from isaaclab.tendons.models.analytic.constants import JOINT_AXIS_IDX
-from isaaclab.tendons.models.analytic.constants import N_CHAIN_LINKS_PER_LEG as N_LINKS_PER_LEG
 from isaaclab.tendons.models.analytic.constants import (
+    JOINT_AXIS_IDX,
     dummy_randomization,
     joint_names_left,
     joint_names_right,
     link_names_left,
     link_names_right,
 )
+from isaaclab.tendons.models.analytic.constants import N_CHAIN_LINKS_PER_LEG as N_LINKS_PER_LEG
 from isaaclab.tendons.models.analytic.tendon_data import TendonData, TendonDataJIT
 from isaaclab.utils.math import quat_apply_inverse
 
@@ -308,7 +308,6 @@ class GSTTendonManager:
         self.tendon_data_jit = tendon_data.to_jit()
 
     def compute_delta_l_s_debug(self, joint_angles: torch.Tensor, tendon_data: TendonData):
-
         # bad = ~torch.isfinite(joint_angles)
         # if bad.any():
         #     print("joint_angles contains non-finite values")
@@ -604,9 +603,7 @@ class GSTTendonManager:
                     self.robot.data.joint_pos[:, self.joint_indices_right].clone().requires_grad_(True),
                 ),
                 dim=0,
-            ).requires_grad_(
-                True
-            )  # q3, q4, q5, q6, (2*N_envs) x 4 joints
+            ).requires_grad_(True)  # q3, q4, q5, q6, (2*N_envs) x 4 joints
 
             delta_L_s = compute_delta_l_s_jit(joint_angles, self.tendon_data_jit)
             # delta_L_s, info = self.compute_delta_l_s_debug(joint_angles, self.tendon_data)

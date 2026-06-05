@@ -12,9 +12,10 @@ Controller convention:
 
 from __future__ import annotations
 
-import numpy as np
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
+
+import numpy as np
 
 TWOPI = 2.0 * np.pi
 

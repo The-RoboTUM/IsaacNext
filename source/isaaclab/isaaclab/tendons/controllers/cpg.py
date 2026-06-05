@@ -7,8 +7,9 @@
 
 from __future__ import annotations
 
-import numpy as np
 from dataclasses import dataclass
+
+import numpy as np
 
 from isaaclab.tendons.controllers.base import DOF_ORDER, TWOPI, LegControllerBase, theta_warp, wrap_0_2pi
 

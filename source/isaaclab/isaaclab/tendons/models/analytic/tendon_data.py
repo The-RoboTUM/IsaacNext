@@ -246,7 +246,7 @@ class TendonData:
         gst_q_5_offset = -gst_phi_4prime5_j5 - gst_phi_56_j5
         gst_q_6_offset = -gst_phi_56_j6 - gst_phi_67_j6
 
-        # Note: we randomize upper and lower tendon lengths after computing other offsets because of manufacturing tolerances.
+        # Randomize tendon lengths after computing offsets to model manufacturing tolerances.
         upper_gst_length = tc.upper_gst_length + torch.empty(batch_size, device=dev).uniform_(
             *randomization_ranges.upper_gst_length
         )

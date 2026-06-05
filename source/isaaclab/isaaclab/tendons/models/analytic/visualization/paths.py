@@ -47,19 +47,23 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
     )
     p3_i = starting_point + rotate_by(
         direction_angle,
-        np.array([
-            td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_23].item(),
-            0.0,
-        ]),
+        np.array(
+            [
+                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_23].item(),
+                0.0,
+            ]
+        ),
     )
     p3_o = rotate_by(-q3, p3_i - j3) + j3
     direction_angle -= q3
     p4_i = p3_o + rotate_by(
         direction_angle,
-        np.array([
-            td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_34].item(),
-            0.0,
-        ]),
+        np.array(
+            [
+                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_34].item(),
+                0.0,
+            ]
+        ),
     )
     p4_o = (
         rotate_by(
@@ -70,9 +74,9 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
     )
     direction_angle += q4
     radius_4 = np.linalg.norm(p4_o - j4)
-    assert (
-        abs(radius_4 - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()) < 0.001
-    ), f"Expected radius at 4 {td.pulley_radii[0, tids.I_RADIUS_GST_4].item()}, got {radius_4}"
+    assert abs(radius_4 - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()) < 0.001, (
+        f"Expected radius at 4 {td.pulley_radii[0, tids.I_RADIUS_GST_4].item()}, got {radius_4}"
+    )
     p4prime_i = (
         rotate_by(
             np.deg2rad(-45),  # note: to compensate for extended upper tendon drawing
@@ -102,28 +106,34 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
     if state[-1] == "a":
         p5_i = p4prime_o + rotate_by(
             direction_angle,
-            np.array([
-                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_4PRIME5].item(),
-                0.0,
-            ]),
+            np.array(
+                [
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_4PRIME5].item(),
+                    0.0,
+                ]
+            ),
         )
         p5_o = rotate_by(q5, p5_i - j5) + j5
         direction_angle += q5
         p6_i = p5_o + rotate_by(
             direction_angle,
-            np.array([
-                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_56].item(),
-                0.0,
-            ]),
+            np.array(
+                [
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_56].item(),
+                    0.0,
+                ]
+            ),
         )
         p6_o = rotate_by(q6, p6_i - j6) + j6
         direction_angle += q6
         p7 = p6_o + rotate_by(
             direction_angle,
-            np.array([
-                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_67].item(),
-                0.0,
-            ]),
+            np.array(
+                [
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_67].item(),
+                    0.0,
+                ]
+            ),
         )
         lower_tendon_points.extend([p5_i, p5_o, p6_i, p6_o, p7])
         lower_tendon_joints.extend([j5, j6])
@@ -134,10 +144,12 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
         direction_angle += q6_B
         p7 = p6_o + rotate_by(
             direction_angle,
-            np.array([
-                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_67].item(),
-                0.0,
-            ]),
+            np.array(
+                [
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_67].item(),
+                    0.0,
+                ]
+            ),
         )
         lower_tendon_points.extend([p6_i, p6_o, p7])
         lower_tendon_joints.extend([j6])
@@ -150,10 +162,12 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
     elif state[-1] == "d":
         p5_i = p4prime_o + rotate_by(
             direction_angle,
-            np.array([
-                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_4PRIME5].item(),
-                0.0,
-            ]),
+            np.array(
+                [
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_GST_4PRIME5].item(),
+                    0.0,
+                ]
+            ),
         )
         p5_o = rotate_by(q5_D, p5_i - j5) + j5
         direction_angle += q5_D
@@ -191,10 +205,12 @@ def compute_kft_points(alpha_8, joint_locations, data, r8):
     direction_angle = alpha_8 - q8 - np.pi / 2
     p3_c = p8_o + rotate_by(
         direction_angle,
-        np.array([
-            data["KFT_l_8c"],
-            0.0,
-        ]),
+        np.array(
+            [
+                data["KFT_l_8c"],
+                0.0,
+            ]
+        ),
     )
 
     tendon_points = [p8_i, p8_o, p3_c]
@@ -212,10 +228,12 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
     # starting point is from j5 going offset length to j4 and orthogonally
     pc5 = j5 - rotate_by(
         alpha_4,
-        np.array([
-            tc.connector_link_lengths_longitudinal[tids.I_CONNECTOR_LINK_DFT_C5].item(),
-            tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_DFT_C5].item(),
-        ]),
+        np.array(
+            [
+                tc.connector_link_lengths_longitudinal[tids.I_CONNECTOR_LINK_DFT_C5].item(),
+                tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_DFT_C5].item(),
+            ]
+        ),
     )
     theta_c5 = np.arctan2(
         tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_DFT_C5].item(),
@@ -240,10 +258,12 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
     if dft_state == "a":
         p5_i = pc5 + rotate_by(
             direction_angle,
-            np.array([
-                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_DFT_C5].item(),
-                0.0,
-            ]),
+            np.array(
+                [
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_DFT_C5].item(),
+                    0.0,
+                ]
+            ),
         )
 
         q5 = data["qs"][tids.I_Q_DFT_5]
@@ -255,10 +275,12 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
         direction_angle += q5
         p6_i = p5_o + rotate_by(
             direction_angle,
-            np.array([
-                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_DFT_56].item(),
-                0.0,
-            ]),
+            np.array(
+                [
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_DFT_56].item(),
+                    0.0,
+                ]
+            ),
         )
         q6 = data["qs"][tids.I_Q_DFT_6]
         p6_o = j6 + rotate_by(
@@ -346,10 +368,12 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
     elif dft_state == "d":  # todo: check this
         p5_i = pc5 + rotate_by(
             direction_angle,
-            np.array([
-                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_DFT_C5].item(),
-                0.0,
-            ]),
+            np.array(
+                [
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_DFT_C5].item(),
+                    0.0,
+                ]
+            ),
         )
         q5 = data["DFT_q5_D"]
         p5_o = j5 + rotate_by(q5, p5_i - j5)
@@ -372,10 +396,12 @@ def compute_edt1_points(alphas, joint_locations, data, r5):
     # starting point is from j5 going offset length to j4 and orthogonally
     pc4 = j4 - rotate_by(
         alpha_3,
-        np.array([
-            tc.connector_link_lengths_longitudinal[tids.I_CONNECTOR_LINK_EDT1_C4].item(),
-            -tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_EDT1_C4].item(),
-        ]),
+        np.array(
+            [
+                tc.connector_link_lengths_longitudinal[tids.I_CONNECTOR_LINK_EDT1_C4].item(),
+                -tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_EDT1_C4].item(),
+            ]
+        ),
     )
     gamma_c4 = np.arctan2(
         tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_EDT1_C4].item(),
@@ -397,10 +423,12 @@ def compute_edt1_points(alphas, joint_locations, data, r5):
         direction_angle -= q5
         p6 = p5_o + rotate_by(
             direction_angle,
-            np.array([
-                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_EDT1_5C].item(),
-                0.0,
-            ]),
+            np.array(
+                [
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_EDT1_5C].item(),
+                    0.0,
+                ]
+            ),
         )
         tendon_points = [pc4, p5_i, p5_o, p6]
         tendon_joints = [j5]
@@ -422,10 +450,12 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
     # starting point is from j5 going offset length to j4 and orthogonally
     pc4 = j4 - rotate_by(
         alpha_3,
-        np.array([
-            tc.connector_link_lengths_longitudinal[tids.I_CONNECTOR_LINK_EDT2_C4].item(),
-            -tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_EDT2_C4].item(),
-        ]),
+        np.array(
+            [
+                tc.connector_link_lengths_longitudinal[tids.I_CONNECTOR_LINK_EDT2_C4].item(),
+                -tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_EDT2_C4].item(),
+            ]
+        ),
     )
     gamma_c4 = np.arctan2(
         tc.connector_link_lengths_lateral[tids.I_CONNECTOR_LINK_EDT2_C4].item(),
@@ -457,10 +487,12 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
         direction_angle -= q5
         p6_i = p5_o + rotate_by(
             direction_angle,
-            np.array([
-                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_EDT2_56].item(),
-                0.0,
-            ]),
+            np.array(
+                [
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_EDT2_56].item(),
+                    0.0,
+                ]
+            ),
         )
         q6 = data["qhats"][tids.I_QHAT_EDT2_6]
         p6_o = j6 + rotate_by(
@@ -470,10 +502,12 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
         direction_angle -= q6
         p7 = p6_o + rotate_by(
             direction_angle,
-            np.array([
-                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_EDT2_6C].item(),
-                0.0,
-            ]),
+            np.array(
+                [
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_EDT2_6C].item(),
+                    0.0,
+                ]
+            ),
         )
 
         tendon_points = [pc4, p5_i, p5_o, p6_i, p6_o, p7]
@@ -489,10 +523,12 @@ def compute_edt2_points(alphas, joint_locations, data, r5, r6):
         direction_angle -= q6
         p7 = p6_o + rotate_by(
             direction_angle,
-            np.array([
-                td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_EDT2_6C].item(),
-                0.0,
-            ]),
+            np.array(
+                [
+                    td.tendon_section_lengths[0, tids.I_TENDON_SECTION_LENGTH_EDT2_6C].item(),
+                    0.0,
+                ]
+            ),
         )
         tendon_points = [pc4, p6_i, p6_o, p7]
         tendon_joints = [j6]

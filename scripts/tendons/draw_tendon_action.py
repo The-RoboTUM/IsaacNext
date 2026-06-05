@@ -23,9 +23,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import numpy as np
 from datetime import datetime
 from pathlib import Path
+
+import numpy as np
 
 from isaaclab.tendons.models.analytic.visualization import (
     DEFAULT_ALPHA_2,

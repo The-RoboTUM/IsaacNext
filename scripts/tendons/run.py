@@ -57,13 +57,11 @@ args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
+import cv2
 import numpy as np
 import torch
 
 import carb
-import cv2
-
-from isaaclab_assets.robots.forrest import FORREST_CFG
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
@@ -74,6 +72,8 @@ from isaaclab.tendons.controllers.cpg import BirdBotCPGLeg, CPGParams
 from isaaclab.tendons.controllers.sinusoidal import SinusoidalLegController, SinusoidalParams
 from isaaclab.tendons.manager import TendonManager
 from isaaclab.tendons.models.analytic.constants import joint_names_left, joint_names_right
+
+from isaaclab_assets.robots.forrest import FORREST_CFG
 
 USD_PATH = "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"
 # VIRTUAL_GROUND_HEIGHT = 0.38
@@ -209,12 +209,14 @@ def make_actuated_dof_specs(robot_cfg):
                     f"got {matches}"
                 )
 
-            specs.append({
-                "side": side_name,
-                "dof": dof,
-                "joint_expr": matches[0],
-                "sign": DOF_SIGN[dof],
-            })
+            specs.append(
+                {
+                    "side": side_name,
+                    "dof": dof,
+                    "joint_expr": matches[0],
+                    "sign": DOF_SIGN[dof],
+                }
+            )
 
     return specs
 

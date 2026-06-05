@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""This script demonstrates applying random forces to a two-bar robot and visualizing them with markers using IsaacLab API."""
+"""Apply random forces to a two-bar robot and visualize them with Isaac Lab markers."""
 
 print("Started")
 
@@ -20,6 +20,7 @@ app_launcher = AppLauncher()
 simulation_app = app_launcher.app
 
 import time
+
 import torch
 
 import isaaclab.sim as sim_utils
@@ -131,9 +132,9 @@ class TendonManager:
     ):
         self.device = robot.device
         N_LINKS = len(link_names)
-        assert (
-            len(joint_names) == N_LINKS - 1
-        ), f"number of joints must be one less than number of links {N_LINKS} got {len(joint_names)}"
+        assert len(joint_names) == N_LINKS - 1, (
+            f"number of joints must be one less than number of links {N_LINKS} got {len(joint_names)}"
+        )
         N_JOINTS = N_LINKS - 1
         assert axis_global.shape == (3,), f"axis_global must be shape (3,), got {axis_global.shape}"
         assert radii.shape == (N_LINKS + 1,), f"radii must one more than links, got {radii.shape}"

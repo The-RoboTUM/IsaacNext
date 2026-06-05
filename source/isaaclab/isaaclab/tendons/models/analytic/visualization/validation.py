@@ -67,9 +67,9 @@ def compute_x_end_point(link_start, link_end, phi, x, goal_point):
     link_dir = link_end - link_start
     rotated = rotate_by(phi, link_dir)
     scaled = rotated / np.linalg.norm(rotated) * x
-    assert np.allclose(
-        scaled + link_start, goal_point, rtol=1e-3, atol=1e-3
-    ), f"Expected {goal_point}, got {scaled + link_start}"
+    assert np.allclose(scaled + link_start, goal_point, rtol=1e-3, atol=1e-3), (
+        f"Expected {goal_point}, got {scaled + link_start}"
+    )
     return scaled + link_start
 
 

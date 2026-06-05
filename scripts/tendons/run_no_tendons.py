@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""This script demonstrates applying random forces to a two-bar robot and visualizing them with markers using IsaacLab API."""
+"""Apply random forces to a two-bar robot and visualize them with Isaac Lab markers."""
 
 # export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/linus/isaac-sim/kit/python/lib/python3.11/site-packages/nvidia/cudnn/lib
 print("Started")
@@ -19,8 +19,9 @@ args_cli = parser.parse_args()
 app_launcher = AppLauncher()
 simulation_app = app_launcher.app
 
-import numpy as np
 import time
+
+import numpy as np
 import torch
 
 import carb

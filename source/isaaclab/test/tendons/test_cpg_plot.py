@@ -5,9 +5,9 @@
 
 """Simple CPG plotting test."""
 
-import numpy as np
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from isaaclab.tendons.controllers.cpg import BirdBotCPGLeg, CPGParams

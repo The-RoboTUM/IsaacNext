@@ -16,16 +16,17 @@ This file keeps two action terms:
   policy should not command tendon actions.
 """
 
-import torch
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
+
+import torch
 
 from isaaclab.envs.manager_based_env import ManagerBasedEnv
 from isaaclab.managers.action_manager import ActionTerm
 from isaaclab.tendons.manager import TendonManager
-from isaaclab.tendons.models.analytic.constants import N_CHAIN_LINKS_PER_LEG  # NOTE: Changed from N_LINKS_PER_LEG
 from isaaclab.tendons.models.analytic.constants import (
     JOINT_AXIS_IDX,
+    N_CHAIN_LINKS_PER_LEG,  # NOTE: Changed from N_LINKS_PER_LEG
     hip_joint_names,
     joint_names_left,
     joint_names_right,
@@ -253,9 +254,9 @@ class TendonActionTerm(ActionTerm):
         # Apply GST torques
         tendon_torques_full[:, : N_CHAIN_LINKS_PER_LEG - 1, JOINT_AXIS_IDX] = -tendon_torques_left
         tendon_torques_full[:, 1:N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] += tendon_torques_left
-        tendon_torques_full[:, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, JOINT_AXIS_IDX] = (
-            -tendon_torques_right
-        )
+        tendon_torques_full[
+            :, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, JOINT_AXIS_IDX
+        ] = -tendon_torques_right
         tendon_torques_full[:, N_CHAIN_LINKS_PER_LEG + 1 :, JOINT_AXIS_IDX] += tendon_torques_right
 
         # Apply knee motor torques from actions

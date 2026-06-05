@@ -26,3 +26,4 @@ dependencies:
       - flake8-simplify
       - isort==5.13.2
       - pre-commit
+      - ruff==0.14.10

@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
-import torch
 from typing import NamedTuple
+
+import torch
 
 import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.tendons.models.analytic.geometry.common import angle_from_sws

@@ -9,6 +9,7 @@ Compares left and right leg data side by side with animation showing data develo
 """
 
 import json
+
 import matplotlib
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt

@@ -9,6 +9,7 @@ Compares left and right leg data side by side.
 """
 
 import json
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np

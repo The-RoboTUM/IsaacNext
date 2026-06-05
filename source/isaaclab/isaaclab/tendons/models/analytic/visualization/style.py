@@ -7,8 +7,9 @@
 
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
 from datetime import datetime
+
+import matplotlib.pyplot as plt
 
 try:
     import seaborn as sns
@@ -36,16 +37,18 @@ def configure_plot_style():
     """Configure plotting defaults without changing the geometry code."""
     if sns is not None:
         sns.set_theme(style="whitegrid", context="paper")
-    plt.rcParams.update({
-        "font.family": "DejaVu Sans",
-        "font.size": 8,
-        "axes.titlesize": 9,
-        "axes.labelsize": 8,
-        "legend.fontsize": 7,
-        "xtick.labelsize": 7,
-        "ytick.labelsize": 7,
-        "mathtext.fontset": "dejavusans",
-    })
+    plt.rcParams.update(
+        {
+            "font.family": "DejaVu Sans",
+            "font.size": 8,
+            "axes.titlesize": 9,
+            "axes.labelsize": 8,
+            "legend.fontsize": 7,
+            "xtick.labelsize": 7,
+            "ytick.labelsize": 7,
+            "mathtext.fontset": "dejavusans",
+        }
+    )
 
 
 def rest_length_label(name: str, length_m: float) -> str:

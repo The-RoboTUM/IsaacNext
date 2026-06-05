@@ -5,9 +5,10 @@
 
 from __future__ import annotations
 
-import torch
 from dataclasses import dataclass
 from typing import NamedTuple
+
+import torch
 
 from isaaclab.tendons.models.analytic.tendon_data import TendonDataJIT
 
@@ -116,10 +117,12 @@ class SpringEnergyModel:
         )
 
     def energy_from_deltas(self, deltas: dict[str, torch.Tensor]) -> SpringEnergyOutput:
-        return self.energy_from_delta_tuple((
-            deltas["gst"],
-            deltas["dft"],
-            deltas["kft"],
-            deltas["edt1"],
-            deltas["edt2"],
-        ))
+        return self.energy_from_delta_tuple(
+            (
+                deltas["gst"],
+                deltas["dft"],
+                deltas["kft"],
+                deltas["edt1"],
+                deltas["edt2"],
+            )
+        )

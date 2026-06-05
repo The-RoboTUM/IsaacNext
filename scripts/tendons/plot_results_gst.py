@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import json
+
 import matplotlib
 import matplotlib.pyplot as plt
 

@@ -7,9 +7,10 @@
 
 from __future__ import annotations
 
-import numpy as np
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+
+import numpy as np
 
 from isaaclab.tendons.controllers.base import DOF_ORDER, TWOPI, LegControllerBase, _rad_map
 
