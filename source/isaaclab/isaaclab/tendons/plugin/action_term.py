@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
 
 """Tendon-based action term implementation.
@@ -11,18 +16,16 @@ This file keeps two action terms:
   policy should not command tendon actions.
 """
 
-from typing import Sequence
-
 import torch
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from isaaclab.envs.manager_based_env import ManagerBasedEnv
 from isaaclab.managers.action_manager import ActionTerm
-
-# from isaaclab.tendons.action_term_cfg import TendonActionTermCfg
 from isaaclab.tendons.manager import TendonManager
+from isaaclab.tendons.models.analytic.constants import N_CHAIN_LINKS_PER_LEG  # NOTE: Changed from N_LINKS_PER_LEG
 from isaaclab.tendons.models.analytic.constants import (
     JOINT_AXIS_IDX,
-    N_CHAIN_LINKS_PER_LEG,  # NOTE: Changed from N_LINKS_PER_LEG
     hip_joint_names,
     joint_names_left,
     joint_names_right,
@@ -31,6 +34,9 @@ from isaaclab.tendons.models.analytic.constants import (
     tids,
 )
 from isaaclab.tendons.models.analytic.tendon_data import TendonData
+
+if TYPE_CHECKING:
+    from isaaclab.tendons.plugin.action_term_cfg import TendonActionTermCfg, TendonActionTermHybridCfg
 
 
 class TendonActionTermHybrid(ActionTerm):
@@ -47,7 +53,7 @@ class TendonActionTermHybrid(ActionTerm):
         tendon_manager.apply_jit(virtual_ground_height=None, dt=SIM_DT)
     """
 
-    def __init__(self, cfg: "TendonActionTermCfg", env: ManagerBasedEnv):
+    def __init__(self, cfg: TendonActionTermHybridCfg, env: ManagerBasedEnv):
         super().__init__(cfg, env)
 
         self.robot = env.scene.articulations[cfg.asset_name]
@@ -172,7 +178,7 @@ class TendonActionTerm(ActionTerm):
     ``TendonActionTermHybrid`` above.
     """
 
-    def __init__(self, cfg: "TendonActionTermCfg", env: ManagerBasedEnv):
+    def __init__(self, cfg: TendonActionTermCfg, env: ManagerBasedEnv):
         super().__init__(cfg, env)
         # Additional initialization for tendon actions can be added here
 

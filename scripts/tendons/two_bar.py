@@ -1,9 +1,15 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """This script demonstrates applying random forces to a two-bar robot and visualizing them with markers using IsaacLab API."""
 
 print("Started")
 
 import argparse
 import json
+
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Apply random forces to a two-bar robot and visualize them.")
@@ -13,17 +19,16 @@ args_cli = parser.parse_args()
 app_launcher = AppLauncher()
 simulation_app = app_launcher.app
 
-import torch
-import numpy as np
-import carb
 import time
+import torch
+
 import isaaclab.sim as sim_utils
-from isaaclab.actuators.actuator_cfg import ImplicitActuatorCfg, IdealPDActuatorCfg
-from isaaclab.assets import ArticulationCfg, Articulation
-from isaaclab.sim import SimulationContext
+from isaaclab.actuators.actuator_cfg import IdealPDActuatorCfg
+from isaaclab.assets import Articulation, ArticulationCfg
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
+from isaaclab.sim import SimulationContext
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
-from isaaclab.utils.math import quat_inv, quat_apply
+from isaaclab.utils.math import quat_apply, quat_inv
 
 
 def get_two_bar_cfg() -> ArticulationCfg:
@@ -265,7 +270,8 @@ class TendonManager:
 
         tension = self.stiffness * delta_length + self.damping * length_velocity
         print(
-            f"[Tense] Excess length: {delta_length.item():.4f}; Velocity: {length_velocity.item():.4f}, Tension: {tension.item():.4f}"
+            f"[Tense] Excess length: {delta_length.item():.4f}; Velocity: {length_velocity.item():.4f}, Tension:"
+            f" {tension.item():.4f}"
         )
 
         initial_torque = tension * self.radii[1] * self.first_torque_axis
@@ -408,7 +414,6 @@ class TendonManagerV2NoActuator:
 
 
 def main():
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # IsaacLab simulation setup
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
     sim_cfg.dt = 0.0032
@@ -433,7 +438,7 @@ def main():
     time.sleep(1)
 
     # Tendon manager setup
-    tendon_manager = TendonManager(
+    TendonManager(
         robot=robot,
         tendon_length=3.4908,
         stiffness=200000.0,  # 20000.0,
@@ -454,7 +459,7 @@ def main():
         joint_signs=torch.tensor([-1.0, -1.0], device=robot.device),
         radii=torch.tensor([0.05, 0.05], device=robot.device),
     )
-    tendon_manager_v2_no_act = TendonManagerV2NoActuator(
+    TendonManagerV2NoActuator(
         robot=robot,
         joint_names=["lower_joint", "upper_joint"],
         body_names=["base_link", "center_link", "top_link"],

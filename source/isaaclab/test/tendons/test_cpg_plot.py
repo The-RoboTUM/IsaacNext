@@ -1,13 +1,13 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Simple CPG plotting test."""
 
+import numpy as np
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from isaaclab.tendons.controllers.cpg import BirdBotCPGLeg, CPGParams

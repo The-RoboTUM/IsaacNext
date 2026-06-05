@@ -1,11 +1,16 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Constants for our tendon model."""
 
+import numpy as np
+import torch
 from dataclasses import dataclass, field
 
 import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.tendons.models.analytic.utils import list_from_dict
-import numpy as np
-import torch
 
 N_CHAIN_LINKS_PER_LEG: int = 6  # -> number of links in the kinematic chain of the leg
 N_CONNECTOR_OFFSETS: int = 6  # -> GST, DFT, EDT2, KFT have a connector not on the ji-ji+1 axis; EDT1 has two

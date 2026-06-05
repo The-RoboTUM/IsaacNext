@@ -1,11 +1,15 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Simple sinusoidal controller for BirdBot/Forrest legs."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Mapping
-
 import numpy as np
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 from isaaclab.tendons.controllers.base import DOF_ORDER, TWOPI, LegControllerBase, _rad_map
 

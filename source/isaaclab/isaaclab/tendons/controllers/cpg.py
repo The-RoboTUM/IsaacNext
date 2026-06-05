@@ -1,18 +1,16 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """CPG-based controller for BirdBot/Forrest legs."""
 
 from __future__ import annotations
 
+import numpy as np
 from dataclasses import dataclass
 
-import numpy as np
-
-from isaaclab.tendons.controllers.base import (
-    DOF_ORDER,
-    TWOPI,
-    LegControllerBase,
-    theta_warp,
-    wrap_0_2pi,
-)
+from isaaclab.tendons.controllers.base import DOF_ORDER, TWOPI, LegControllerBase, theta_warp, wrap_0_2pi
 
 
 @dataclass

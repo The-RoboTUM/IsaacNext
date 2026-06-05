@@ -1,32 +1,35 @@
-import math
-
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+import math
 import torch
 
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg, TerminationTermCfg
 from isaaclab.sensors import ContactSensorCfg
+
+# Experimental
+from isaaclab.tendons.models.analytic.constants import actuated_joint_names, dummy_randomization
+from isaaclab.tendons.plugin.action_term_cfg import TendonActionTermHybridCfg
 from isaaclab.utils import configclass
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
-from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
-    LocomotionVelocityRoughEnvCfg,
-    RewardsCfg,
-)
+from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg, RewardsCfg
+
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 
 ##
 # Pre-defined configs
 ##
 from isaaclab_assets import FORREST_CFG  # isort: skip
 
-# Experimental
-from isaaclab.tendons.models.analytic.constants import actuated_joint_names, dummy_randomization
-from isaaclab.tendons.plugin.action_term_cfg import TendonActionTermHybridCfg
 
 # -----------------------------------------------------------------------------
 # Reward weights
@@ -122,11 +125,9 @@ def quat_to_rot_matrix_wxyz(q: torch.Tensor) -> torch.Tensor:
             1 - 2 * (yy + zz),
             2 * (xy - wz),
             2 * (xz + wy),
-
             2 * (xy + wz),
             1 - 2 * (xx + zz),
             2 * (yz - wx),
-
             2 * (xz - wy),
             2 * (yz + wx),
             1 - 2 * (xx + yy),
@@ -138,9 +139,9 @@ def quat_to_rot_matrix_wxyz(q: torch.Tensor) -> torch.Tensor:
 
 
 def _unit_vec(
-        values: tuple[float, float, float],
-        device: torch.device | str,
-        dtype: torch.dtype = torch.float32,
+    values: tuple[float, float, float],
+    device: torch.device | str,
+    dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
     """Return a finite unit vector on the requested device."""
     vec = torch.tensor(values, device=device, dtype=dtype)
@@ -169,16 +170,16 @@ def _debug_index(env: ManagerBasedRLEnv, debug_env_id: int) -> int:
 
 
 def feet_crossing_penalty(
-        env: ManagerBasedRLEnv,
-        asset_cfg: SceneEntityCfg = FEET_CFG,
-        min_lateral_separation: float = 0.03,
-        lateral_dir_b: tuple[float, float, float] = FEET_LATERAL_DIR_B,
-        expected_foot0_lateral_order: float = -1.0,
-        side_margin: float = 0.02,
-        max_crossing_error: float = 0.25,
-        debug: bool = False,
-        debug_every: int = 100,
-        debug_env_id: int = 0,
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = FEET_CFG,
+    min_lateral_separation: float = 0.03,
+    lateral_dir_b: tuple[float, float, float] = FEET_LATERAL_DIR_B,
+    expected_foot0_lateral_order: float = -1.0,
+    side_margin: float = 0.02,
+    max_crossing_error: float = 0.25,
+    debug: bool = False,
+    debug_every: int = 100,
+    debug_env_id: int = 0,
 ) -> torch.Tensor:
     """Penalize feet crossing using explicit foot-0/foot-1 lateral ordering.
 
@@ -228,7 +229,7 @@ def feet_crossing_penalty(
     )
 
     penalty = order_error.square() + 0.5 * side_error.square().mean(dim=1)
-    penalty = _safe_nonnegative_reward(penalty, max_crossing_error ** 2 * 1.5)
+    penalty = _safe_nonnegative_reward(penalty, max_crossing_error**2 * 1.5)
 
     if debug and hasattr(env, "common_step_counter") and debug_every > 0:
         if env.common_step_counter % debug_every == 0:
@@ -252,15 +253,15 @@ def feet_crossing_penalty(
 
 
 def feet_parallel_contact_penalty(
-        env: ManagerBasedRLEnv,
-        asset_cfg: SceneEntityCfg = FEET_CFG,
-        sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces", body_names=FEET_CFG.body_names),
-        contact_threshold: float = 1.0,
-        sole_normal_axis: tuple[float, float, float] = (0.0, 0.0, 1.0),
-        ground_normal_w: tuple[float, float, float] = (0.0, 0.0, 1.0),
-        debug: bool = False,
-        debug_every: int = 100,
-        debug_env_id: int = 0,
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = FEET_CFG,
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces", body_names=FEET_CFG.body_names),
+    contact_threshold: float = 1.0,
+    sole_normal_axis: tuple[float, float, float] = (0.0, 0.0, 1.0),
+    ground_normal_w: tuple[float, float, float] = (0.0, 0.0, 1.0),
+    debug: bool = False,
+    debug_every: int = 100,
+    debug_env_id: int = 0,
 ) -> torch.Tensor:
     """Penalize foot-ground contact when the foot sole is tilted.
 
@@ -337,15 +338,15 @@ def get_feet_pose_base(env, feet_cfg: SceneEntityCfg = FEET_CFG):
 
 
 def feet_symmetry_penalty(
-        env: ManagerBasedRLEnv,
-        asset_cfg: SceneEntityCfg = FEET_CFG,
-        alpha: float = 0.01,  # kept for backward compatibility; unused by this direct penalty
-        forward_dir_b: tuple[float, float, float] = FEET_FORWARD_DIR_B,
-        max_forward_separation: float = 0.25,
-        max_forward_error: float = 0.75,
-        debug: bool = False,
-        debug_every: int = 100,
-        debug_env_id: int = 0,
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = FEET_CFG,
+    alpha: float = 0.01,  # kept for backward compatibility; unused by this direct penalty
+    forward_dir_b: tuple[float, float, float] = FEET_FORWARD_DIR_B,
+    max_forward_separation: float = 0.25,
+    max_forward_error: float = 0.75,
+    debug: bool = False,
+    debug_every: int = 100,
+    debug_env_id: int = 0,
 ) -> torch.Tensor:
     """Penalize excessive fore/aft foot split.
 
@@ -365,7 +366,7 @@ def feet_symmetry_penalty(
         min=0.0,
         max=max_forward_error,
     )
-    penalty = _safe_nonnegative_reward(forward_error.square(), max_forward_error ** 2)
+    penalty = _safe_nonnegative_reward(forward_error.square(), max_forward_error**2)
 
     if debug and hasattr(env, "common_step_counter") and debug_every > 0:
         if env.common_step_counter % debug_every == 0:
@@ -397,10 +398,10 @@ def terminate_if_base_too_low(env, minimum_height: float = 0.8):
 
 
 def track_base_height_exp(
-        env: ManagerBasedRLEnv,
-        target_height: float = 1.4,
-        std: float = 0.2,
-        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    env: ManagerBasedRLEnv,
+    target_height: float = 1.4,
+    std: float = 0.2,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     """Reward the robot for keeping its base/root height near target_height.
 
@@ -416,7 +417,7 @@ def track_base_height_exp(
 
     height_error = base_z - target_height
 
-    return torch.exp(-height_error.square() / std ** 2)
+    return torch.exp(-height_error.square() / std**2)
 
 
 @configclass

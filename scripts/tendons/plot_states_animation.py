@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Create an animated MP4 of state transitions over time from the states_gst.json file.
 
 Compares left and right leg data side by side with animation showing data developing.
@@ -5,25 +10,22 @@ Compares left and right leg data side by side with animation showing data develo
 
 import json
 import matplotlib
-import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import matplotlib.pyplot as plt
 import numpy as np
 
-from isaaclab.tendons.models.analytic.constants import (
-    joint_names_left,
-    joint_names_right,
-)
+from isaaclab.tendons.models.analytic.constants import joint_names_left, joint_names_right
 
 matplotlib.use("Agg")  # Use non-interactive backend for video generation
 
 # Load all data from JSONL files (left and right)
 all_data_left = []
-with open("outputs/gst_data_left.jsonl", "r") as f:
+with open("outputs/gst_data_left.jsonl") as f:
     for line in f:
         all_data_left.append(json.loads(line))
 
 all_data_right = []
-with open("outputs/gst_data_right.jsonl", "r") as f:
+with open("outputs/gst_data_right.jsonl") as f:
     for line in f:
         all_data_right.append(json.loads(line))
 

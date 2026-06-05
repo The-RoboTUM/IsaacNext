@@ -1,20 +1,25 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """GST tendon manager implementation."""
 
-from isaaclab.utils.math import quat_apply_inverse
 import torch
 
+import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.assets.articulation import Articulation
+from isaaclab.tendons.models.analytic.constants import JOINT_AXIS_IDX
+from isaaclab.tendons.models.analytic.constants import N_CHAIN_LINKS_PER_LEG as N_LINKS_PER_LEG
 from isaaclab.tendons.models.analytic.constants import (
     dummy_randomization,
-    link_names_left,
-    link_names_right,
     joint_names_left,
     joint_names_right,
-    JOINT_AXIS_IDX,
+    link_names_left,
+    link_names_right,
 )
 from isaaclab.tendons.models.analytic.tendon_data import TendonData, TendonDataJIT
-
-import isaaclab.tendons.models.analytic.indices as tids
+from isaaclab.utils.math import quat_apply_inverse
 
 
 # todo comment
@@ -320,8 +325,6 @@ class GSTTendonManager:
         joint_angles_signed = tendon_data.joint_directions * joint_angles
         thetas = joint_angles_signed + tendon_data.joint_offsets_theta
         qs = thetas + tendon_data.joint_offsets_gst_q
-        theta_hats = -thetas + 2 * torch.pi
-        qhats = theta_hats + tendon_data.joint_offsets_q
 
         # 1) evaluate conditions
         # 1a) compute h5^B

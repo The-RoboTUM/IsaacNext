@@ -1,12 +1,16 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Matplotlib animator for tendon actuation/debug data."""
 
 from __future__ import annotations
 
 import copy
-import time
-
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Circle
 
@@ -119,7 +123,6 @@ class KinematicChainAnimator:
 
         helper_line_alpha = 0.7
 
-        current_data = all_data[0]
         thetas = self.all_thetas[0]
         alphas = compute_alphas(self.alpha_2, thetas)
         joints = compute_joint_locations(alphas)
@@ -924,14 +927,12 @@ class KinematicChainAnimator:
             ("theta6", deg_text(thetas[3])),
         ]
         if self.show_debug_text:
-            dft_rows.extend(
-                [
-                    ("h5_B > r5", bool_text(dft_h5_b_disengaged)),
-                    ("h5_C > r5", bool_text(dft_h5_c_disengaged)),
-                    ("h6_C > r6", bool_text(dft_h6_c_disengaged)),
-                    ("h6_D > r6", bool_text(dft_h6_d_disengaged)),
-                ]
-            )
+            dft_rows.extend([
+                ("h5_B > r5", bool_text(dft_h5_b_disengaged)),
+                ("h5_C > r5", bool_text(dft_h5_c_disengaged)),
+                ("h6_C > r6", bool_text(dft_h6_c_disengaged)),
+                ("h6_D > r6", bool_text(dft_h6_d_disengaged)),
+            ])
         self.dft_state_text.set_text(table_lines(dft_rows, key_width=10))
         set_tendon_active_style(self.dft_tendon_line, dft_active, "dft", self.single_plot)
 

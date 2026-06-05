@@ -1,9 +1,14 @@
-"""Constants for our tendon model."""
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
-from dataclasses import dataclass, field
+"""Constants for our tendon model."""
 
 import numpy as np
 import torch
+from dataclasses import dataclass, field
+
 import isaaclab.tendons.models.analytic.indices as tids
 
 dev = "cuda"

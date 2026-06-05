@@ -1,19 +1,24 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 import json
-import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.pyplot as plt
 
 matplotlib.use("Qt5Agg")
 
-with open("outputs/joint_pos_passive.json", "r") as f:
+with open("outputs/joint_pos_passive.json") as f:
     passive = json.load(f)
 
-with open("outputs/joint_pos_baseline.json", "r") as f:
+with open("outputs/joint_pos_baseline.json") as f:
     baseline = json.load(f)
 
-with open("outputs/joint_pos_v2_no_act.json", "r") as f:
+with open("outputs/joint_pos_v2_no_act.json") as f:
     v2_no_act = json.load(f)
 
-with open("outputs/joint_pos_v2_no_act_j2_inv.json", "r") as f:
+with open("outputs/joint_pos_v2_no_act_j2_inv.json") as f:
     v2_no_act_j2_inv = json.load(f)
 
 passive_j1 = [x[0] for x in passive]

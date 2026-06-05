@@ -20,7 +20,7 @@ Untracked files:
 	saved_models/
 	source/isaaclab_assets/isaaclab_assets/robots/forrest.py
 	source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/config/forrest/
- 
+
 
 
 --- git diff ---
@@ -67,10 +67,10 @@ index 73ceae04..f2d51056 100644
 @@ -7,6 +7,7 @@ import gymnasium as gym
  import torch
  from tensordict import TensorDict
- 
+
 +#from rsl_rl.rsl_rl.env import VecEnv
  from rsl_rl.env import VecEnv
- 
+
  from isaaclab.envs import DirectRLEnv, ManagerBasedRLEnv
 diff --git a/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/mdp/rewards.py b/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/mdp/rewards.py
 index 7a1fc12a..4f094c08 100644
@@ -84,7 +84,7 @@ index 7a1fc12a..4f094c08 100644
 +    # print(vel_yaw[:, :])
 +    # print_base_quat(env)
      return torch.exp(-lin_vel_error / std**2)
- 
+
 +# def print_base_quat(env):
 +#     import numpy as np
 +#     from scipy.spatial.transform import Rotation as R
@@ -106,6 +106,6 @@ index 7a1fc12a..4f094c08 100644
 +#     print("Body[0] quat (wxyz):", quat_wxyz)
 +#     print("Body[0] euler (rpy, deg):", euler)
 +
- 
+
  def track_ang_vel_z_world_exp(
      env, command_name: str, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")

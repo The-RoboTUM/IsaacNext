@@ -1,5 +1,9 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 import time
-import numpy as np
 import torch
 
 # ----------------------------
@@ -42,7 +46,7 @@ def run(name, func):
     start = time.time()
     func()
     end = time.time()
-    print(f"{name:30s}: {1000*(end-start):.2f} ms")
+    print(f"{name:30s}: {1000 * (end - start):.2f} ms")
 
 
 print("\n=== PyTorch Benchmarks ===")

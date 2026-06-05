@@ -1,7 +1,12 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 import torch
 
-from isaaclab.tendons.models.analytic.constants import JOINT_AXIS_IDX, N_CHAIN_LINKS_PER_LEG
 import isaaclab.tendons.models.analytic.indices as tids
+from isaaclab.tendons.models.analytic.constants import JOINT_AXIS_IDX, N_CHAIN_LINKS_PER_LEG
 
 
 @torch.jit.script

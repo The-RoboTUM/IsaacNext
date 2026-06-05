@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """TorchScript entry points for the analytic tendon model.
 
 The math lives in ``geometry/`` and ``spring_energy.py``. This module is now
@@ -7,11 +12,9 @@ by the manager/model code.
 
 import torch
 
-from isaaclab.tendons.models.analytic.geometry.common import angle_from_sws
 from isaaclab.tendons.models.analytic.geometry.lengths import compute_all_tendon_delta_lengths_jit
 from isaaclab.tendons.models.analytic.spring_energy import compute_spring_energy_from_delta_lengths
 from isaaclab.tendons.models.analytic.tendon_data import TendonDataJIT
-from isaaclab.tendons.models.analytic.utils import dbg_grad
 
 
 @torch.jit.script

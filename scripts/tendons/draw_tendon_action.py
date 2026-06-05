@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Draws the dynamic tendon state with matplotlib animation.
 
 Controls:
@@ -18,10 +23,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import numpy as np
 from datetime import datetime
 from pathlib import Path
-
-import numpy as np
 
 from isaaclab.tendons.models.analytic.visualization import (
     DEFAULT_ALPHA_2,

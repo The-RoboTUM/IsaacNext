@@ -1,10 +1,15 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 import json
-import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.pyplot as plt
 
 matplotlib.use("Qt5Agg")
 
-with open("outputs/joint_pos_gst.json", "r") as f:
+with open("outputs/joint_pos_gst.json") as f:
     gst = json.load(f)
 
 last_index = 25

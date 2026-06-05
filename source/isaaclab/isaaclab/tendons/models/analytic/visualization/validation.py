@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Validation and drawing-geometry primitives for the tendon visualizer."""
 
 from __future__ import annotations
@@ -78,6 +83,5 @@ def compute_h_end_point(tendon_start, tendon_end, joint, height):
     # Projected point on the line
     projected = tendon_start + t * d
     # Orthogonal distance from joint to line
-    dist = np.linalg.norm(joint - projected)
     # assert abs(dist - height) < 0.001, f"Expected height {height}, got {dist}"
     return projected

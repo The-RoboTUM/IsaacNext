@@ -1,9 +1,15 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """This script demonstrates applying random forces to a two-bar robot and visualizing them with markers using IsaacLab API."""
 
 # export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/linus/isaac-sim/kit/python/lib/python3.11/site-packages/nvidia/cudnn/lib
 print("Started")
 
 import argparse
+
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Apply random forces to a two-bar robot and visualize them.")
@@ -13,21 +19,22 @@ args_cli = parser.parse_args()
 app_launcher = AppLauncher()
 simulation_app = app_launcher.app
 
-import torch
 import numpy as np
-import carb
 import time
+import torch
+
+import carb
+
 import isaaclab.sim as sim_utils
 from isaaclab.actuators.actuator_cfg import ImplicitActuatorCfg
-from isaaclab.assets import ArticulationCfg, Articulation
+from isaaclab.assets import Articulation, ArticulationCfg
 from isaaclab.sim import SimulationContext
-
 from isaaclab.tendons.legacy.constants_old import (
-    tids,
-    link_names_left,
-    link_names_right,
     joint_names_left,
     joint_names_right,
+    link_names_left,
+    link_names_right,
+    tids,
 )
 
 # usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"

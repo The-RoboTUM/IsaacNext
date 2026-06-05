@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -6,13 +6,13 @@
 """Configuration for the LimX Tron robot."""
 
 from __future__ import annotations
-from pathlib import Path
-
 
 import os
+
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
+
 # from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 ##
@@ -22,7 +22,7 @@ from isaaclab.assets import ArticulationCfg
 TRON_CFG = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
-    usd_path=os.path.join(os.getcwd(), "symlinks/tron/robot.usd") ,
+        usd_path=os.path.join(os.getcwd(), "symlinks/tron/robot.usd"),
         # usd_path="symlinks/tron/robot.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(

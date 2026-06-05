@@ -1,9 +1,15 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """This script demonstrates applying random forces to a two-bar robot and visualizing them with markers using IsaacLab API."""
 
 # export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/linus/isaac-sim/kit/python/lib/python3.11/site-packages/nvidia/cudnn/lib
 print("Started")
 
 import argparse
+
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Apply random forces to a two-bar robot and visualize them.")
@@ -20,16 +26,15 @@ args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
-import torch
 import numpy as np
-import carb
 import time
+
+import carb
+
 import isaaclab.sim as sim_utils
 from isaaclab.actuators.actuator_cfg import ImplicitActuatorCfg
-from isaaclab.assets import ArticulationCfg, Articulation
+from isaaclab.assets import Articulation, ArticulationCfg
 from isaaclab.sim import SimulationContext
-
-
 from isaaclab.tendons.legacy.gst_manager import GSTTendonManager
 
 # usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"
@@ -118,7 +123,6 @@ def get_leg_cfg() -> ArticulationCfg:
 
 
 def main():
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # IsaacLab simulation setup
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
     sim_cfg.dt = 0.0032
@@ -149,7 +153,6 @@ def main():
 
     try:
         for iteration in range(int(t_total / sim.get_physics_dt())):
-            t = iteration * sim.get_physics_dt()
             gst_tendon_manager.apply_jit()
 
             robot.write_data_to_sim()

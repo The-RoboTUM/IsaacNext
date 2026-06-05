@@ -1,8 +1,13 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
 
 import torch
-from isaaclab.utils.math import quat_apply_inverse
 
+import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.tendons.models.analytic.constants import (
     N_CHAIN_LINKS_PER_LEG,
     joint_names_left,
@@ -10,7 +15,7 @@ from isaaclab.tendons.models.analytic.constants import (
     link_names_left,
     link_names_right,
 )
-import isaaclab.tendons.models.analytic.indices as tids
+from isaaclab.utils.math import quat_apply_inverse
 
 
 class TendonRobotIO:

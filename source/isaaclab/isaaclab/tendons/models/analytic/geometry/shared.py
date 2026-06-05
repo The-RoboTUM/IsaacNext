@@ -1,8 +1,12 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
 
-from typing import NamedTuple
-
 import torch
+from typing import NamedTuple
 
 import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.tendons.models.analytic.geometry.common import angle_from_sws
@@ -442,7 +446,7 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         - 2 * EDT1_x_c5 * tendon_data.link_lengths[:, tids.I_LINK_EDT1_5C] * torch.cos(EDT1_thetahat_5_b)
     )
 
-    ### ------------- EDT2 ------------- ###
+    # ------------- EDT2 -------------
     EDT2_x_c5_squared = (
         tendon_data.link_lengths_squared[:, tids.I_LINK_EDT2_C4]
         + tendon_data.link_lengths_squared[:, tids.I_LINK_4prime5]

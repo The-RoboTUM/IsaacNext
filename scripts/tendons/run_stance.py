@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """This script demonstrates applying random forces to a two-bar robot and visualizing them with markers using IsaacLab API."""
 
 # export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/linus/isaac-sim/kit/python/lib/python3.11/site-packages/nvidia/cudnn/lib
@@ -5,6 +10,7 @@ print("Started")
 
 import argparse
 import json
+
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Apply random forces to a two-bar robot and visualize them.")
@@ -14,20 +20,17 @@ args_cli = parser.parse_args()
 app_launcher = AppLauncher()
 simulation_app = app_launcher.app
 
-from isaaclab.tendons.controllers.cpg import BirdBotCPGLeg, CPGParams
-import torch
 import numpy as np
-import carb
 import time
+import torch
+
+import carb
+
 import isaaclab.sim as sim_utils
 from isaaclab.actuators.actuator_cfg import ImplicitActuatorCfg
-from isaaclab.assets import ArticulationCfg, Articulation
+from isaaclab.assets import Articulation, ArticulationCfg
 from isaaclab.sim import SimulationContext
-
-from isaaclab.tendons.legacy.constants_old import (
-    joint_names_left,
-    joint_names_right,
-)
+from isaaclab.tendons.legacy.constants_old import joint_names_left, joint_names_right
 from isaaclab.tendons.legacy.gst_manager import GSTTendonManager
 
 # usd_path = "/media/C/Programmieren/RoboTUM/leg.usd"
@@ -116,8 +119,6 @@ def get_leg_cfg() -> ArticulationCfg:
 
 
 def main():
-    mode = "free_fall"  # or "gait_cycle"
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # IsaacLab simulation setup
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
     sim_cfg.dt = 0.0032
@@ -145,10 +146,6 @@ def main():
 
     # Tendon manager setup
     gst_tendon_manager = GSTTendonManager(robot)
-    cpg_leg_params_left = CPGParams(phi0=-np.pi / 2, f_hz=2.5)
-    cpg_leg_left = BirdBotCPGLeg(cpg_leg_params_left)
-    cpg_leg_params_right = CPGParams(phi0=np.pi / 2, f_hz=2.5)
-    cpg_leg_right = BirdBotCPGLeg(cpg_leg_params_right)
 
     # while True:
     joint_pos_left = []
@@ -164,7 +161,6 @@ def main():
     # TODO: Model ground as p-controller for more realistic interaction (e.g. proportional to penetration depth)
     try:
         for iteration in range(int(t_total / sim.get_physics_dt())):
-            t = iteration * sim.get_physics_dt()
             a, b, c, d, le, thetas, tendon_torques_left, tendon_torques_right = gst_tendon_manager.apply_actuated(
                 hip_position=torch.tensor(
                     [0.0, 0.0],

@@ -1,25 +1,29 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Tendon data for parallel training."""
 
-from isaaclab.tendons.models.analytic.utils import list_from_dict
 import torch
 
+import isaaclab.tendons.models.analytic.indices as tids
 from isaaclab.tendons.models.analytic.constants import (
     N_CHAIN_LINKS_PER_LEG,
     N_CONNECTOR_OFFSETS,
+    N_JOINTS,
     N_Q_OFFSETS,
     N_QHAT_OFFSETS,
+    N_RADII,
     N_TENDON_SECTION_LENGTHS,
-    N_TENDON_THETA_OFFSETS,
     N_TENDON_TANGENCY_ANGLES,
+    N_TENDON_THETA_OFFSETS,
     TendonConstantRandomizationRanges,
     TendonConstants,
     dev,
-    N_JOINTS,
-    N_RADII,
     dummy_randomization,
 )
-
-import isaaclab.tendons.models.analytic.indices as tids
+from isaaclab.tendons.models.analytic.utils import list_from_dict
 
 
 def same_sided_wrap(
