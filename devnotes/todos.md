@@ -20,10 +20,9 @@
 
 ## Now
 
-- [ ] Build a run script with a fake boom (+++)
-
 ## Done
 
+- [x] Build a run script with a fake boom (+++)
 - [x] Centralized config file (+++)
 - [x] Solve the problems with the sources and warnings in pycharm from isaac (+++)
 - [x] Updating isaac's repo (+)

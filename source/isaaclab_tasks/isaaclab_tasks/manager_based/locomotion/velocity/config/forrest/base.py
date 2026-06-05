@@ -65,7 +65,7 @@ class ForrestBaseEnvCfg(LocomotionVelocityRoughEnvCfg):
         if TRAINING_PARAMS.events.disable_add_base_mass:
             self.events.add_base_mass = None
         self.events.reset_robot_joints.params["position_range"] = (
-            TRAINING_PARAMS.events.reset_robot_joint_position_range,
+            TRAINING_PARAMS.events.reset_robot_joint_position_range
         )
         self.events.base_external_force_torque.params["asset_cfg"].body_names = list(
             TRAINING_PARAMS.events.external_force_body_names
