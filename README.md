@@ -21,7 +21,7 @@
 
 ## 🤝 Contributing
 
-We welcome contributions from all RoboTUM Humanoid Project members!  
+We welcome contributions from all RoboTUM Humanoid Project members!
 Before you start working on a new feature, please read our [Contribution Guidelines](./CONTRIBUTING.md).
 
 ---
@@ -44,10 +44,10 @@ Before installing Isaac Sim and Isaac Lab, please make sure your system meets th
 | **Storage** | 50 GB free space | 100 GB+ SSD/NVMe                              |
 | **OS** | Ubuntu 24.04 LTS| Ubuntu 24.04 LTS|
 
-> ⚠️ **Notes:**  
-> - Isaac Sim officially supports **Linux + NVIDIA GPU + proprietary driver**.  
-> - Running large-scale RL (`--num_envs > 2048`) requires a high-end GPU and sufficient RAM.  
-> - If you encounter `Exit Code 137 (SIGKILL)`, it usually indicates **insufficient memory**.  
+> ⚠️ **Notes:**
+> - Isaac Sim officially supports **Linux + NVIDIA GPU + proprietary driver**.
+> - Running large-scale RL (`--num_envs > 2048`) requires a high-end GPU and sufficient RAM.
+> - If you encounter `Exit Code 137 (SIGKILL)`, it usually indicates **insufficient memory**.
 > - Windows and AMD GPUs are **not recommended** for full Isaac Lab compatibility.
 
 #### ⚙️ Software Requirements
@@ -59,7 +59,7 @@ Before installing Isaac Sim and Isaac Lab, please make sure your system meets th
 | **Conda / Mamba** | Latest | `conda --version` |
 | **Git** | ≥ 2.30 | `git --version` |
 
-#### ✅ Example (Our Verified Workstation at RoboTUM Oly office)
+#### ✅ Example (Our Verified Workstation at RoboTUM office)
 | Component | Specification |
 |------------|---------------|
 | **CPU** | AMD Ryzen (16 cores) |
@@ -78,6 +78,15 @@ You can download them from the official NVIDIA link below: \
 https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html
 
 It also includes instructions on how to create a conda virtual environment.
+
+After creating and activating the `sim` environment, install the Isaac Lab source extensions and Git hooks from the
+repository root:
+
+```bash
+conda activate sim
+./isaaclab.sh -i
+pre-commit install
+```
 
 
 ### Clone the repositories
@@ -107,7 +116,7 @@ Nest, let's go through the operation steps in detail:
 
 - Launch Isaacsim.
 ```bash
-cd path/to/IsaacNext 
+cd path/to/IsaacNext
 isaacsim
 ```
 - Use the URDF Importer to import the Forrest URDF file, **but before importing, please change the following settings**:
@@ -157,7 +166,7 @@ IsaacNext/
 ![Anchor joints exclude them from articulation](images/anchor_joints_exclude_them_from_articulation.png)
   - For anchor joints set max force to 1000, stiffness to 1000 and damping to 10
   - For passive pantograph joints (r3b, r4f, r4b, l3b, l4f, l4b) set the stiffness to 0
-  - Set the offsets of all the joints to the list bellow (the **Joints limits** part)
+  - Set the offsets of all the joints to the list below (the **Joints limits** part)
 - Use stage search for 'collisions' and for all disable instantiable flag
 - Use stage search for 'mesh', for the active items, look all the bodies of the pantograph and the inner gears of the hip and disable collisions for them
 - Testing set a ground and simulate, check collisions
@@ -209,13 +218,13 @@ There is an example that illustrates the operation steps more vividly:
         ![](images/Collision%20Setting_base_link.png)
 
 
-- `Differential_Cage_Assyv7_mirror_1`: 
+- `Differential_Cage_Assyv7_mirror_1`:
   - `Collision`
     - `Differential_Cage_Assyv7_mirror_1`
       - `mesh`: Collision Enabled ✅️
-    - `Pulley_Linkage_10mm_Bearingv1_mirror_10`: 
+    - `Pulley_Linkage_10mm_Bearingv1_mirror_10`:
       - `mesh`: Collision Disabled ❌️
-    - `Pulley_Linkage_10mm_Bearingv1_mirror_3`: 
+    - `Pulley_Linkage_10mm_Bearingv1_mirror_3`:
       - `mesh`: Collision Disabled ❌️
 
 - `Differential_Cube_Assy_V2v4_mirror_1`:
@@ -225,55 +234,55 @@ There is an example that illustrates the operation steps more vividly:
     - `Outside_Hip_V2_Assyv28_mirror_1`
       - `mesh`: Collision Disabled ❌️
 
-- `Knee_Assyv9_mirror_1`: 
+- `Knee_Assyv9_mirror_1`:
   - `Collision`
     - `Knee_Assyv9_mirror_1`
       - `mesh`: Collision Enabled ✅️
 
-- `S12p_Pantograph_Spring_Assy_Topv2_mirror_1`: 
+- `S12p_Pantograph_Spring_Assy_Topv2_mirror_1`:
   - `Collision`
     - `S12p_Pantograph_Spring_Assy_Topv2_mirror_1`
       - `mesh`: Collision Disabled ❌️
     - `S12p_Pantograph_Spring_Assy_Botv1_mirror_1`
       - `mesh`: Collision Disabled ❌️
 
-- `S23_Assyv18_mirror_1_virtual`: 
+- `S23_Assyv18_mirror_1_virtual`:
   - `Collision`
     - `S23_Assyv18_mirror_1`
-      - `mesh`: Collision Disabled ❌️ 
+      - `mesh`: Collision Disabled ❌️
 
-- `S12_Front_Assyv6_mirror_1`: 
+- `S12_Front_Assyv6_mirror_1`:
   - `Collision`
     - `S12_Front_Assyv6_mirror_1`
       - `mesh`: Collision Disabled ❌️
 
-- `S23_Assyv18_mirror_1`: 
+- `S23_Assyv18_mirror_1`:
   - `Collision`
     - `S23_Assyv18_mirror_1`
       - `mesh`: Collision Enabled ✅️
 
-- `S34_Foot_Connector_Assy_mirror_1`: 
+- `S34_Foot_Connector_Assy_mirror_1`:
   - `Collision`
     - `S34_Foot_Connector_Assy_mirror_1`
       - `mesh`: Collision Enabled ✅️
 
-- `S45_Digit_Assyv2_mirror_1`: 
+- `S45_Digit_Assyv2_mirror_1`:
   - `Collision`
     - `S45_Digit_Assyv2_mirror_1`
       - `mesh`: Collision Enabled ✅️
-- `Main_GST_Pully_Assyv4_mirror_1`: 
+- `Main_GST_Pully_Assyv4_mirror_1`:
   - `Collision`
     - `Main_GST_Pully_Assyv4_mirror_1`
       - `mesh`: Collision Disabled ❌️
-- `Inner_Gear_Assy_V2v13_mirror_1`: 
+- `Inner_Gear_Assy_V2v13_mirror_1`:
   - `Collision`
     - `Inner_Gear_Assy_V2v13_mirror_1`
       - `mesh`: Collision Disabled ❌️
-- `Cable_Gear_Motor_V2v8_mirror_1`: 
+- `Cable_Gear_Motor_V2v8_mirror_1`:
   - `Collision`
     - `Cable_Gear_Motor_V2v8_mirror_1`
       - `mesh`: Collision Disabled ❌️
-- `Cable_Gear_Motor_V2v8_mirror_2`: 
+- `Cable_Gear_Motor_V2v8_mirror_2`:
   - `Collision`
     - `Cable_Gear_Motor_V2v8_mirror_2`
       - `mesh`: Collision Disabled ❌️
@@ -283,8 +292,8 @@ Now, the collision parameters for one leg are set. THe other leg, being fully sy
 
 
 
-<!-- 
-More to come ... 
+<!--
+More to come ...
 
 
 The following instructions are still a work in progress.
@@ -334,7 +343,7 @@ Selects the training task environment.
 
   - `Forrest`: the name of our robot.
 
-  - `-v0`: indicates the version number of this environment. 
+  - `-v0`: indicates the version number of this environment.
   - Alternatively, you can choose the `Flat` scenario (flat terrain), which is useful for training in obstacle-free environments.
 
 - `--headless`
@@ -344,9 +353,9 @@ Runs in headless mode (no rendering). This is recommended when training on serve
 Sets the maximum number of training iterations, here 10,000 iterations.
 In each iteration, data is collected from multiple environments and used to update the policy.
 
-- `--num_envs=4096` Specifies the number of parallel environments, here 4096 environments (or robots) running simultaneously. 
-  - The more environments, the faster the data sampling, but the higher the demand on GPU/CPU resources. 
-  - With our cerrent setup (RTX 5080 GPU AND 64 GB of RAM), 4096 environments is the upper limit. Therefore, please choose an appropriate numer of environments when running training.
+- `--num_envs=4096` Specifies the number of parallel environments, here 4096 environments (or robots) running simultaneously.
+  - The more environments, the faster the data sampling, but the higher the demand on GPU/CPU resources.
+  - With our current setup (RTX 5080 GPU AND 64 GB of RAM), 4096 environments is the upper limit. Therefore, please choose an appropriate number of environments when running training.
   - These 4096 robots are independent. If you enable rendering, you may sometimes see them visually overlapping, but their trajectories and training batches remain unaffected.
 
 - `--resume`
@@ -385,10 +394,10 @@ Selects the task environment to run.
 Specifies the number of parallel environments, here 10 robots running simultaneously.
 This smaller number is convenient for testing and visualization, allowing you to observe the performance of multiple robots at once.
 
-More to come ... 
+More to come ...
 
 
 ---
 
-📫 Maintained by **RoboTUM Humanoid Project Team**  
+📫 Maintained by **RoboTUM Humanoid Project Team**
 If you have any questions, feel free to open an [issue](https://github.com/The-RoboTUM/IsaacNext/issues) or contact the maintainers on our Slack channel.
