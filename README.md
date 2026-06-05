@@ -136,6 +136,7 @@ This script:
 - installs the Isaac Lab source extensions with `./isaaclab.sh -i`
 - installs the Git pre-commit hooks
 - creates `symlinks/forrest_urdf_latest`
+- configures Isaac Sim extension paths for PyCharm/static analysis
 
 After setup, activate the environment:
 
@@ -143,9 +144,24 @@ After setup, activate the environment:
 conda activate sim
 ```
 
+If PyCharm was open while running setup, use:
+
+```text
+File -> Invalidate Caches / Restart -> Invalidate and Restart
+```
+
+Useful setup variants:
+
+```bash
+./scripts/setup_repo.sh --env-name sim
+./scripts/setup_repo.sh --urdfheim-dir /path/to/urdfheim
+./scripts/setup_repo.sh --skip-conda --skip-install --skip-pre-commit
+./scripts/setup_repo.sh --skip-ide-paths
+```
+
 ## Joints Parameter Settings
-- In Isaacsim, open `/IsaacNext/symlinks/Forrest_URDF/Forrest_URDF.usd`, *pay attention to the suffix of this file, this is a `.usd` file.*
-- After you open the `Forrest_URDF.usd` file, then on the right-hand Stage panel in IsaacSim, find the joints folder:
+- In Isaac Sim, open `/IsaacNext/symlinks/forrest_urdf_latest/forrest_urdf_latest.usd`.
+- After opening the USD file, find the joints folder in the right-hand Stage panel:
 ![See the joits folder in the screenshot](images/joints%20folder%20in%20the%20IsaacSim.png)
 
   - For all set stiffness to 100 and damping to 1

@@ -13,6 +13,7 @@ SKIP_CONDA=0
 SKIP_INSTALL=0
 SKIP_PRE_COMMIT=0
 SKIP_SYMLINK=0
+SKIP_IDE_PATHS=0
 
 usage() {
     cat <<EOF
@@ -27,6 +28,7 @@ Options:
   --skip-install        Do not install Isaac Lab source extensions
   --skip-pre-commit     Do not install pre-commit hooks
   --skip-symlink        Do not create/update the Forrest USD symlink
+  --skip-ide-paths      Do not configure Isaac Sim paths for PyCharm/static analysis
   -h, --help            Show this help
 EOF
 }
@@ -66,6 +68,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-symlink)
             SKIP_SYMLINK=1
+            shift
+            ;;
+        --skip-ide-paths)
+            SKIP_IDE_PATHS=1
             shift
             ;;
         -h|--help)
@@ -133,6 +139,11 @@ install_pre_commit() {
     conda run -n "${ENV_NAME}" pre-commit install
 }
 
+setup_ide_paths() {
+    log "Configuring Isaac Sim IDE paths for conda env: ${ENV_NAME}"
+    "${REPO_ROOT}/scripts/setup_pycharm_isaacsim_paths.sh" "${ENV_NAME}"
+}
+
 cd "${REPO_ROOT}"
 
 if [[ "${SKIP_SYMLINK}" -eq 0 ]]; then
@@ -157,6 +168,12 @@ if [[ "${SKIP_PRE_COMMIT}" -eq 0 ]]; then
     install_pre_commit
 else
     log "Skipping pre-commit hook install"
+fi
+
+if [[ "${SKIP_IDE_PATHS}" -eq 0 ]]; then
+    setup_ide_paths
+else
+    log "Skipping Isaac Sim IDE path setup"
 fi
 
 log "Setup complete."
