@@ -14,17 +14,17 @@
 
 ## In progress
 
-- [ ] Centralized config file (+++)
 - [ ] Talk with chatGPT to improve learning / env (+++)
 - [ ] Create a new USD (Make a list of mods for everything first) (DOCUMENT) (+++)
-- [ ] Build a run script with a fake boom (+++)
+- [ ] Ask chatgpt about how to run better projects (+++)
 
 # Now
 
-- [ ] Ask chatgpt about how to run better projects (+++)
-- [ ] Solve the problems with the sources and warnings in pycharm from isaac (+++)
+- [ ] Build a run script with a fake boom (+++)
+- [ ] Centralized config file (+++)
 
 ## Done
 
+- [x] Solve the problems with the sources and warnings in pycharm from isaac (+++)
 - [x] Updating isaac's repo (+)
 - [x] Automate the linting + pycharm handling (+++)

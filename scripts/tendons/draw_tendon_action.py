@@ -23,18 +23,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-
-from isaaclab.tendons.models.analytic.visualization import (
-    DEFAULT_ALPHA_2,
-    KinematicChainAnimator,
-    configure_plot_style,
-    load_jsonl,
-)
-from isaaclab.tendons.models.analytic.visualization.style import log
 
 
 def parse_args() -> argparse.Namespace:
@@ -76,8 +69,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--alpha-2-deg",
         type=float,
-        default=float(np.rad2deg(DEFAULT_ALPHA_2)),
+        default=300.0,
         help="Base link angle in degrees (default: 300).",
+    )
+    parser.add_argument(
+        "--parameters_file",
+        type=str,
+        default=None,
+        help="Path to a Forrest parameter YAML file or profile directory.",
     )
     parser.add_argument(
         "--verbose",
@@ -109,6 +108,17 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+
+    if args.parameters_file:
+        os.environ["ISAACNEXT_FORREST_CONFIG"] = args.parameters_file
+
+    from isaaclab.tendons.models.analytic.visualization import (
+        KinematicChainAnimator,
+        configure_plot_style,
+        load_jsonl,
+    )
+    from isaaclab.tendons.models.analytic.visualization.style import log
+
     configure_plot_style()
 
     all_data = load_jsonl(args.data)

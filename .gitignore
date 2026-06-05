@@ -85,3 +85,4 @@ tests/
 # TacSL sensor
 **/tactile_record/*
 **/gelsight_r15_data/*
+/.junie/

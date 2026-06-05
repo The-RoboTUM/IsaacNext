@@ -1,0 +1,115 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+training:
+  episode_length_s: null  # Training episode length override in seconds; null keeps parent env default.
+  play_episode_length_s: 40.0  # Episode length used by play/evaluation config.
+  actions:
+    scale_deg:
+      ".*roll": 15.0  # Max commanded roll joint offset in degrees for matching joints.
+      ".*lateral": 5.0  # Max commanded lateral/yaw hip joint offset in degrees.
+      ".*flexion": 20.0  # Max commanded hip flexion joint offset in degrees.
+      ".*flexor": 45.0  # Max commanded knee flexor joint offset in degrees.
+    use_default_offset: true  # Add action commands around the robot's default joint pose.
+  contacts:
+    foot_body_names: [ "s45_digit_assy_1", "s45_digit_assy_2" ]  # Bodies treated as feet for foot rewards.
+    foot_connector_body_names: [ "s34_foot_connector_assy_1", "s34_foot_connector_assy_2" ]  # Connector bodies penalized on contact.
+    contact_sensor_body_names: # Bodies included in the contact sensor pattern.
+      - "s45_digit_assy_1"  # Right/left foot digit body.
+      - "s45_digit_assy_2"  # Right/left foot digit body.
+      - "base_assy_v2_1"  # Base body used for undesired contact/termination checks.
+      - "outside_hip_v2_assy_axial_left_1"  # Hip side body tracked for contact.
+      - "outside_hip_v2_assy_axial_1"  # Hip side body tracked for contact.
+      - "differential_cage_assy_small_motor_1"  # Base/hip drivetrain body tracked for contact.
+      - "differential_cage_assy_small_motor_2"  # Base/hip drivetrain body tracked for contact.
+      - "s34_foot_connector_assy_1"  # Foot connector body tracked for contact penalties.
+      - "s34_foot_connector_assy_2"  # Foot connector body tracked for contact penalties.
+    base_termination_body_names: # Bodies that terminate the episode when they hit the ground.
+      - "base_assy_v2_1"  # Main base body.
+      - "differential_cage_assy_small_motor_1"  # Drivetrain body near base.
+      - "differential_cage_assy_small_motor_2"  # Drivetrain body near base.
+      - "outside_hip_v2_assy_axial_1"  # Hip side body.
+      - "outside_hip_v2_assy_axial_left_1"  # Hip side body.
+    update_period: 0.0  # Contact sensor update period; 0.0 means every physics step.
+    history_length: 6  # Number of contact history frames kept by the sensor.
+    debug_vis: false  # Show contact sensor debug visualization.
+    track_air_time: true  # Track foot air time for gait rewards.
+    right_foot_index: 0  # Index of the right foot within foot_body_names/contact tensors.
+    left_foot_index: 1  # Index of the left foot within foot_body_names/contact tensors.
+    forward_dir_b: [ 0.0, -1.0, 0.0 ]  # Robot forward direction expressed in base frame.
+    lateral_dir_b: [ 1.0, 0.0, 0.0 ]  # Robot lateral direction expressed in base frame.
+  rewards:
+    weights:
+      alive: 0.0  # Constant survival reward per step.
+      termination_penalty: -200.0  # Penalty applied when an episode terminates early.
+      track_base_height_exp: 0.0  # Weight for tracking target base height.
+      track_lin_vel_xy_exp: 2.0  # Weight for commanded horizontal velocity tracking.
+      track_ang_vel_z_exp: 0.1  # Weight for commanded yaw-rate tracking.
+      feet_crossing: -0.0  # Penalty for feet crossing laterally.
+      feet_parallel_contact: -0.0  # Penalty for invalid/parallel foot contact orientation.
+      feet_air_time: 0.0  # Reward for foot swing air time.
+      feet_slide: 0.0  # Penalty for sliding feet while in contact.
+      joint_deviation_l1: -0.1  # Penalty for joint positions away from nominal pose.
+      hip_deviation_l1: -0.3  # Stronger penalty for hip deviation.
+      gait_symmetry: -0.1  # Penalty for asymmetric foot placement/gait timing.
+      foot_connector_contact: -1.0  # Penalty when foot connector bodies contact the ground.
+      lin_vel_z_l2: -0.1  # Penalty for vertical base velocity.
+      flat_orientation_l2: -1.0  # Penalty for body tilt away from upright.
+      action_rate_l2: -0.0025  # Penalty for rapidly changing actions.
+      dof_acc_l2: -1.25e-7  # Penalty for large joint accelerations.
+      dof_torques_l2: -1.5e-8  # Penalty for large actuator torques.
+    feet_crossing:
+      min_lateral_separation: 0.10  # Desired minimum lateral spacing between feet in meters.
+      expected_foot0_lateral_order: -1.0  # Sign convention for which foot should be on which side.
+      side_margin: 0.02  # Deadband margin before crossing penalty starts.
+      max_crossing_error: 0.25  # Error value where crossing penalty saturates.
+      debug: false  # Print/debug this reward term.
+      debug_every: 10  # Debug print interval in steps.
+      debug_env_id: 0  # Environment index used for debug output.
+    feet_parallel_contact:
+      contact_threshold: 1.0  # Contact force threshold used to decide whether a foot is grounded.
+      sole_normal_axis: [ 0.0, 0.0, 1.0 ]  # Foot sole normal axis in the foot/body frame.
+      ground_normal_w: [ 0.0, 0.0, 1.0 ]  # World-frame ground normal.
+      debug: false  # Print/debug this reward term.
+      debug_every: 100  # Debug print interval in steps.
+      debug_env_id: 0  # Environment index used for debug output.
+    track_base_height:
+      target_height: 1.4  # Desired base height in meters.
+      std: 0.3  # Exponential reward width for height tracking.
+    track_velocity:
+      lin_vel_xy_std: 0.5  # Exponential reward width for linear velocity tracking.
+      ang_vel_z_std: 0.5  # Exponential reward width for yaw-rate tracking.
+    feet_air_time_threshold: 0.4  # Air-time threshold in seconds before reward is credited.
+    gait_symmetry:
+      max_forward_separation: 0.25  # Desired cap on forward separation between feet.
+      max_forward_error: 0.75  # Error where gait symmetry penalty saturates.
+      debug: false  # Print/debug this reward term.
+      debug_every: 10  # Debug print interval in steps.
+      debug_env_id: 0  # Environment index used for debug output.
+    undesired_contact_threshold: 1.0  # Contact force threshold for undesired contact penalties.
+  events:
+    disable_push_robot: true  # Disable random external push disturbances during training.
+    disable_add_base_mass: true  # Disable random base mass changes during training.
+    randomize_initial_base_pose: true  # Apply reset_base_pose_range once at startup so cloned envs do not all face the same way.
+    reset_robot_joint_position_range: [ 1.0, 1.0 ]  # Multiplicative reset range for default joint positions; fixed at 1.0 means no randomization.
+    external_force_body_names: [ "world_corrected" ]  # Body names targeted by external force events.
+    base_com_body_names: [ "world_corrected" ]  # Body names targeted by center-of-mass randomization.
+    reset_base_pose_range:
+      x: [ -0.5, 0.5 ]  # Reset range for base x position in meters.
+      y: [ -0.5, 0.5 ]  # Reset range for base y position in meters.
+      yaw: [ -3.14, 3.14 ]  # Reset range for base yaw angle in radians.
+    reset_base_velocity_range:
+      x: [ 0.0, 0.0 ]  # Reset range for base x velocity in m/s.
+      y: [ 0.0, 0.0 ]  # Reset range for base y velocity in m/s.
+      z: [ 0.0, 0.0 ]  # Reset range for base z velocity in m/s.
+      roll: [ 0.0, 0.0 ]  # Reset range for base roll angular velocity in rad/s.
+      pitch: [ 0.0, 0.0 ]  # Reset range for base pitch angular velocity in rad/s.
+      yaw: [ 0.0, 0.0 ]  # Reset range for base yaw angular velocity in rad/s.
+  commands:
+    lin_vel_x: [ -0.0, 0.0 ]  # Commanded forward velocity sampling range in m/s.
+    lin_vel_y: [ -4.0, -2.0 ]  # Commanded lateral velocity sampling range in m/s.
+    ang_vel_z: [ -0.5, 0.5 ]  # Commanded yaw-rate sampling range in rad/s.
+  terminations:
+    base_too_low_height: 0.2  # Terminate when base height falls below this value in meters.

@@ -1,0 +1,11 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+run:
+  duration: 5.0  # Standalone tendon simulation duration in seconds when --duration is not passed.
+  status_interval: 100  # Print one progress line every N simulation steps.
+  controller: "sin"  # Default open-loop controller for scripts/tendons/run.py: "sin" or "cpg".
+  output_dir: "outputs"  # Directory for debug JSONL logs and generated artifacts.
+  video_output: "outputs/simulation.mp4"  # Default MP4 path when video recording is enabled.

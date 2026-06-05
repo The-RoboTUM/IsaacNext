@@ -32,6 +32,9 @@ class TendonActionTermHybridCfg(ActionTermCfg):
     randomization_ranges: TendonConstantRandomizationRanges = TendonConstantRandomizationRanges()
     """Randomization ranges for tendon constants."""
 
+    parameters_file: str | None = None
+    """Optional centralized Forrest YAML path used to build tendon constants at runtime."""
+
 
 @configclass
 class TendonActionTermCfg(ActionTermCfg):
@@ -52,3 +55,6 @@ class TendonActionTermCfg(ActionTermCfg):
 
     randomization_ranges: TendonConstantRandomizationRanges = TendonConstantRandomizationRanges()
     """Randomization ranges for tendon constants."""
+
+    parameters_file: str | None = None
+    """Optional centralized Forrest YAML path used to build tendon constants at runtime."""

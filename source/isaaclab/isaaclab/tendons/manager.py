@@ -37,6 +37,7 @@ class TendonManager:
         model: TendonEnergyModel | None = None,
         robot_io: TendonRobotIO | None = None,
         torque_mapper: TendonTorqueMapper | None = None,
+        tendon_damping: dict[str, float] | None = None,
     ):
         self.robot = robot
         self.device = robot.device
@@ -55,14 +56,12 @@ class TendonManager:
         self.hip_static_joint_indices = self.robot_io.hip_static_joint_indices
         self.foot_link_indices = self.robot_io.foot_link_indices
 
-        # numerical damping for stability
-        damping_coef = 2.0
-        self.tendon_damping = {
-            "gst": damping_coef,
-            "dft": damping_coef,
-            "kft": damping_coef,
-            "edt1": damping_coef,
-            "edt2": damping_coef,
+        self.tendon_damping = tendon_damping or {
+            "gst": 2.0,
+            "dft": 2.0,
+            "kft": 2.0,
+            "edt1": 2.0,
+            "edt2": 2.0,
         }
         self._prev_delta_lengths = None
 
@@ -162,7 +161,7 @@ class TendonManager:
         link_torques = self.torque_mapper.joint_to_link_torques(left, right, batch_size=batch_size)
         forces = self.robot_io.compute_external_forces(virtual_ground_height=virtual_ground_height)
 
-        self.robot.set_external_force_and_torque(
+        self.robot.permanent_wrench_composer.set_forces_and_torques(
             forces=forces,
             torques=link_torques,
             body_ids=self.link_indices_left_right,
@@ -183,7 +182,7 @@ class TendonManager:
         link_torques = self.torque_mapper.joint_to_link_torques_jit(left, right, batch_size=batch_size)
         forces = self.robot_io.compute_external_forces(virtual_ground_height=virtual_ground_height)
 
-        self.robot.set_external_force_and_torque(
+        self.robot.permanent_wrench_composer.set_forces_and_torques(
             forces=forces,
             torques=link_torques,
             body_ids=self.link_indices_left_right,

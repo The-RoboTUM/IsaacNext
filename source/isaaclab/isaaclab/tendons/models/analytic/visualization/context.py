@@ -11,14 +11,17 @@ analytic tendon constants and a one-sample TendonData object for geometry.
 
 import numpy as np
 
-from isaaclab.tendons.models.analytic.constants import TendonConstants, dummy_randomization, tids
+from isaaclab.tendons.models.analytic.constants import tids
 from isaaclab.tendons.models.analytic.tendon_data import TendonData
+from isaaclab.tendons.parameter_loader import load_forrest_parameter_config
 
 # draw the leg, starting at joint 2
 DEFAULT_ALPHA_2 = np.deg2rad(300)
 
 # Keep these module-level objects so the split code behaves like the original script.
+_forrest_params = load_forrest_parameter_config()
+tc = _forrest_params.to_tendon_constants()
+_randomization = _forrest_params.to_tendon_randomization_ranges()
+td = TendonData(1, _randomization, tc=tc)
 
-td = TendonData(1, TendonConstants(), dummy_randomization)
-
-__all__ = ["DEFAULT_ALPHA_2", "td", "tids"]
+__all__ = ["DEFAULT_ALPHA_2", "tc", "td", "tids"]

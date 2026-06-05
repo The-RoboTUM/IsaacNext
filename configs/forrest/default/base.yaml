@@ -1,0 +1,208 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+# Central Forrest configuration.
+#
+# Units:
+#   - Lengths are meters.
+#   - Angles ending in _deg are degrees.
+#   - Randomization ranges are additive min/max ranges in model units.
+#   - Reward weights follow Isaac Lab convention: negative values are penalties.
+#
+# Override path:
+#   Set ISAACNEXT_FORREST_CONFIG=/path/to/profile_dir or pass
+#   scripts/tendons/run.py --parameters_file /path/to/profile_dir.
+
+schema_version: 1  # Config schema version used to guard future migrations.
+
+robot:
+  prim_path: "{ENV_REGEX_NS}/forrest_urdf_latest"  # Prim path pattern for the robot inside each env namespace.
+  usd_path: "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"  # USD asset loaded for Forrest.
+  height_scanner_prim_path: "{ENV_REGEX_NS}/forrest_urdf_latest/world_corrected"  # Prim followed by the terrain height scanner.
+  initial_base_position: [ 0.0, 0.0, 1.45 ]  # Initial robot root position in meters.
+  soft_joint_pos_limit_factor: 0.9  # Scale applied to USD joint limits to keep actions away from hard stops.
+  fixed_world_body_path: "/World/Bot/world_corrected"  # Body anchored by the fixed-world joint in the tendon run script.
+  fixed_world_joint_path: "/World/Bot/world_corrected_fixed_joint"  # USD path where the fixed-world joint is created.
+  fixed_world_joint_local_pos0: null  # null reads current body world position; set explicitly only for anchor debugging.
+  fixed_world_joint_local_rot0_wxyz: null  # null reads current body world orientation as wxyz quaternion.
+
+physics:
+  sim_dt: 0.0024  # Physics simulation timestep in seconds.
+  gravity: [ 0.0, 0.0, -9.81 ]  # World gravity vector in m/s^2.
+  virtual_ground_height: null  # Optional debug ground plane height; null disables virtual ground forces.
+  physx_gpu_collision_stack_size: 167772160  # PhysX GPU collision stack size for large contact-heavy env batches.
+  rigid_body:
+    disable_gravity: false  # Disable gravity on robot rigid bodies when true.
+    retain_accelerations: false  # Keep acceleration data available after simulation steps.
+    linear_damping: 0.0  # Linear velocity damping applied to rigid bodies.
+    angular_damping: 0.0  # Angular velocity damping applied to rigid bodies.
+    max_linear_velocity: 1000.0  # Clamp for rigid-body linear velocity in m/s.
+    max_angular_velocity: 1000.0  # Clamp for rigid-body angular velocity in rad/s.
+    max_depenetration_velocity: 1.0  # Clamp for contact depenetration speed.
+  articulation:
+    enabled_self_collisions: false  # Enable collisions between links in the same articulation.
+    solver_position_iteration_count: 4  # PhysX solver position iterations; higher can improve constraint stability.
+    solver_velocity_iteration_count: 0  # PhysX solver velocity iterations; higher can improve velocity/contact accuracy.
+
+actuation:
+  flexor_angle_deg: 0.0  # Default flexor angle offset used by tendon/controller setup.
+  pantograph:
+    joint_names_expr: [ "rp1_pantograph", "rp2_pantograph" ]  # Joint name patterns controlled by this actuator group.
+    effort_limit_sim: 1000000.0  # Sim effort limit for the actuator group.
+    velocity_limit_sim: 100.0  # Sim velocity limit for the actuator group.
+    stiffness: 128000.0  # PD stiffness for the implicit actuator.
+    damping: 0.1  # PD damping for the implicit actuator.
+  hip_swing:
+    joint_names_expr: [ "r2_pseudo_acetabulofemoral_flexion", "l2_pseudo_acetabulofemoral_flexion" ]  # Hip flexion joints.
+    effort_limit_sim: 10000000.0  # Sim effort limit for hip swing joints.
+    velocity_limit_sim: 100.0  # Sim velocity limit for hip swing joints.
+    stiffness: 500.0  # PD stiffness for hip swing joints.
+    damping: 0.1  # PD damping for hip swing joints.
+  hip_roll:
+    joint_names_expr: [ "r0_acetabulofemoral_roll", "l0_acetabulofemoral_roll" ]  # Hip roll joints.
+    effort_limit_sim: 10000000.0  # Sim effort limit for hip roll joints.
+    velocity_limit_sim: 100.0  # Sim velocity limit for hip roll joints.
+    stiffness: 500.0  # PD stiffness for hip roll joints.
+    damping: 0.1  # PD damping for hip roll joints.
+  hip_lateral:
+    joint_names_expr: [ "r1_acetabulofemoral_lateral", "l1_acetabulofemoral_lateral" ]  # Hip lateral/yaw joints.
+    effort_limit_sim: 10000000.0  # Sim effort limit for hip lateral joints.
+    velocity_limit_sim: 100.0  # Sim velocity limit for hip lateral joints.
+    stiffness: 500.0  # PD stiffness for hip lateral joints.
+    damping: 0.1  # PD damping for hip lateral joints.
+  knee_flex:
+    joint_names_expr: [ "r8_knee_flexor", "l8_knee_flexor" ]  # Knee flexor joints.
+    effort_limit_sim: 10000000.0  # Sim effort limit for knee flexor joints.
+    velocity_limit_sim: 100.0  # Sim velocity limit for knee flexor joints.
+    stiffness: 500.0  # PD stiffness for knee flexor joints.
+    damping: 0.1  # PD damping for knee flexor joints.
+
+tendons:
+  baseline:
+    stiffness:
+      gst: 200000.0  # Gastrocnemius spring stiffness.
+      dft: 50000.0  # Deep flexor tendon stiffness.
+      edt1: 500000.0  # Extensor tendon 1 stiffness.
+      edt2: 500000.0  # Extensor tendon 2 stiffness.
+      kft: 500000.0  # Knee flexor tendon stiffness.
+    lengths:
+      gst_spring_rest: 0.06  # GST spring rest length.
+      upper_gst: 0.6917  # Upper GST path nominal length.
+      lower_gst: 0.6314  # Lower GST path nominal length.
+      dft: 0.384  # DFT nominal tendon length.
+      edt1: 0.54  # EDT1 nominal tendon length.
+      edt2: 0.65  # EDT2 nominal tendon length.
+      kft: 0.452  # KFT nominal tendon length.
+    joint_offsets_theta_deg:
+      j3: 227.671  # Joint 3 angular offset used by tendon geometry.
+      j4: 225.931  # Joint 4 angular offset used by tendon geometry.
+      j5: 180.0  # Joint 5 angular offset used by tendon geometry.
+      j6: 270.0  # Joint 6 angular offset used by tendon geometry.
+      j8: 180.0  # Joint 8 angular offset used by tendon geometry.
+    joint_directions:
+      j3: -1.0  # Sign mapping from robot joint angle to tendon model angle.
+      j4: 1.0  # Sign mapping from robot joint angle to tendon model angle.
+      j5: -1.0  # Sign mapping from robot joint angle to tendon model angle.
+      j6: -1.0  # Sign mapping from robot joint angle to tendon model angle.
+      j8: -1.0  # Sign mapping from robot joint angle to tendon model angle.
+    pulley_radii:
+      gst_3: 0.029  # GST pulley radius at joint 3.
+      gst_4: 0.1  # GST pulley radius at joint 4.
+      gst_4prime: 0.05  # GST pulley radius at virtual joint 4 prime.
+      gst_5: 0.04  # GST pulley radius at joint 5.
+      gst_6: 0.01  # GST pulley radius at joint 6.
+      dft_5: 0.04  # DFT pulley radius at joint 5.
+      dft_6: 0.01  # DFT pulley radius at joint 6.
+      edt1_5: 0.04  # EDT1 pulley radius at joint 5.
+      edt2_5: 0.04  # EDT2 pulley radius at joint 5.
+      edt2_6: 0.01  # EDT2 pulley radius at joint 6.
+      kft_8: 0.035  # KFT pulley radius at joint 8.
+    chain_link_lengths:
+      chain_23: 0.33  # Link length from joint 2 to joint 3.
+      chain_38: 0.33  # Link length from joint 3 to joint 8.
+      chain_34: 0.461  # Link length from joint 3 to joint 4.
+      chain_4prime5: 0.357  # Link length from virtual joint 4 prime to joint 5.
+      chain_56: 0.165  # Link length from joint 5 to joint 6.
+      chain_67: 0.044  # Link length from joint 6 to joint 7/end segment.
+    connector_link_lengths_longitudinal:
+      gst_23: 0.1072  # Longitudinal GST connector offset between joints 2 and 3.
+      dft_c5: 0.13  # Longitudinal DFT connector offset near joint 5.
+      edt1_c4: 0.17  # Longitudinal EDT1 connector offset near joint 4.
+      edt1_5c: 0.088  # Longitudinal EDT1 connector offset near joint 5.
+      edt2_c4: 0.22  # Longitudinal EDT2 connector offset near joint 4.
+      kft_3c: 0.0635  # Longitudinal KFT connector offset near joint 3.
+    connector_link_lengths_lateral:
+      gst_23: 0.0  # Lateral GST connector offset between joints 2 and 3.
+      dft_c5: 0.04  # Lateral DFT connector offset near joint 5.
+      edt1_c4: 0.04  # Lateral EDT1 connector offset near joint 4.
+      edt1_5c: 0.007  # Lateral EDT1 connector offset near joint 5.
+      edt2_c4: 0.04  # Lateral EDT2 connector offset near joint 4.
+      kft_3c: 0.009  # Lateral KFT connector offset near joint 3.
+    angles_deg:
+      gst_phi_23_j3: 98.874  # GST geometry angle between link 23 and joint 3.
+      angle_4prime5_to_j44prime: 124.069  # Angle between link 4prime-5 and joint 4-4prime.
+  randomization:
+    stiffness:
+      gst: [ 0.0, 0.0 ]  # Additive min/max randomization for GST stiffness.
+      dft: [ 0.0, 0.0 ]  # Additive min/max randomization for DFT stiffness.
+      edt1: [ 0.0, 0.0 ]  # Additive min/max randomization for EDT1 stiffness.
+      edt2: [ 0.0, 0.0 ]  # Additive min/max randomization for EDT2 stiffness.
+      kft: [ 0.0, 0.0 ]  # Additive min/max randomization for KFT stiffness.
+    lengths:
+      gst_spring_rest: [ 0.0, 0.0 ]  # Additive randomization for GST spring rest length.
+      upper_gst: [ 0.0, 0.0 ]  # Additive randomization for upper GST length.
+      lower_gst: [ 0.0, 0.0 ]  # Additive randomization for lower GST length.
+      dft: [ 0.0, 0.0 ]  # Additive randomization for DFT length.
+      edt1: [ 0.0, 0.0 ]  # Additive randomization for EDT1 length.
+      edt2: [ 0.0, 0.0 ]  # Additive randomization for EDT2 length.
+      kft: [ 0.0, 0.0 ]  # Additive randomization for KFT length.
+    joint_offsets_theta:
+      j3: [ 0.0, 0.0 ]  # Additive randomization for joint 3 tendon angle offset in radians.
+      j4: [ 0.0, 0.0 ]  # Additive randomization for joint 4 tendon angle offset in radians.
+      j5: [ 0.0, 0.0 ]  # Additive randomization for joint 5 tendon angle offset in radians.
+      j6: [ 0.0, 0.0 ]  # Additive randomization for joint 6 tendon angle offset in radians.
+      j8: [ 0.0, 0.0 ]  # Additive randomization for joint 8 tendon angle offset in radians.
+    pulley_radii:
+      gst_3: [ 0.0, 0.0 ]  # Additive randomization for GST joint-3 pulley radius.
+      gst_4: [ 0.0, 0.0 ]  # Additive randomization for GST joint-4 pulley radius.
+      gst_4prime: [ 0.0, 0.0 ]  # Additive randomization for GST 4-prime pulley radius.
+      gst_5: [ 0.0, 0.0 ]  # Additive randomization for GST joint-5 pulley radius.
+      gst_6: [ 0.0, 0.0 ]  # Additive randomization for GST joint-6 pulley radius.
+      dft_5: [ 0.0, 0.0 ]  # Additive randomization for DFT joint-5 pulley radius.
+      dft_6: [ 0.0, 0.0 ]  # Additive randomization for DFT joint-6 pulley radius.
+      edt1_5: [ 0.0, 0.0 ]  # Additive randomization for EDT1 joint-5 pulley radius.
+      edt2_5: [ 0.0, 0.0 ]  # Additive randomization for EDT2 joint-5 pulley radius.
+      edt2_6: [ 0.0, 0.0 ]  # Additive randomization for EDT2 joint-6 pulley radius.
+      kft_8: [ 0.0, 0.0 ]  # Additive randomization for KFT joint-8 pulley radius.
+    chain_link_lengths:
+      chain_23: [ 0.0, 0.0 ]  # Additive randomization for link 2-3 length.
+      chain_38: [ 0.0, 0.0 ]  # Additive randomization for link 3-8 length.
+      chain_34: [ 0.0, 0.0 ]  # Additive randomization for link 3-4 length.
+      chain_4prime5: [ 0.0, 0.0 ]  # Additive randomization for link 4-prime to 5 length.
+      chain_56: [ 0.0, 0.0 ]  # Additive randomization for link 5-6 length.
+      chain_67: [ 0.0, 0.0 ]  # Additive randomization for link 6-7/end length.
+    connector_link_lengths_longitudinal:
+      gst_23: [ 0.0, 0.0 ]  # Additive randomization for longitudinal GST connector offset.
+      dft_c5: [ 0.0, 0.0 ]  # Additive randomization for longitudinal DFT connector offset.
+      edt1_c4: [ 0.0, 0.0 ]  # Additive randomization for longitudinal EDT1 connector offset near joint 4.
+      edt1_5c: [ 0.0, 0.0 ]  # Additive randomization for longitudinal EDT1 connector offset near joint 5.
+      edt2_c4: [ 0.0, 0.0 ]  # Additive randomization for longitudinal EDT2 connector offset.
+      kft_3c: [ 0.0, 0.0 ]  # Additive randomization for longitudinal KFT connector offset.
+    connector_link_lengths_lateral:
+      gst_23: [ 0.0, 0.0 ]  # Additive randomization for lateral GST connector offset.
+      dft_c5: [ 0.0, 0.0 ]  # Additive randomization for lateral DFT connector offset.
+      edt1_c4: [ 0.0, 0.0 ]  # Additive randomization for lateral EDT1 connector offset near joint 4.
+      edt1_5c: [ 0.0, 0.0 ]  # Additive randomization for lateral EDT1 connector offset near joint 5.
+      edt2_c4: [ 0.0, 0.0 ]  # Additive randomization for lateral EDT2 connector offset.
+      kft_3c: [ 0.0, 0.0 ]  # Additive randomization for lateral KFT connector offset.
+    angles:
+      gst_phi_23_j3: [ 0.0, 0.0 ]  # Additive randomization for GST phi angle in radians.
+      angle_4prime5_to_j44prime: [ 0.0, 0.0 ]  # Additive randomization for 4-prime geometry angle in radians.
+  damping:
+    gst: 2.0  # Viscous damping applied to GST tendon force model.
+    dft: 2.0  # Viscous damping applied to DFT tendon force model.
+    kft: 2.0  # Viscous damping applied to KFT tendon force model.
+    edt1: 2.0  # Viscous damping applied to EDT1 tendon force model.
+    edt2: 2.0  # Viscous damping applied to EDT2 tendon force model.

@@ -8,12 +8,14 @@ import math
 import torch
 
 from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg, TerminationTermCfg
 from isaaclab.sensors import ContactSensorCfg
 
 # Experimental
-from isaaclab.tendons.models.analytic.constants import actuated_joint_names, dummy_randomization
+from isaaclab.tendons.models.analytic.constants import actuated_joint_names
+from isaaclab.tendons.parameter_loader import load_forrest_parameter_config
 from isaaclab.tendons.plugin.action_term_cfg import TendonActionTermHybridCfg
 from isaaclab.utils import configclass
 
@@ -26,59 +28,34 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import Lo
 # SPDX-License-Identifier: BSD-3-Clause
 
 
-##
-# Pre-defined configs
-##
-from isaaclab_assets import FORREST_CFG  # isort: skip
+from isaaclab_assets.robots.forrest import get_forrest_cfg  # isort: skip
 
 
 # -----------------------------------------------------------------------------
-# Reward weights
+# Centralized Forrest parameters
 # -----------------------------------------------------------------------------
-# Centralized here so reward tuning does not require digging through the config.
-# Set a value to 0.0 to disable the reward/penalty while keeping the term present
-# for future debugging and logging.
-REWARD_WEIGHTS = {
-    # Custom reward terms defined in ForrestRewards.
-    "alive": 0.0,
-    "termination_penalty": -200.0,
-    "track_base_height_exp": 0.0,
-    "track_lin_vel_xy_exp": 2.0,  # original: 1.0; currently disabled for debugging
-    "track_ang_vel_z_exp": 0.1,
-    "feet_crossing": -0.0,
-    # "feet_crossing": -2.0,
-    "feet_parallel_contact": -0.0,
-    # "feet_parallel_contact": -1.0,
-    "feet_air_time": 0.0,
-    "feet_slide": 0.0,
-    "joint_deviation_l1": -0.1,  # original: -0.1; currently disabled for debugging
-    "hip_deviation_l1": -0.3,  # original: -0.3; currently disabled for debugging
-    "gait_symmetry": -0.1,  # original: -1.0; keep spelling to match existing logs/config
-    # "gait_symmetry": -1.0,  # original: -1.0; keep spelling to match existing logs/config
-    "foot_connector_contact": -1.0,  # original: -1.0; currently disabled for debugging
-    # Inherited reward terms configured in __post_init__.
-    "lin_vel_z_l2": -0.1,  # disables vertical velocity penalty
-    "flat_orientation_l2": -1.0,  # original: -1.0; keeps base upright when enabled
-    "action_rate_l2": -0.0025,  # penalizes fast changes in actions
-    "dof_acc_l2": -1.25e-7,
-    "dof_torques_l2": -1.5e-8,
-}
+FORREST_PARAMS = load_forrest_parameter_config()
+FORREST_TENDON_RANDOMIZATION = FORREST_PARAMS.to_tendon_randomization_ranges()
+REWARD_WEIGHTS = FORREST_PARAMS.training.rewards.weights
+TRAINING_PARAMS = FORREST_PARAMS.training
+CONTACT_PARAMS = TRAINING_PARAMS.contacts
+REWARD_PARAMS = TRAINING_PARAMS.rewards
 
 FEET_CFG = SceneEntityCfg(
     "robot",
-    body_names=("s45_digit_assy_1", "s45_digit_assy_2"),
+    body_names=CONTACT_PARAMS.foot_body_names,
 )
 
 FOOT_CONNECTOR_CFG = SceneEntityCfg(
     "robot",
-    body_names=("s34_foot_connector_assy_1", "s34_foot_connector_assy_2"),
+    body_names=CONTACT_PARAMS.foot_connector_body_names,
 )
 
 # Foot order in FEET_CFG. Keep these as parameters so swapping bodies later is easy.
 #   s45_digit_assy_1 = right foot
 #   s45_digit_assy_2 = left foot
-RIGHT_FOOT_INDEX = 0
-LEFT_FOOT_INDEX = 1
+RIGHT_FOOT_INDEX = CONTACT_PARAMS.right_foot_index
+LEFT_FOOT_INDEX = CONTACT_PARAMS.left_foot_index
 
 # Foot reward frame convention.
 # Current model:
@@ -87,14 +64,18 @@ LEFT_FOOT_INDEX = 1
 # After fixing the USD so robot +X is front, change to:
 #   FEET_FORWARD_DIR_B = (1.0, 0.0, 0.0)
 #   FEET_LATERAL_DIR_B = (0.0, 1.0, 0.0)
-FEET_FORWARD_DIR_B = (0.0, -1.0, 0.0)
-FEET_LATERAL_DIR_B = (1.0, 0.0, 0.0)
+FEET_FORWARD_DIR_B = CONTACT_PARAMS.forward_dir_b
+FEET_LATERAL_DIR_B = CONTACT_PARAMS.lateral_dir_b
 
 # Kept for compatibility with older code/comments.
 FORWARD_AXIS = 1
 FORWARD_SIGN = -1.0
 LATERAL_AXIS = 0
 LEFT_SIGN = 1.0
+
+
+def _body_name_regex(body_names: tuple[str, ...] | list[str]) -> str:
+    return "(" + "|".join(body_names) + ")"
 
 
 def quat_to_rot_matrix(q: torch.Tensor) -> torch.Tensor:
@@ -168,6 +149,24 @@ def _safe_nonnegative_reward(value: torch.Tensor, max_value: float | None = None
 def _debug_index(env: ManagerBasedRLEnv, debug_env_id: int) -> int:
     """Clamp debug env index so prints cannot crash small play runs."""
     return int(max(0, min(debug_env_id, env.num_envs - 1)))
+
+
+def reset_root_state_uniform_all_envs_on_startup(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor | None,
+    pose_range: dict[str, tuple[float, float]],
+    velocity_range: dict[str, tuple[float, float]],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> None:
+    """Startup-safe wrapper around Isaac Lab's root reset event.
+
+    Startup events receive ``env_ids=None`` from the event manager, while
+    ``reset_root_state_uniform`` expects a tensor. For startup, apply the reset
+    to every environment.
+    """
+    if env_ids is None:
+        env_ids = torch.arange(env.num_envs, device=env.device)
+    mdp.reset_root_state_uniform(env, env_ids, pose_range, velocity_range, asset_cfg)
 
 
 def feet_crossing_penalty(
@@ -430,14 +429,14 @@ class ForrestRewards(RewardsCfg):
         weight=REWARD_WEIGHTS["feet_crossing"],
         params={
             "asset_cfg": FEET_CFG,
-            "min_lateral_separation": 0.10,
+            "min_lateral_separation": REWARD_PARAMS.feet_crossing["min_lateral_separation"],
             "lateral_dir_b": FEET_LATERAL_DIR_B,
-            "expected_foot0_lateral_order": -1.0,
-            "side_margin": 0.02,
-            "max_crossing_error": 0.25,
-            "debug": False,
-            "debug_every": 10,
-            "debug_env_id": 0,
+            "expected_foot0_lateral_order": REWARD_PARAMS.feet_crossing["expected_foot0_lateral_order"],
+            "side_margin": REWARD_PARAMS.feet_crossing["side_margin"],
+            "max_crossing_error": REWARD_PARAMS.feet_crossing["max_crossing_error"],
+            "debug": REWARD_PARAMS.feet_crossing["debug"],
+            "debug_every": REWARD_PARAMS.feet_crossing["debug_every"],
+            "debug_env_id": REWARD_PARAMS.feet_crossing["debug_env_id"],
         },
     )
 
@@ -447,12 +446,12 @@ class ForrestRewards(RewardsCfg):
         params={
             "asset_cfg": FEET_CFG,
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=FEET_CFG.body_names),
-            "contact_threshold": 1.0,
-            "sole_normal_axis": (0.0, 0.0, 1.0),
-            "ground_normal_w": (0.0, 0.0, 1.0),
-            "debug": False,
-            "debug_every": 100,
-            "debug_env_id": 0,
+            "contact_threshold": REWARD_PARAMS.feet_parallel_contact["contact_threshold"],
+            "sole_normal_axis": REWARD_PARAMS.feet_parallel_contact["sole_normal_axis"],
+            "ground_normal_w": REWARD_PARAMS.feet_parallel_contact["ground_normal_w"],
+            "debug": REWARD_PARAMS.feet_parallel_contact["debug"],
+            "debug_every": REWARD_PARAMS.feet_parallel_contact["debug_every"],
+            "debug_env_id": REWARD_PARAMS.feet_parallel_contact["debug_env_id"],
         },
     )
 
@@ -460,8 +459,8 @@ class ForrestRewards(RewardsCfg):
         func=track_base_height_exp,
         weight=REWARD_WEIGHTS["track_base_height_exp"],
         params={
-            "target_height": 1.4,
-            "std": 0.3,
+            "target_height": REWARD_PARAMS.track_base_height["target_height"],
+            "std": REWARD_PARAMS.track_base_height["std"],
             "asset_cfg": SceneEntityCfg("robot"),
         },
     )
@@ -476,13 +475,13 @@ class ForrestRewards(RewardsCfg):
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
         weight=REWARD_WEIGHTS["track_lin_vel_xy_exp"],
-        params={"command_name": "base_velocity", "std": 0.5},
+        params={"command_name": "base_velocity", "std": REWARD_PARAMS.track_velocity["lin_vel_xy_std"]},
     )
 
     track_ang_vel_z_exp = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
         weight=REWARD_WEIGHTS["track_ang_vel_z_exp"],
-        params={"command_name": "base_velocity", "std": 0.5},
+        params={"command_name": "base_velocity", "std": REWARD_PARAMS.track_velocity["ang_vel_z_std"]},
     )
 
     feet_air_time = RewTerm(
@@ -491,7 +490,7 @@ class ForrestRewards(RewardsCfg):
         params={
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=FEET_CFG.body_names),
-            "threshold": 0.4,
+            "threshold": REWARD_PARAMS.feet_air_time_threshold,
         },
     )
 
@@ -539,11 +538,11 @@ class ForrestRewards(RewardsCfg):
         params={
             "asset_cfg": FEET_CFG,
             "forward_dir_b": FEET_FORWARD_DIR_B,
-            "max_forward_separation": 0.25,
-            "max_forward_error": 0.75,
-            "debug": False,
-            "debug_every": 10,
-            "debug_env_id": 0,
+            "max_forward_separation": REWARD_PARAMS.gait_symmetry["max_forward_separation"],
+            "max_forward_error": REWARD_PARAMS.gait_symmetry["max_forward_error"],
+            "debug": REWARD_PARAMS.gait_symmetry["debug"],
+            "debug_every": REWARD_PARAMS.gait_symmetry["debug_every"],
+            "debug_env_id": REWARD_PARAMS.gait_symmetry["debug_env_id"],
         },
     )
 
@@ -552,7 +551,7 @@ class ForrestRewards(RewardsCfg):
         weight=REWARD_WEIGHTS["foot_connector_contact"],
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=FOOT_CONNECTOR_CFG.body_names),
-            "threshold": 1.0,
+            "threshold": REWARD_PARAMS.undesired_contact_threshold,
         },
     )
 
@@ -569,17 +568,15 @@ class ForrestActionsCfg:
         #     ".*flexor": math.radians(75),
         # },
         scale={
-            ".*roll": math.radians(15),
-            ".*lateral": math.radians(5),
-            ".*flexion": math.radians(20),
-            ".*flexor": math.radians(45),
+            joint_expr: math.radians(scale_deg) for joint_expr, scale_deg in TRAINING_PARAMS.actions.scale_deg.items()
         },
-        use_default_offset=True,
+        use_default_offset=TRAINING_PARAMS.actions.use_default_offset,
     )
 
     tendon = TendonActionTermHybridCfg(
         asset_name="robot",
-        randomization_ranges=dummy_randomization,
+        randomization_ranges=FORREST_TENDON_RANDOMIZATION,
+        parameters_file=None,
     )
 
 
@@ -592,9 +589,12 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # post init of parent
         super().__post_init__()
 
+        if TRAINING_PARAMS.episode_length_s is not None:
+            self.episode_length_s = TRAINING_PARAMS.episode_length_s
+
         # Scene
-        self.scene.robot = FORREST_CFG.replace(prim_path="{ENV_REGEX_NS}/forrest_urdf_latest")
-        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/forrest_urdf_latest/world_corrected"
+        self.scene.robot = get_forrest_cfg(FORREST_PARAMS).replace(prim_path=FORREST_PARAMS.robot.prim_path)
+        self.scene.height_scanner.prim_path = FORREST_PARAMS.robot.height_scanner_prim_path
 
         # TEMP (Used only to make flat env model work)
         # self.scene.height_scanner = None
@@ -602,7 +602,7 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # self.curriculum.terrain_levels = None
 
         # Solve issue with dropping contacts
-        self.sim.physx.gpu_collision_stack_size = 160 * 1024 * 1024  # 80 MB
+        self.sim.physx.gpu_collision_stack_size = FORREST_PARAMS.physics.physx_gpu_collision_stack_size
         # self.sim.physx.gpu_max_rigid_patch_count = 400000
 
         # Sensors
@@ -614,31 +614,38 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         #     track_air_time=True,
         # )
         self.scene.contact_forces = ContactSensorCfg(
-            prim_path="{ENV_REGEX_NS}/forrest_urdf_latest/(s45_digit_assy_1|s45_digit_assy_2|base_assy_v2_1|outside_hip_v2_assy_axial_left_1|outside_hip_v2_assy_axial_1|differential_cage_assy_small_motor_1|differential_cage_assy_small_motor_2|s34_foot_connector_assy_1|s34_foot_connector_assy_2)",
-            update_period=0.0,  # update every sim step
-            history_length=6,
-            debug_vis=False,
-            track_air_time=True,
+            prim_path=f"{FORREST_PARAMS.robot.prim_path}/{_body_name_regex(CONTACT_PARAMS.contact_sensor_body_names)}",
+            update_period=CONTACT_PARAMS.update_period,
+            history_length=CONTACT_PARAMS.history_length,
+            debug_vis=CONTACT_PARAMS.debug_vis,
+            track_air_time=CONTACT_PARAMS.track_air_time,
         )
 
         # Randomization
-        self.events.push_robot = None
-        self.events.add_base_mass = None
-        self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
-        self.events.base_external_force_torque.params["asset_cfg"].body_names = ["world_corrected"]
+        if TRAINING_PARAMS.events.disable_push_robot:
+            self.events.push_robot = None
+        if TRAINING_PARAMS.events.disable_add_base_mass:
+            self.events.add_base_mass = None
+        self.events.reset_robot_joints.params["position_range"] = (
+            TRAINING_PARAMS.events.reset_robot_joint_position_range
+        )
+        self.events.base_external_force_torque.params["asset_cfg"].body_names = list(
+            TRAINING_PARAMS.events.external_force_body_names
+        )
         self.events.reset_base.params = {
-            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-0.0, 0.0)},
-            # "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-            "velocity_range": {
-                "x": (0.0, 0.0),
-                "y": (0.0, 0.0),
-                "z": (0.0, 0.0),
-                "roll": (0.0, 0.0),
-                "pitch": (0.0, 0.0),
-                "yaw": (0.0, 0.0),
-            },
+            "pose_range": TRAINING_PARAMS.events.reset_base_pose_range,
+            "velocity_range": TRAINING_PARAMS.events.reset_base_velocity_range,
         }
-        self.events.base_com.params["asset_cfg"].body_names = ["world_corrected"]
+        if TRAINING_PARAMS.events.randomize_initial_base_pose:
+            self.events.startup_reset_base = EventTerm(
+                func=reset_root_state_uniform_all_envs_on_startup,
+                mode="startup",
+                params={
+                    "pose_range": TRAINING_PARAMS.events.reset_base_pose_range,
+                    "velocity_range": TRAINING_PARAMS.events.reset_base_velocity_range,
+                },
+            )
+        self.events.base_com.params["asset_cfg"].body_names = list(TRAINING_PARAMS.events.base_com_body_names)
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = REWARD_WEIGHTS["lin_vel_z_l2"]  # disables vertical velocity penalty
@@ -673,23 +680,17 @@ class ForrestRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # terminations
-        self.terminations.base_contact.params["sensor_cfg"].body_names = (
-            "base_assy_v2_1",
-            "differential_cage_assy_small_motor_1",
-            "differential_cage_assy_small_motor_2",
-            "outside_hip_v2_assy_axial_1",
-            "outside_hip_v2_assy_axial_left_1",
-        )
+        self.terminations.base_contact.params["sensor_cfg"].body_names = CONTACT_PARAMS.base_termination_body_names
 
         self.terminations.base_too_low = TerminationTermCfg(
             func=terminate_if_base_too_low,
-            params={"minimum_height": 0.2},
+            params={"minimum_height": TRAINING_PARAMS.terminations.base_too_low_height},
         )
 
         # Commands
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-4.0, -2.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.lin_vel_x = TRAINING_PARAMS.commands.lin_vel_x
+        self.commands.base_velocity.ranges.lin_vel_y = TRAINING_PARAMS.commands.lin_vel_y
+        self.commands.base_velocity.ranges.ang_vel_z = TRAINING_PARAMS.commands.ang_vel_z
 
         # # DEBUG
         # self.observations.policy.enable_corruption = False
@@ -707,7 +708,7 @@ class ForrestRoughEnvCfg_PLAY(ForrestRoughEnvCfg):
         # make a smaller scene for play
         # self.scene.num_envs = 50
         # self.scene.env_spacing = 2.5
-        self.episode_length_s = 40.0
+        self.episode_length_s = TRAINING_PARAMS.play_episode_length_s
 
         # spawn the robot randomly in the grid (instead of their terrain levels)
         self.scene.terrain.max_init_terrain_level = None

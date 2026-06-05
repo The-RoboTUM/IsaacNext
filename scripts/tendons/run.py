@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from isaaclab.app import AppLauncher
+from isaaclab.tendons.parameter_loader import load_forrest_parameter_config
 
 parser = argparse.ArgumentParser(description="Run the Forrest tendon simulation.")
 parser.add_argument("--jit", action="store_true", help="Use the TorchScript/JIT tendon path.")
@@ -24,41 +25,50 @@ parser.add_argument("--record_video", action="store_true", help="Record video of
 parser.add_argument(
     "--video_output",
     type=str,
-    default="outputs/simulation.mp4",
+    default=None,
     help="Output path for the video.",
 )
 parser.add_argument(
     "--output_dir",
     type=str,
-    default="outputs",
+    default=None,
     help="Directory used for debug JSONL logs and optional video output.",
 )
 parser.add_argument(
     "--duration",
     type=float,
-    default=2.0,
+    default=None,
     help="Simulation duration in seconds.",
 )
 parser.add_argument(
     "--status_interval",
     type=int,
-    default=100,
+    default=None,
     help="Print one status line every N simulation steps.",
 )
 parser.add_argument(
     "--controller",
     choices=("cpg", "sin"),
-    default="cpg",
+    default=None,
     help="Leg controller to use for actuated joints.",
 )
 parser.add_argument(
     "--parameters_file",
     type=str,
-    default="",
-    help="Directory used for debug JSONL logs and optional video output.",
+    default=None,
+    help="Path to a Forrest parameter YAML file or profile directory.",
 )
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
+
+FORREST_PARAMS = load_forrest_parameter_config(args_cli.parameters_file)
+args_cli.video_output = args_cli.video_output or FORREST_PARAMS.run.video_output
+args_cli.output_dir = args_cli.output_dir or FORREST_PARAMS.run.output_dir
+args_cli.duration = args_cli.duration if args_cli.duration is not None else FORREST_PARAMS.run.duration
+args_cli.status_interval = (
+    args_cli.status_interval if args_cli.status_interval is not None else FORREST_PARAMS.run.status_interval
+)
+args_cli.controller = args_cli.controller or FORREST_PARAMS.run.controller
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -78,13 +88,13 @@ from isaaclab.tendons.controllers.cpg import BirdBotCPGLeg, CPGParams
 from isaaclab.tendons.controllers.sinusoidal import SinusoidalLegController, SinusoidalParams
 from isaaclab.tendons.manager import TendonManager
 from isaaclab.tendons.models.analytic.constants import joint_names_left, joint_names_right
+from isaaclab.tendons.models.analytic.tendon_data import TendonData
 
-from isaaclab_assets.robots.forrest import FORREST_CFG
+from isaaclab_assets.robots.forrest import get_forrest_cfg
 
 USD_PATH = "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"
-# VIRTUAL_GROUND_HEIGHT = 0.38
-VIRTUAL_GROUND_HEIGHT = None
-SIM_DT = 0.0024
+VIRTUAL_GROUND_HEIGHT = FORREST_PARAMS.physics.virtual_ground_height
+SIM_DT = FORREST_PARAMS.physics.sim_dt
 
 
 # Enable this while hunting for autograd issues in the tendon model.
@@ -176,25 +186,48 @@ def setup_video_writer(args, sim_cfg):
     return camera, video_writer
 
 
-def add_fixed_world_joint(sim):
+def add_fixed_world_joint(sim, params):
     """Lock /World/Bot/world_corrected to the world with a fixed USD joint."""
-    from pxr import Gf, Sdf, UsdPhysics
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 
     stage = sim.stage
-    body_path = Sdf.Path("/World/Bot/world_corrected")
-    joint_path = Sdf.Path("/World/Bot/world_corrected_fixed_joint")
+    body_path = Sdf.Path(params.robot.fixed_world_body_path)
+    joint_path = Sdf.Path(params.robot.fixed_world_joint_path)
+    body_prim = stage.GetPrimAtPath(body_path)
+    if not body_prim.IsValid():
+        raise RuntimeError(f"Cannot create fixed world joint: body prim does not exist: {body_path}")
+
+    body_tf = UsdGeom.Xformable(body_prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+    body_tf.Orthonormalize()
+    body_pos_w = body_tf.ExtractTranslation()
+    body_rot_w = body_tf.ExtractRotationQuat()
+
+    if params.robot.fixed_world_joint_local_pos0 is None:
+        local_pos0 = Gf.Vec3f(float(body_pos_w[0]), float(body_pos_w[1]), float(body_pos_w[2]))
+    else:
+        local_pos0 = Gf.Vec3f(*params.robot.fixed_world_joint_local_pos0)
+
+    if params.robot.fixed_world_joint_local_rot0_wxyz is None:
+        local_rot0 = Gf.Quatf(
+            float(body_rot_w.real),
+            float(body_rot_w.imaginary[0]),
+            float(body_rot_w.imaginary[1]),
+            float(body_rot_w.imaginary[2]),
+        )
+    else:
+        local_rot0 = Gf.Quatf(*params.robot.fixed_world_joint_local_rot0_wxyz)
 
     fixed_joint = UsdPhysics.FixedJoint.Define(stage, joint_path)
     fixed_joint.CreateBody1Rel().SetTargets([body_path])
-    fixed_joint.CreateLocalPos0Attr(Gf.Vec3f(0.0, 0.0, 1.5))
-    fixed_joint.CreateLocalRot0Attr(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+    fixed_joint.CreateLocalPos0Attr(local_pos0)
+    fixed_joint.CreateLocalRot0Attr(local_rot0)
     fixed_joint.CreateLocalPos1Attr(Gf.Vec3f(0.0, 0.0, 0.0))
     fixed_joint.CreateLocalRot1Attr(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
     fixed_joint.CreateCollisionEnabledAttr(False)
 
 
 def make_actuated_dof_specs(robot_cfg):
-    """Build target joint specs from FORREST_CFG.actuators.
+    """Build target joint specs from the configured Forrest actuators.
 
     run.py intentionally does not contain concrete joint names. The actual
     joint regex/name strings come from the robot config actuator groups.
@@ -396,7 +429,7 @@ def main():
     output_dir = Path(args_cli.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=(0.0, 0.0, -9.81))
+    sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=tuple(FORREST_PARAMS.physics.gravity))
     sim_cfg.dt = SIM_DT
     num_steps = int(args_cli.duration / sim_cfg.dt)
     print_startup_summary(args_cli, sim_cfg, num_steps)
@@ -404,7 +437,7 @@ def main():
     sim = SimulationContext(sim_cfg)
     sim.set_camera_view([2.0, 2.0, 2.0], [0.0, 0.0, 0.5])
 
-    robot_cfg = FORREST_CFG.replace(prim_path="/World/Bot")
+    robot_cfg = get_forrest_cfg(FORREST_PARAMS).replace(prim_path="/World/Bot")
     robot = Articulation(robot_cfg)
 
     sim_utils.GroundPlaneCfg().func("/World/defaultGroundPlane", sim_utils.GroundPlaneCfg())
@@ -419,7 +452,7 @@ def main():
     camera, video_writer = setup_video_writer(args_cli, sim_cfg)
 
     sim.reset()
-    add_fixed_world_joint(sim)
+    add_fixed_world_joint(sim, FORREST_PARAMS)
     # robot.write_joint_state_to_sim(
     #     position=robot.data.default_joint_pos,
     #     velocity=robot.data.default_joint_vel,
@@ -431,10 +464,18 @@ def main():
 
     joint_indices_right, _ = robot.find_joints(joint_names_right, preserve_order=True)
     joint_indices_left, _ = robot.find_joints(joint_names_left, preserve_order=True)
-    actuated_dof_specs = make_actuated_dof_specs(FORREST_CFG)
+    actuated_dof_specs = make_actuated_dof_specs(robot_cfg)
     actuated_joint_indices = find_actuated_joint_indices(robot, actuated_dof_specs)
 
-    tendon_manager = TendonManager(robot)
+    tendon_manager = TendonManager(
+        robot,
+        tendon_data=TendonData(
+            robot.num_instances,
+            FORREST_PARAMS.to_tendon_randomization_ranges(),
+            tc=FORREST_PARAMS.to_tendon_constants(),
+        ),
+        tendon_damping=FORREST_PARAMS.tendon_damping(),
+    )
     left_controller, right_controller = make_leg_controllers(args_cli.controller)
 
     mode_label = "jit" if args_cli.jit else "debug"

@@ -35,6 +35,7 @@ from isaaclab.tendons.models.analytic.constants import (
     tids,
 )
 from isaaclab.tendons.models.analytic.tendon_data import TendonData
+from isaaclab.tendons.parameter_loader import load_forrest_parameter_config
 
 if TYPE_CHECKING:
     from isaaclab.tendons.plugin.action_term_cfg import TendonActionTermCfg, TendonActionTermHybridCfg
@@ -59,12 +60,14 @@ class TendonActionTermHybrid(ActionTerm):
 
         self.robot = env.scene.articulations[cfg.asset_name]
         self._env = env
+        tendon_constants = load_forrest_parameter_config(cfg.parameters_file).to_tendon_constants()
 
         self.tendon_manager = TendonManager(
             robot=self.robot,
             tendon_data=TendonData(
                 batch_size=env.num_envs,
                 randomization_ranges=cfg.randomization_ranges,
+                tc=tendon_constants,
             ),
         )
 
@@ -184,12 +187,14 @@ class TendonActionTerm(ActionTerm):
         # Additional initialization for tendon actions can be added here
 
         self.robot = env.scene.articulations[cfg.asset_name]
+        tendon_constants = load_forrest_parameter_config(cfg.parameters_file).to_tendon_constants()
 
         self.tendon_manager = TendonManager(
             robot=self.robot,
             tendon_data=TendonData(
                 batch_size=env.num_envs,
                 randomization_ranges=cfg.randomization_ranges,
+                tc=tendon_constants,
             ),
         )
 
@@ -279,7 +284,7 @@ class TendonActionTerm(ActionTerm):
             JOINT_AXIS_IDX,
         ] += self._processed_actions[:, 1]
 
-        self.robot.set_external_force_and_torque(
+        self.robot.permanent_wrench_composer.set_forces_and_torques(
             forces=torch.zeros((batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device),
             torques=tendon_torques_full,
             body_ids=self.link_indices_left_right,
