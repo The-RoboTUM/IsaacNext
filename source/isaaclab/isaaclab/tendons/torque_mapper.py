@@ -13,7 +13,7 @@ from isaaclab.tendons.models.analytic.constants import JOINT_AXIS_IDX, N_CHAIN_L
 def joint_to_link_torques_jit_kernel(
     tendon_torques_joints_left: torch.Tensor,
     tendon_torques_joints_right: torch.Tensor,
-    batch_size: int,
+    link_torques: torch.Tensor,
 ) -> torch.Tensor:
     """TorchScript tensor-only joint-to-link torque mapping."""
     N_CHAIN_LINKS_PER_LEG: int = 6
@@ -29,24 +29,24 @@ def joint_to_link_torques_jit_kernel(
     I_JOINT_5: int = 2
     I_JOINT_6: int = 3
     I_JOINT_8: int = 4
-    left = tendon_torques_joints_left.clone()
-    right = tendon_torques_joints_right.clone()
+    link_torques.zero_()
 
     # Preserve the direction convention from the old apply_debug implementation.
-    left[:, I_JOINT_3] = left[:, I_JOINT_3] * -1.0
-    right[:, I_JOINT_3] = right[:, I_JOINT_3] * -1.0
-    left[:, I_JOINT_4] = left[:, I_JOINT_4] * -1.0
-    right[:, I_JOINT_4] = right[:, I_JOINT_4] * -1.0
+    left_joint_3 = -tendon_torques_joints_left[:, I_JOINT_3]
+    right_joint_3 = -tendon_torques_joints_right[:, I_JOINT_3]
+    left_joint_4 = -tendon_torques_joints_left[:, I_JOINT_4]
+    right_joint_4 = -tendon_torques_joints_right[:, I_JOINT_4]
 
-    link_torques = left.new_zeros((batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3))
+    left = tendon_torques_joints_left
+    right = tendon_torques_joints_right
 
-    link_torques[:, I_CHAIN_LINK_23, JOINT_AXIS_IDX] = left[:, I_JOINT_3]
-    link_torques[:, I_CHAIN_LINK_34, JOINT_AXIS_IDX] = left[:, I_JOINT_4]
+    link_torques[:, I_CHAIN_LINK_23, JOINT_AXIS_IDX] = left_joint_3
+    link_torques[:, I_CHAIN_LINK_34, JOINT_AXIS_IDX] = left_joint_4
     link_torques[:, I_CHAIN_LINK_4prime5, JOINT_AXIS_IDX] = left[:, I_JOINT_5]
     link_torques[:, I_CHAIN_LINK_56, JOINT_AXIS_IDX] = left[:, I_JOINT_6]
 
-    link_torques[:, I_CHAIN_LINK_23 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] = right[:, I_JOINT_3]
-    link_torques[:, I_CHAIN_LINK_34 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] = right[:, I_JOINT_4]
+    link_torques[:, I_CHAIN_LINK_23 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] = right_joint_3
+    link_torques[:, I_CHAIN_LINK_34 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] = right_joint_4
     link_torques[:, I_CHAIN_LINK_4prime5 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] = right[:, I_JOINT_5]
     link_torques[:, I_CHAIN_LINK_56 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] = right[:, I_JOINT_6]
 
@@ -54,14 +54,14 @@ def joint_to_link_torques_jit_kernel(
     link_torques[:, I_CHAIN_LINK_23, JOINT_AXIS_IDX] += left[:, I_JOINT_8]
     link_torques[:, I_CHAIN_LINK_23 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] += right[:, I_JOINT_8]
 
-    link_torques[:, I_CHAIN_LINK_34, JOINT_AXIS_IDX] -= left[:, I_JOINT_3]
-    link_torques[:, I_CHAIN_LINK_4prime5, JOINT_AXIS_IDX] -= left[:, I_JOINT_4]
+    link_torques[:, I_CHAIN_LINK_34, JOINT_AXIS_IDX] -= left_joint_3
+    link_torques[:, I_CHAIN_LINK_4prime5, JOINT_AXIS_IDX] -= left_joint_4
     link_torques[:, I_CHAIN_LINK_56, JOINT_AXIS_IDX] -= left[:, I_JOINT_5]
     link_torques[:, I_CHAIN_LINK_67, JOINT_AXIS_IDX] -= left[:, I_JOINT_6]
     link_torques[:, I_CHAIN_LINK_38, JOINT_AXIS_IDX] -= left[:, I_JOINT_8]
 
-    link_torques[:, I_CHAIN_LINK_34 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] -= right[:, I_JOINT_3]
-    link_torques[:, I_CHAIN_LINK_4prime5 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] -= right[:, I_JOINT_4]
+    link_torques[:, I_CHAIN_LINK_34 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] -= right_joint_3
+    link_torques[:, I_CHAIN_LINK_4prime5 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] -= right_joint_4
     link_torques[:, I_CHAIN_LINK_56 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] -= right[:, I_JOINT_5]
     link_torques[:, I_CHAIN_LINK_67 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] -= right[:, I_JOINT_6]
     link_torques[:, I_CHAIN_LINK_38 + N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] -= right[:, I_JOINT_8]
@@ -74,6 +74,7 @@ class TendonTorqueMapper:
 
     def __init__(self, device):
         self.device = device
+        self._link_torques_jit = None
 
     def joint_to_link_torques(
         self,
@@ -131,8 +132,10 @@ class TendonTorqueMapper:
         *,
         batch_size: int,
     ) -> torch.Tensor:
+        if self._link_torques_jit is None or self._link_torques_jit.shape[0] != batch_size:
+            self._link_torques_jit = torch.zeros((batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device)
         return joint_to_link_torques_jit_kernel(
             tendon_torques_joints_left,
             tendon_torques_joints_right,
-            batch_size,
+            self._link_torques_jit,
         )

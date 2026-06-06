@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import math
+import os
+import time
 from collections.abc import Sequence
 from typing import Any, ClassVar
 
@@ -85,6 +87,20 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         # -- set the framerate of the gym video recorder wrapper so that the playback speed of the
         #    produced video matches the simulation
         self.metadata["render_fps"] = 1 / self.step_dt
+        self._profile_enabled = os.getenv("ISAACLAB_ENV_PROFILE", "0").lower() in ("1", "true", "yes", "on")
+        self._profile_interval = max(1, int(os.getenv("ISAACLAB_ENV_PROFILE_INTERVAL", "1000")))
+        self._profile_count = 0
+        self._profile_totals = {
+            "action": 0.0,
+            "physics": 0.0,
+            "termination": 0.0,
+            "reward": 0.0,
+            "record": 0.0,
+            "reset": 0.0,
+            "command_event": 0.0,
+            "observation": 0.0,
+            "total": 0.0,
+        }
 
         print("[INFO]: Completed setting up the environment...")
 
@@ -169,8 +185,10 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         Returns:
             A tuple containing the observations, rewards, resets (terminated and truncated) and extras.
         """
+        t_start = self._profile_time()
         # process actions
         self.action_manager.process_action(action.to(self.device))
+        t_action = self._profile_time()
 
         self.recorder_manager.record_pre_step()
 
@@ -195,6 +213,7 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
                 self.sim.render()
             # update buffers at sim dt
             self.scene.update(dt=self.physics_dt)
+        t_physics = self._profile_time()
 
         # post-step:
         # -- update env counters (used for curriculum generation)
@@ -204,13 +223,16 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         self.reset_buf = self.termination_manager.compute()
         self.reset_terminated = self.termination_manager.terminated
         self.reset_time_outs = self.termination_manager.time_outs
+        t_termination = self._profile_time()
         # -- reward computation
         self.reward_buf = self.reward_manager.compute(dt=self.step_dt)
+        t_reward = self._profile_time()
 
         if len(self.recorder_manager.active_terms) > 0:
             # update observations for recording if needed
             self.obs_buf = self.observation_manager.compute()
             self.recorder_manager.record_post_step()
+        t_record = self._profile_time()
 
         # -- reset envs that terminated/timed-out and log the episode information
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
@@ -227,15 +249,29 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
 
             # trigger recorder terms for post-reset calls
             self.recorder_manager.record_post_reset(reset_env_ids)
+        t_reset = self._profile_time()
 
         # -- update command
         self.command_manager.compute(dt=self.step_dt)
         # -- step interval events
         if "interval" in self.event_manager.available_modes:
             self.event_manager.apply(mode="interval", dt=self.step_dt)
+        t_command_event = self._profile_time()
         # -- compute observations
         # note: done after reset to get the correct observations for reset envs
         self.obs_buf = self.observation_manager.compute(update_history=True)
+        t_observation = self._profile_time()
+        self._profile_record(
+            t_start,
+            t_action,
+            t_physics,
+            t_termination,
+            t_reward,
+            t_record,
+            t_reset,
+            t_command_event,
+            t_observation,
+        )
 
         # return observations, rewards, resets and extras
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
@@ -317,6 +353,57 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
     """
     Helper functions.
     """
+
+    def _profile_time(self) -> float:
+        if not self._profile_enabled:
+            return 0.0
+        if torch.cuda.is_available() and "cuda" in str(self.device):
+            torch.cuda.synchronize(device=self.device)
+        return time.perf_counter()
+
+    def _profile_record(
+        self,
+        t_start: float,
+        t_action: float,
+        t_physics: float,
+        t_termination: float,
+        t_reward: float,
+        t_record: float,
+        t_reset: float,
+        t_command_event: float,
+        t_observation: float,
+    ):
+        if not self._profile_enabled:
+            return
+        self._profile_count += 1
+        self._profile_totals["action"] += t_action - t_start
+        self._profile_totals["physics"] += t_physics - t_action
+        self._profile_totals["termination"] += t_termination - t_physics
+        self._profile_totals["reward"] += t_reward - t_termination
+        self._profile_totals["record"] += t_record - t_reward
+        self._profile_totals["reset"] += t_reset - t_record
+        self._profile_totals["command_event"] += t_command_event - t_reset
+        self._profile_totals["observation"] += t_observation - t_command_event
+        self._profile_totals["total"] += t_observation - t_start
+        if self._profile_count % self._profile_interval != 0:
+            return
+
+        scale = 1000.0 / self._profile_interval
+        print(
+            "[ManagerBasedRLEnv profile] "
+            f"step avg over {self._profile_interval} calls: "
+            f"action={self._profile_totals['action'] * scale:.3f} ms, "
+            f"physics={self._profile_totals['physics'] * scale:.3f} ms, "
+            f"termination={self._profile_totals['termination'] * scale:.3f} ms, "
+            f"reward={self._profile_totals['reward'] * scale:.3f} ms, "
+            f"record={self._profile_totals['record'] * scale:.3f} ms, "
+            f"reset={self._profile_totals['reset'] * scale:.3f} ms, "
+            f"command_event={self._profile_totals['command_event'] * scale:.3f} ms, "
+            f"observation={self._profile_totals['observation'] * scale:.3f} ms, "
+            f"total={self._profile_totals['total'] * scale:.3f} ms"
+        )
+        for key in self._profile_totals:
+            self._profile_totals[key] = 0.0
 
     def _configure_gym_env_spaces(self):
         """Configure the action and observation spaces for the Gym environment."""

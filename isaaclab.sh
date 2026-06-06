@@ -207,6 +207,51 @@ extract_python_exe() {
     echo ${python_exe}
 }
 
+# expose native libraries from pip-installed Isaac Sim extensions to Python.
+# Some Kit Python extension modules depend on .so files in sibling extension bin/lib folders.
+setup_isaacsim_ext_lib_paths() {
+    local python_exe=$(extract_python_exe)
+    local ext_lib_paths
+    ext_lib_paths=$("${python_exe}" -c '
+import os
+import pathlib
+
+try:
+    import isaacsim
+except Exception:
+    raise SystemExit(0)
+
+roots = []
+pkg_root = pathlib.Path(isaacsim.__file__).resolve().parent
+candidates = [
+    pkg_root / "extscache",
+    pkg_root.parent / "extscache",
+]
+if os.environ.get("ISAAC_PATH"):
+    candidates.append(pathlib.Path(os.environ["ISAAC_PATH"]) / "extscache")
+
+for candidate in candidates:
+    if candidate.is_dir() and candidate not in roots:
+        roots.append(candidate)
+
+paths = []
+seen = set()
+for root in roots:
+    for path in root.rglob("*"):
+        if path.is_dir() and path.name in ("bin", "lib"):
+            path_str = str(path)
+            if path_str not in seen:
+                seen.add(path_str)
+                paths.append(path_str)
+
+print(":".join(paths), end="")
+' 2>/dev/null || true)
+
+    if [ -n "${ext_lib_paths}" ]; then
+        export LD_LIBRARY_PATH="${ext_lib_paths}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+    fi
+}
+
 # extract the simulator exe from isaacsim
 extract_isaacsim_exe() {
     # obtain the isaac sim path
@@ -694,6 +739,7 @@ while [[ $# -gt 0 ]]; do
             fi
             # run the python provided by isaacsim
             python_exe=$(extract_python_exe)
+            setup_isaacsim_ext_lib_paths
             echo "[INFO] Using python from: ${python_exe}"
             shift # past argument
             ${python_exe} "$@"
@@ -724,6 +770,7 @@ while [[ $# -gt 0 ]]; do
         -t|--test)
             # run the python provided by isaacsim
             python_exe=$(extract_python_exe)
+            setup_isaacsim_ext_lib_paths
             shift # past argument
             ${python_exe} -m pytest ${ISAACLAB_PATH}/tools $@
             # exit neatly

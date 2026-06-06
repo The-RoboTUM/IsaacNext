@@ -9,7 +9,7 @@ import torch
 
 from isaaclab.tendons.models.analytic.geometry.lengths import compute_all_tendon_delta_lengths
 from isaaclab.tendons.models.analytic.jit_model import compute_analytic_tendon_energy_jit, compute_delta_l_s_jit
-from isaaclab.tendons.models.analytic.spring_energy import SpringEnergyModel
+from isaaclab.tendons.models.analytic.spring_energy import SpringEnergyModel, compute_spring_energy_from_delta_lengths
 from isaaclab.tendons.models.base import TendonEnergyModel, TendonModelOutput
 
 
@@ -43,6 +43,20 @@ class AnalyticTendonEnergyModel(TendonEnergyModel):
         """TorchScript energy forward pass used by ``TendonManager.compute_torques_jit``."""
         total_energy, _, _, _, _, _ = compute_analytic_tendon_energy_jit(joint_angles, self.tendon_data_jit)
         return total_energy
+
+    def energy_from_delta_lengths_jit(
+        self,
+        deltas: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    ) -> torch.Tensor:
+        """Compute scripted spring energy from already-computed tendon delta lengths."""
+        return compute_spring_energy_from_delta_lengths(
+            deltas[0],
+            deltas[1],
+            deltas[2],
+            deltas[3],
+            deltas[4],
+            self.tendon_data_jit,
+        ).energy
 
     def energy_debug(self, joint_angles: torch.Tensor) -> TendonModelOutput:
         """Eager debug path with all available intermediate tensors."""

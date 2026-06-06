@@ -32,7 +32,7 @@ boom:
   body_path_template: "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected"  # Rigid body constrained by the boom.
   joint_path_template: "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected_planar_boom_joint"  # Boom joint prim path.
   locked_axes: [ "transX", "rotY", "rotZ" ]  # D6 axes locked by the planar boom.
-  lock_x_angle: true  # Also lock rotX when true.
+  lock_x_angle: false  # Also lock rotX when true.
   body_anchor_pos: [ 0.0, 0.0, 0.0 ]  # Joint anchor position in the constrained body frame.
   body_anchor_rot_wxyz: [ 1.0, 0.0, 0.0, 0.0 ]  # Joint anchor orientation in the constrained body frame.
   debug: false  # Print created boom joints and locked axes.

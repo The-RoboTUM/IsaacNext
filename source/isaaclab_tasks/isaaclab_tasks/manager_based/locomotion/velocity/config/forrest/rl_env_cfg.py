@@ -76,14 +76,11 @@ def quat_to_rot_matrix(q: torch.Tensor) -> torch.Tensor:
     return quat_to_rot_matrix_wxyz(q)
 
 
+@torch.jit.script
 def quat_to_rot_matrix_wxyz(q: torch.Tensor) -> torch.Tensor:
     """Convert Isaac Lab quaternions from (w, x, y, z) to rotation matrices.
 
-    Supports shape:
-        [N, 4]
-        [N, B, 4]
-    Returns:
-        [N, 3, 3] or [N, B, 3, 3]
+    TorchScript-friendly for shape [N, 4] or [N, B, 4].
     """
     w, x, y, z = q.unbind(-1)
 
@@ -93,20 +90,22 @@ def quat_to_rot_matrix_wxyz(q: torch.Tensor) -> torch.Tensor:
 
     rot = torch.stack(
         [
-            1 - 2 * (yy + zz),
-            2 * (xy - wz),
-            2 * (xz + wy),
-            2 * (xy + wz),
-            1 - 2 * (xx + zz),
-            2 * (yz - wx),
-            2 * (xz - wy),
-            2 * (yz + wx),
-            1 - 2 * (xx + yy),
+            1.0 - 2.0 * (yy + zz),
+            2.0 * (xy - wz),
+            2.0 * (xz + wy),
+            2.0 * (xy + wz),
+            1.0 - 2.0 * (xx + zz),
+            2.0 * (yz - wx),
+            2.0 * (xz - wy),
+            2.0 * (yz + wx),
+            1.0 - 2.0 * (xx + yy),
         ],
         dim=-1,
     )
 
-    return rot.reshape(*q.shape[:-1], 3, 3)
+    if q.dim() == 2:
+        return rot.reshape(q.size(0), 3, 3)
+    return rot.reshape(q.size(0), q.size(1), 3, 3)
 
 
 def _unit_vec(
@@ -120,19 +119,126 @@ def _unit_vec(
     return torch.nan_to_num(vec / norm, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+@torch.jit.script
+def _normalize_vec3_tensor(vec: torch.Tensor) -> torch.Tensor:
+    """Return a finite unit vector. Input must already be on the target device/dtype."""
+    norm = torch.norm(vec).clamp(min=1e-8)
+    return torch.nan_to_num(vec / norm, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+@torch.jit.script
 def _project_along(values: torch.Tensor, direction: torch.Tensor) -> torch.Tensor:
     """Project [..., 3] vectors onto a unit direction."""
     return torch.sum(values * direction, dim=-1)
 
 
+@torch.jit.script
+def _safe_nonnegative_reward_unbounded(value: torch.Tensor) -> torch.Tensor:
+    value = torch.nan_to_num(value, nan=0.0, posinf=0.0, neginf=0.0)
+    return torch.clamp(value, min=0.0)
+
+
+@torch.jit.script
+def _safe_nonnegative_reward_bounded(value: torch.Tensor, max_value: float) -> torch.Tensor:
+    value = torch.nan_to_num(value, nan=0.0, posinf=max_value, neginf=0.0)
+    return torch.clamp(value, min=0.0, max=max_value)
+
+
 def _safe_nonnegative_reward(value: torch.Tensor, max_value: float | None = None) -> torch.Tensor:
     """Make custom penalty terms finite so they cannot poison PPO."""
     if max_value is None:
-        value = torch.nan_to_num(value, nan=0.0, posinf=0.0, neginf=0.0)
-        return torch.clamp(value, min=0.0)
+        return _safe_nonnegative_reward_unbounded(value)
+    return _safe_nonnegative_reward_bounded(value, max_value)
 
-    value = torch.nan_to_num(value, nan=0.0, posinf=max_value, neginf=0.0)
-    return torch.clamp(value, min=0.0, max=max_value)
+
+@torch.jit.script
+def _feet_crossing_penalty_core(
+    pos_b: torch.Tensor,
+    lateral_dir: torch.Tensor,
+    min_lateral_separation: float,
+    expected_foot0_lateral_order: float,
+    side_margin: float,
+    max_crossing_error: float,
+) -> torch.Tensor:
+    lateral_dir = _normalize_vec3_tensor(lateral_dir)
+    lateral_coord = _project_along(pos_b, lateral_dir)
+
+    order_sign = -1.0
+    if expected_foot0_lateral_order >= 0.0:
+        order_sign = 1.0
+
+    delta_01 = lateral_coord[:, 0] - lateral_coord[:, 1]
+    signed_separation = order_sign * delta_01
+
+    order_error = torch.clamp(
+        min_lateral_separation - signed_separation,
+        min=0.0,
+        max=max_crossing_error,
+    )
+
+    side_score_0 = lateral_coord[:, 0] * order_sign
+    side_score_1 = lateral_coord[:, 1] * (-order_sign)
+    side_score = torch.stack((side_score_0, side_score_1), dim=1)
+    side_error = torch.clamp(side_margin - side_score, min=0.0, max=max_crossing_error)
+
+    penalty = order_error.square() + 0.5 * side_error.square().mean(dim=1)
+    return _safe_nonnegative_reward_bounded(penalty, max_crossing_error * max_crossing_error * 1.5)
+
+
+@torch.jit.script
+def _feet_parallel_contact_penalty_core(
+    foot_quat_w: torch.Tensor,
+    contact_force_w: torch.Tensor,
+    sole_normal_axis: torch.Tensor,
+    ground_normal_w: torch.Tensor,
+    contact_threshold: float,
+) -> torch.Tensor:
+    foot_quat_w = foot_quat_w / torch.norm(foot_quat_w, dim=-1, keepdim=True).clamp(min=1e-8)
+    foot_rot_w = quat_to_rot_matrix_wxyz(foot_quat_w)
+
+    local_axis = _normalize_vec3_tensor(sole_normal_axis)
+    sole_normal_w = torch.einsum("nbij,j->nbi", foot_rot_w, local_axis)
+    sole_normal_w = torch.nan_to_num(sole_normal_w, nan=0.0, posinf=0.0, neginf=0.0)
+
+    ground_normal = _normalize_vec3_tensor(ground_normal_w)
+    cos_angle = torch.sum(sole_normal_w * ground_normal, dim=-1).abs()
+    cos_angle = torch.nan_to_num(cos_angle, nan=0.0, posinf=1.0, neginf=0.0)
+    cos_angle = torch.clamp(cos_angle, 0.0, 1.0)
+
+    angle_error = torch.acos(cos_angle)
+
+    contact_norm = torch.norm(contact_force_w, dim=-1)
+    contact_norm = torch.nan_to_num(contact_norm, nan=0.0, posinf=0.0, neginf=0.0)
+    in_contact_f = (contact_norm > contact_threshold).to(dtype=angle_error.dtype)
+
+    penalty_per_foot = angle_error.square() * in_contact_f
+    num_contacts = in_contact_f.sum(dim=1).clamp(min=1.0)
+    penalty = penalty_per_foot.sum(dim=1) / num_contacts
+    return _safe_nonnegative_reward_bounded(penalty, 2.4674011002723395)
+
+
+@torch.jit.script
+def _feet_symmetry_penalty_core(
+    pos_b: torch.Tensor,
+    forward_dir: torch.Tensor,
+    max_forward_separation: float,
+    max_forward_error: float,
+) -> torch.Tensor:
+    forward_dir = _normalize_vec3_tensor(forward_dir)
+    forward_coord = _project_along(pos_b, forward_dir)
+    forward_separation = torch.abs(forward_coord[:, 0] - forward_coord[:, 1])
+    forward_error = torch.clamp(
+        forward_separation - max_forward_separation,
+        min=0.0,
+        max=max_forward_error,
+    )
+    return _safe_nonnegative_reward_bounded(forward_error.square(), max_forward_error * max_forward_error)
+
+
+@torch.jit.script
+def _track_base_height_exp_core(base_z: torch.Tensor, target_height: float, std: float) -> torch.Tensor:
+    height_error = base_z - target_height
+    return torch.exp(-height_error.square() / (std * std))
 
 
 def _debug_index(env: ManagerBasedRLEnv, debug_env_id: int) -> int:
@@ -183,42 +289,25 @@ def feet_crossing_penalty(
     correct setting is the default: ``expected_foot0_lateral_order = -1.0``.
     """
     pos_b, _ = get_feet_pose_base(env, asset_cfg)
+    lateral_dir = _unit_vec(lateral_dir_b, env.device, dtype=pos_b.dtype)
 
-    lateral_dir = _unit_vec(lateral_dir_b, env.device)
-    lateral_coord = _project_along(pos_b, lateral_dir)  # [num_envs, 2]
-
-    # Make this a scalar tensor so all math stays on device.
-    order_sign = torch.tensor(
-        1.0 if expected_foot0_lateral_order >= 0.0 else -1.0,
-        device=env.device,
-        dtype=torch.float32,
+    penalty = _feet_crossing_penalty_core(
+        pos_b,
+        lateral_dir,
+        float(min_lateral_separation),
+        float(expected_foot0_lateral_order),
+        float(side_margin),
+        float(max_crossing_error),
     )
 
-    # Positive signed_separation means the feet are in the desired order.
-    # For order_sign = -1: desired is foot0 < foot1.
-    # For order_sign = +1: desired is foot0 > foot1.
+    # Debug values are intentionally kept outside the scripted core.
+    lateral_coord = _project_along(pos_b, lateral_dir)
+    order_sign = 1.0 if expected_foot0_lateral_order >= 0.0 else -1.0
     delta_01 = lateral_coord[:, 0] - lateral_coord[:, 1]
     signed_separation = order_sign * delta_01
-
-    order_error = torch.clamp(
-        min_lateral_separation - signed_separation,
-        min=0.0,
-        max=max_crossing_error,
-    )
-
-    # Extra centerline term: foot 0 and foot 1 should stay on their expected sides
-    # of the body, not only maintain relative ordering. This makes crossing much
-    # harder to game.
-    desired_side_signs = torch.stack((order_sign, -order_sign))  # [2]
-    side_score = lateral_coord * desired_side_signs[None, :]
-    side_error = torch.clamp(
-        side_margin - side_score,
-        min=0.0,
-        max=max_crossing_error,
-    )
-
-    penalty = order_error.square() + 0.5 * side_error.square().mean(dim=1)
-    penalty = _safe_nonnegative_reward(penalty, max_crossing_error**2 * 1.5)
+    order_error = torch.clamp(min_lateral_separation - signed_separation, min=0.0, max=max_crossing_error)
+    side_score = torch.stack((lateral_coord[:, 0] * order_sign, lateral_coord[:, 1] * (-order_sign)), dim=1)
+    side_error = torch.clamp(side_margin - side_score, min=0.0, max=max_crossing_error)
 
     if debug and hasattr(env, "common_step_counter") and debug_every > 0:
         if env.common_step_counter % debug_every == 0:
@@ -263,31 +352,31 @@ def feet_parallel_contact_penalty(
 
     foot_ids = asset_cfg.body_ids
     foot_quat_w = robot.data.body_quat_w[:, foot_ids, :]
-    foot_quat_w = foot_quat_w / torch.norm(foot_quat_w, dim=-1, keepdim=True).clamp(min=1e-8)
+    contact_force = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :]
 
-    foot_rot_w = quat_to_rot_matrix_wxyz(foot_quat_w)
+    local_axis = _unit_vec(sole_normal_axis, env.device, dtype=foot_quat_w.dtype)
+    ground_normal = _unit_vec(ground_normal_w, env.device, dtype=foot_quat_w.dtype)
 
-    local_axis = _unit_vec(sole_normal_axis, env.device)
+    penalty = _feet_parallel_contact_penalty_core(
+        foot_quat_w,
+        contact_force,
+        local_axis,
+        ground_normal,
+        float(contact_threshold),
+    )
+
+    # Debug values are intentionally kept outside the scripted core.
+    foot_quat_w_dbg = foot_quat_w / torch.norm(foot_quat_w, dim=-1, keepdim=True).clamp(min=1e-8)
+    foot_rot_w = quat_to_rot_matrix_wxyz(foot_quat_w_dbg)
     sole_normal_w = torch.einsum("nbij,j->nbi", foot_rot_w, local_axis)
     sole_normal_w = torch.nan_to_num(sole_normal_w, nan=0.0, posinf=0.0, neginf=0.0)
-
-    ground_normal = _unit_vec(ground_normal_w, env.device)
-
     cos_angle = torch.sum(sole_normal_w * ground_normal, dim=-1).abs()
     cos_angle = torch.nan_to_num(cos_angle, nan=0.0, posinf=1.0, neginf=0.0)
     cos_angle = torch.clamp(cos_angle, 0.0, 1.0)
-
-    angle_error = torch.acos(cos_angle)  # [num_envs, 2], in [0, pi/2] because of abs()
-
-    contact_force = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :]
+    angle_error = torch.acos(cos_angle)
     contact_norm = torch.norm(contact_force, dim=-1)
     contact_norm = torch.nan_to_num(contact_norm, nan=0.0, posinf=0.0, neginf=0.0)
     in_contact = contact_norm > contact_threshold
-
-    penalty_per_foot = angle_error.square() * in_contact.float()
-    num_contacts = in_contact.float().sum(dim=1).clamp(min=1.0)
-    penalty = penalty_per_foot.sum(dim=1) / num_contacts
-    penalty = _safe_nonnegative_reward(penalty, (math.pi / 2.0) ** 2)
 
     if debug and hasattr(env, "common_step_counter") and debug_every > 0:
         if env.common_step_counter % debug_every == 0:
@@ -345,17 +434,23 @@ def feet_symmetry_penalty(
     separation along the robot forward axis.
     """
     pos_b, _ = get_feet_pose_base(env, asset_cfg)
+    forward_dir = _unit_vec(forward_dir_b, env.device, dtype=pos_b.dtype)
 
-    forward_dir = _unit_vec(forward_dir_b, env.device)
-    forward_coord = _project_along(pos_b, forward_dir)  # [num_envs, 2]
+    penalty = _feet_symmetry_penalty_core(
+        pos_b,
+        forward_dir,
+        float(max_forward_separation),
+        float(max_forward_error),
+    )
 
+    # Debug values are intentionally kept outside the scripted core.
+    forward_coord = _project_along(pos_b, forward_dir)
     forward_separation = torch.abs(forward_coord[:, 0] - forward_coord[:, 1])
     forward_error = torch.clamp(
         forward_separation - max_forward_separation,
         min=0.0,
         max=max_forward_error,
     )
-    penalty = _safe_nonnegative_reward(forward_error.square(), max_forward_error**2)
 
     if debug and hasattr(env, "common_step_counter") and debug_every > 0:
         if env.common_step_counter % debug_every == 0:
@@ -375,38 +470,24 @@ def feet_symmetry_penalty(
     return penalty
 
 
+@torch.jit.script
+def base_too_low_core(body_pos_w: torch.Tensor, minimum_height: float) -> torch.Tensor:
+    return body_pos_w[:, 0, 2] < minimum_height
+
+
 def terminate_if_base_too_low(env, minimum_height: float = 0.8):
-    # Torch tensor: (num_envs, num_bodies, 3)
-    body_pos = env.scene["robot"].data.body_pos_w
-
-    # z-coordinate of base body (index 0 or use name lookup)
-    base_z = body_pos[:, 0, 2]  # shape (num_envs,)
-
-    # return a torch.BoolTensor mask
-    return base_z < minimum_height
+    return base_too_low_core(env.scene["robot"].data.body_pos_w, minimum_height)
 
 
-def track_base_height_exp(
-    env: ManagerBasedRLEnv,
-    target_height: float = 1.4,
-    std: float = 0.2,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-) -> torch.Tensor:
-    """Reward the robot for keeping its base/root height near target_height.
+@torch.jit.script
+def track_base_height_exp_core(root_pos_w: torch.Tensor, target_height: float, std: float) -> torch.Tensor:
+    height_error = root_pos_w[:, 2] - target_height
+    return torch.exp(-height_error.square() / (std * std))
 
-    Returns a reward in [0, 1]:
-      - 1.0 when base height is exactly target_height
-      - smaller when the base is too low or too high
-    """
+
+def track_base_height_exp(env, target_height=1.4, std=0.2, asset_cfg=SceneEntityCfg("robot")):
     robot = env.scene[asset_cfg.name]
-
-    # Root/base z position in world frame.
-    # Shape: [num_envs]
-    base_z = robot.data.root_pos_w[:, 2]
-
-    height_error = base_z - target_height
-
-    return torch.exp(-height_error.square() / std**2)
+    return track_base_height_exp_core(robot.data.root_pos_w, target_height, std)
 
 
 @configclass

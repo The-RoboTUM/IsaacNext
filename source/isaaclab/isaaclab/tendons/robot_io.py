@@ -47,12 +47,16 @@ class TendonRobotIO:
             link_names_right[tids.I_CHAIN_LINK_67],
         ]
         self.foot_link_indices, _ = robot.find_bodies(self.foot_link_names, preserve_order=True)
+        self._external_forces = torch.zeros(
+            (self.robot.num_instances, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
+        )
+        self._virtual_ground_force_scale = torch.tensor([0.0, 0.0, 8000.0], device=self.device)
 
     def get_leg_joint_angles(self, *, requires_grad: bool = True) -> torch.Tensor:
         joint_angles = torch.cat(
             (
-                self.robot.data.joint_pos[:, self.joint_indices_left].clone(),
-                self.robot.data.joint_pos[:, self.joint_indices_right].clone(),
+                self.robot.data.joint_pos[:, self.joint_indices_left],
+                self.robot.data.joint_pos[:, self.joint_indices_right],
             ),
             dim=0,
         )
@@ -61,7 +65,8 @@ class TendonRobotIO:
         return joint_angles
 
     def empty_external_forces(self) -> torch.Tensor:
-        return torch.zeros((self.robot.num_instances, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device)
+        self._external_forces.zero_()
+        return self._external_forces
 
     def compute_external_forces(self, *, virtual_ground_height: float | None = None) -> torch.Tensor:
         forces = self.empty_external_forces()
@@ -70,11 +75,7 @@ class TendonRobotIO:
 
         foot_heights = self.robot.data.body_com_pos_w[:, self.foot_link_indices, 2]
         penetration_depths = virtual_ground_height - foot_heights
-        weight = 400.0
-        forces_world = penetration_depths.clamp(min=0.0).unsqueeze(-1) * torch.tensor(
-            [0.0, 0.0, weight * 20.0],
-            device=self.device,
-        )
+        forces_world = penetration_depths.clamp(min=0.0).unsqueeze(-1) * self._virtual_ground_force_scale
         forces[:, [tids.I_CHAIN_LINK_67, tids.I_CHAIN_LINK_67 + N_CHAIN_LINKS_PER_LEG], :] = quat_apply_inverse(
             self.robot.data.body_link_quat_w[:, self.foot_link_indices],
             forces_world,

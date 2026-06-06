@@ -109,7 +109,7 @@ training:
       yaw: [ 0.0, 0.0 ]  # Reset range for base yaw angular velocity in rad/s.
   commands:
     lin_vel_x: [ -0.0, 0.0 ]  # Commanded forward velocity sampling range in m/s.
-    lin_vel_y: [ -4.0, -2.0 ]  # Commanded lateral velocity sampling range in m/s.
-    ang_vel_z: [ -0.5, 0.5 ]  # Commanded yaw-rate sampling range in rad/s.
+    lin_vel_y: [ -7.0, 0.5 ]  # Commanded lateral velocity sampling range in m/s.
+    ang_vel_z: [ -0.0, 0.0 ]  # Commanded yaw-rate sampling range in rad/s.
   terminations:
     base_too_low_height: 0.2  # Terminate when base height falls below this value in meters.

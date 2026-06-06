@@ -5,6 +5,9 @@
 
 from __future__ import annotations
 
+import os
+import time
+
 import torch
 
 from isaaclab.assets.articulation import Articulation
@@ -64,6 +67,10 @@ class TendonManager:
             "edt2": 2.0,
         }
         self._prev_delta_lengths = None
+        self._profile_enabled = os.getenv("ISAACLAB_TENDON_PROFILE", "0").lower() in ("1", "true", "yes", "on")
+        self._profile_interval = max(1, int(os.getenv("ISAACLAB_TENDON_PROFILE_INTERVAL", "1000")))
+        self._profile_count = 0
+        self._profile_totals = {"compute": 0.0, "map": 0.0, "forces": 0.0, "set": 0.0}
 
     def _compute_torques_from_energy(self, joint_angles: torch.Tensor, energy: torch.Tensor):
         if not torch.is_grad_enabled():
@@ -101,7 +108,6 @@ class TendonManager:
 
             damping = self._damping_potential(output.delta_lengths, dt)
             total_energy = output.energy + damping
-            total_energy = output.energy + damping
             left, right = self._compute_torques_from_energy(joint_angles, total_energy)
 
             self._store_delta_lengths(output.delta_lengths)
@@ -123,11 +129,10 @@ class TendonManager:
             joint_angles = self.robot_io.get_leg_joint_angles(requires_grad=True)
             joint_angles = joint_angles.detach().clone().requires_grad_(True)
 
-            if hasattr(self.model, "energy_jit") and hasattr(self.model, "delta_lengths_jit"):
-                energy = self.model.energy_jit(joint_angles)
-
+            if hasattr(self.model, "energy_from_delta_lengths_jit") and hasattr(self.model, "delta_lengths_jit"):
                 delta_tuple = self.model.delta_lengths_jit(joint_angles)
                 deltas = self._delta_tuple_to_dict(delta_tuple)
+                energy = self.model.energy_from_delta_lengths_jit(delta_tuple)
 
                 damping = self._damping_potential(deltas, dt)
                 total_energy = energy + damping
@@ -178,15 +183,21 @@ class TendonManager:
         Isaac Lab state and quaternion utilities.
         """
         batch_size = self.robot.num_instances
+        t0 = self._profile_time()
         left, right = self.compute_torques_jit(dt=dt)
+        t1 = self._profile_time()
         link_torques = self.torque_mapper.joint_to_link_torques_jit(left, right, batch_size=batch_size)
+        t2 = self._profile_time()
         forces = self.robot_io.compute_external_forces(virtual_ground_height=virtual_ground_height)
+        t3 = self._profile_time()
 
         self.robot.permanent_wrench_composer.set_forces_and_torques(
             forces=forces,
             torques=link_torques,
             body_ids=self.link_indices_left_right,
         )
+        t4 = self._profile_time()
+        self._profile_record(t0, t1, t2, t3, t4)
 
     def _store_delta_lengths(self, deltas: dict[str, torch.Tensor]):
         self._prev_delta_lengths = {name: delta.detach().clone() for name, delta in deltas.items()}
@@ -213,13 +224,7 @@ class TendonManager:
             # Match current slack logic: tendons are active when delta_l <= 0.
             active = delta.detach() <= 0.0
 
-            c = torch.as_tensor(
-                self.tendon_damping[name],
-                device=delta.device,
-                dtype=delta.dtype,
-            )
-
-            coeff = -c * delta_dot * active
+            coeff = -float(self.tendon_damping[name]) * delta_dot * active
 
             # Gradient of this gives: c * delta_dot * d(delta_l)/dq
             term = (coeff.detach() * delta).sum()
@@ -239,3 +244,33 @@ class TendonManager:
             "edt1": deltas[3],
             "edt2": deltas[4],
         }
+
+    def _profile_time(self) -> float:
+        if not self._profile_enabled:
+            return 0.0
+        if torch.cuda.is_available() and "cuda" in str(self.device):
+            torch.cuda.synchronize(device=self.device)
+        return time.perf_counter()
+
+    def _profile_record(self, t0: float, t1: float, t2: float, t3: float, t4: float):
+        if not self._profile_enabled:
+            return
+        self._profile_count += 1
+        self._profile_totals["compute"] += t1 - t0
+        self._profile_totals["map"] += t2 - t1
+        self._profile_totals["forces"] += t3 - t2
+        self._profile_totals["set"] += t4 - t3
+        if self._profile_count % self._profile_interval != 0:
+            return
+
+        scale = 1000.0 / self._profile_interval
+        print(
+            "[TendonManager profile] "
+            f"apply_jit avg over {self._profile_interval} calls: "
+            f"compute={self._profile_totals['compute'] * scale:.3f} ms, "
+            f"map={self._profile_totals['map'] * scale:.3f} ms, "
+            f"forces={self._profile_totals['forces'] * scale:.3f} ms, "
+            f"set={self._profile_totals['set'] * scale:.3f} ms"
+        )
+        for key in self._profile_totals:
+            self._profile_totals[key] = 0.0

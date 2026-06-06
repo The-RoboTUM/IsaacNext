@@ -464,8 +464,8 @@ class DirectMARLEnv(gym.Env):
             import omni.replicator.core as rep
 
             rep.set_global_seed(seed)
-        except ModuleNotFoundError:
-            pass
+        except Exception as err:
+            logger.debug("Skipping Replicator global seed setup: %s", err)
         # set seed for torch and other libraries
         return configure_seed(seed)
 
