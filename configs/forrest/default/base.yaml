@@ -32,7 +32,7 @@ boom:
   body_path_template: "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected"  # Rigid body constrained by the boom.
   joint_path_template: "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected_planar_boom_joint"  # Boom joint prim path.
   locked_axes: [ "transX", "rotY", "rotZ" ]  # D6 axes locked by the planar boom.
-  lock_x_angle: false  # Also lock rotX when true.
+  lock_x_angle: true  # Also lock rotX when true.
   body_anchor_pos: [ 0.0, 0.0, 0.0 ]  # Joint anchor position in the constrained body frame.
   body_anchor_rot_wxyz: [ 1.0, 0.0, 0.0, 0.0 ]  # Joint anchor orientation in the constrained body frame.
   debug: false  # Print created boom joints and locked axes.
@@ -59,43 +59,47 @@ actuation:
   flexor_angle_deg: 0.0  # Default flexor angle offset used by tendon/controller setup.
   pantograph:
     joint_names_expr: [ "rp1_pantograph", "rp2_pantograph" ]  # Joint name patterns controlled by this actuator group.
-    effort_limit_sim: 1000000.0  # Sim effort limit for the actuator group.
+    effort_limit_sim: 10000000000.0  # Sim effort limit for the actuator group.
     velocity_limit_sim: 100.0  # Sim velocity limit for the actuator group.
     stiffness: 128000.0  # PD stiffness for the implicit actuator.
-    damping: 0.1  # PD damping for the implicit actuator.
+    damping: 480  # PD damping for the implicit actuator.
   hip_swing:
     joint_names_expr: [ "r2_pseudo_acetabulofemoral_flexion", "l2_pseudo_acetabulofemoral_flexion" ]  # Hip flexion joints.
-    effort_limit_sim: 10000000.0  # Sim effort limit for hip swing joints.
-    velocity_limit_sim: 100.0  # Sim velocity limit for hip swing joints.
-    stiffness: 500.0  # PD stiffness for hip swing joints.
-    damping: 0.1  # PD damping for hip swing joints.
+    effort_limit_sim: 100.0  # Sim effort limit for hip swing joints.
+    velocity_limit_sim: 28.0  # Sim velocity limit for hip swing joints.
+    stiffness: 200.0  # PD stiffness for hip swing joints.
+    damping: 2.0  # PD damping for hip swing joints.
   hip_roll:
     joint_names_expr: [ "r0_acetabulofemoral_roll", "l0_acetabulofemoral_roll" ]  # Hip roll joints.
-    effort_limit_sim: 10000000.0  # Sim effort limit for hip roll joints.
-    velocity_limit_sim: 100.0  # Sim velocity limit for hip roll joints.
-    stiffness: 500.0  # PD stiffness for hip roll joints.
-    damping: 0.1  # PD damping for hip roll joints.
+    effort_limit_sim: 140.0  # Sim effort limit for hip roll joints.
+    velocity_limit_sim: 13.0  # Sim velocity limit for hip roll joints.
+    stiffness: 200.0  # PD stiffness for hip roll joints.
+    damping: 2.0  # PD damping for hip roll joints.
   hip_lateral:
     joint_names_expr: [ "r1_acetabulofemoral_lateral", "l1_acetabulofemoral_lateral" ]  # Hip lateral/yaw joints.
-    effort_limit_sim: 10000000.0  # Sim effort limit for hip lateral joints.
-    velocity_limit_sim: 100.0  # Sim velocity limit for hip lateral joints.
-    stiffness: 500.0  # PD stiffness for hip lateral joints.
-    damping: 0.1  # PD damping for hip lateral joints.
+    effort_limit_sim: 100.0  # Sim effort limit for hip lateral joints.
+    velocity_limit_sim: 28.0  # Sim velocity limit for hip lateral joints.
+    stiffness: 200.0  # PD stiffness for hip lateral joints.
+    damping: 2.0  # PD damping for hip lateral joints.
   knee_flex:
     joint_names_expr: [ "r8_knee_flexor", "l8_knee_flexor" ]  # Knee flexor joints.
-    effort_limit_sim: 10000000.0  # Sim effort limit for knee flexor joints.
-    velocity_limit_sim: 100.0  # Sim velocity limit for knee flexor joints.
-    stiffness: 500.0  # PD stiffness for knee flexor joints.
-    damping: 0.1  # PD damping for knee flexor joints.
+    effort_limit_sim: 140.0  # Sim effort limit for knee flexor joints.
+    velocity_limit_sim: 13.0  # Sim velocity limit for knee flexor joints.
+    stiffness: 200.0  # PD stiffness for knee flexor joints.
+    damping: 2.0  # PD damping for knee flexor joints.
 
 tendons:
   baseline:
     stiffness:
       gst: 200000.0  # Gastrocnemius spring stiffness.
-      dft: 50000.0  # Deep flexor tendon stiffness.
-      edt1: 500000.0  # Extensor tendon 1 stiffness.
-      edt2: 500000.0  # Extensor tendon 2 stiffness.
-      kft: 500000.0  # Knee flexor tendon stiffness.
+      #      dft: 50000.0  # Deep flexor tendon stiffness.
+      #      edt1: 500000.0  # Extensor tendon 1 stiffness.
+      #      edt2: 500000.0  # Extensor tendon 2 stiffness.
+      #      kft: 500000.0  # Knee flexor tendon stiffness.
+      dft: 0.0  # Deep flexor tendon stiffness.
+      edt1: 0.0  # Extensor tendon 1 stiffness.
+      edt2: 0.0  # Extensor tendon 2 stiffness.
+      kft: 10000.0  # Knee flexor tendon stiffness.
     lengths:
       gst_spring_rest: 0.06  # GST spring rest length.
       upper_gst: 0.6917  # Upper GST path nominal length.
@@ -103,7 +107,8 @@ tendons:
       dft: 0.384  # DFT nominal tendon length.
       edt1: 0.54  # EDT1 nominal tendon length.
       edt2: 0.65  # EDT2 nominal tendon length.
-      kft: 0.452  # KFT nominal tendon length.
+      #      kft: 0.452  # KFT nominal tendon length.
+      kft: 0.402  # KFT nominal tendon length.
     joint_offsets_theta_deg:
       j3: 227.671  # Joint 3 angular offset used by tendon geometry.
       j4: 225.931  # Joint 4 angular offset used by tendon geometry.

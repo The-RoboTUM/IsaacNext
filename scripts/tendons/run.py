@@ -53,6 +53,15 @@ parser.add_argument(
     help="Leg controller to use for actuated joints.",
 )
 parser.add_argument(
+    "--constraint_mode",
+    choices=("freefall", "boom", "static"),
+    default=None,
+    help=(
+        "Base constraint mode: freefall creates no world constraint, boom locks motion with the configured sagittal "
+        "plane D6 joint, static creates the configured fixed-world joint."
+    ),
+)
+parser.add_argument(
     "--parameters_file",
     type=str,
     default=None,
@@ -69,12 +78,12 @@ args_cli.status_interval = (
     args_cli.status_interval if args_cli.status_interval is not None else FORREST_PARAMS.run.status_interval
 )
 args_cli.controller = args_cli.controller or FORREST_PARAMS.run.controller
+args_cli.constraint_mode = args_cli.constraint_mode or FORREST_PARAMS.run.constraint_mode
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
 import cv2
-import numpy as np
 import torch
 
 import carb
@@ -226,6 +235,81 @@ def add_fixed_world_joint(sim, params):
     fixed_joint.CreateCollisionEnabledAttr(False)
 
 
+def resolve_boom_locked_axes(params) -> tuple[str, ...]:
+    """Return the configured boom D6 axes, including the optional sagittal angle lock."""
+    locked_axes = tuple(params.boom.locked_axes)
+    if params.boom.lock_x_angle and "rotX" not in locked_axes:
+        return (*locked_axes, "rotX")
+    return locked_axes
+
+
+def lock_d6_axis(joint_prim, axis: str) -> None:
+    from pxr import UsdPhysics
+
+    limit_api = UsdPhysics.LimitAPI.Apply(joint_prim, getattr(UsdPhysics.Tokens, axis))
+    # In USD Physics/PhysX, low > high means a locked D6 axis.
+    limit_api.CreateLowAttr(1.0)
+    limit_api.CreateHighAttr(-1.0)
+
+
+def add_planar_boom_joint(sim, params):
+    """Constrain /World/Bot to the configured sagittal plane with a world-to-body D6 joint."""
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
+
+    stage = sim.stage
+    body_path = Sdf.Path(params.robot.fixed_world_body_path)
+    joint_path = Sdf.Path(params.robot.fixed_world_joint_path + "_planar_boom")
+    body_prim = stage.GetPrimAtPath(body_path)
+
+    if not body_prim.IsValid():
+        raise RuntimeError(f"Cannot create Forrest boom: body prim does not exist: {body_path}")
+    if not body_prim.HasAPI(UsdPhysics.RigidBodyAPI):
+        raise RuntimeError(f"Cannot create Forrest boom: target prim is not a rigid body: {body_path}")
+
+    body_anchor_pos = Gf.Vec3f(*params.boom.body_anchor_pos)
+    body_anchor_rot = Gf.Quatf(*params.boom.body_anchor_rot_wxyz)
+    body_tf_w = UsdGeom.Xformable(body_prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+    body_tf_w.Orthonormalize()
+    world_anchor_pos = body_tf_w.Transform(Gf.Vec3d(*params.boom.body_anchor_pos))
+    world_anchor_rot = body_tf_w.ExtractRotationQuat()
+
+    joint = UsdPhysics.Joint.Define(stage, joint_path)
+    joint.CreateBody1Rel().SetTargets([body_path])
+    joint.CreateLocalPos0Attr().Set(Gf.Vec3f(*world_anchor_pos))
+    joint.CreateLocalRot0Attr().Set(
+        Gf.Quatf(
+            float(world_anchor_rot.real),
+            float(world_anchor_rot.imaginary[0]),
+            float(world_anchor_rot.imaginary[1]),
+            float(world_anchor_rot.imaginary[2]),
+        )
+    )
+    joint.CreateLocalPos1Attr().Set(body_anchor_pos)
+    joint.CreateLocalRot1Attr().Set(body_anchor_rot)
+    joint.CreateCollisionEnabledAttr(False)
+
+    locked_axes = resolve_boom_locked_axes(params)
+    joint_prim = joint.GetPrim()
+    for axis in locked_axes:
+        lock_d6_axis(joint_prim, axis)
+
+    if params.boom.debug:
+        print(f"[ForrestBoom] Created standalone planar boom D6 joint at {joint_path} with locked axes: {locked_axes}.")
+
+
+def configure_base_constraint(sim, params, constraint_mode: str) -> None:
+    """Author the selected standalone base constraint before PhysX startup."""
+    if constraint_mode == "freefall":
+        return
+    if constraint_mode == "boom":
+        add_planar_boom_joint(sim, params)
+        return
+    if constraint_mode == "static":
+        add_fixed_world_joint(sim, params)
+        return
+    raise ValueError(f"Unknown constraint_mode: {constraint_mode!r}")
+
+
 def make_actuated_dof_specs(robot_cfg):
     """Build target joint specs from the configured Forrest actuators.
 
@@ -295,75 +379,58 @@ def controller_command_tensor(
     return torch.tensor([commands], dtype=torch.float32, device=device)
 
 
-def make_cpg_legs() -> tuple[BirdBotCPGLeg, BirdBotCPGLeg]:
+def make_cpg_legs(params) -> tuple[BirdBotCPGLeg, BirdBotCPGLeg]:
     """Create left/right CPG controllers."""
-    phi_0_combined_offset = np.pi / 2
-
     common = dict(
-        f_hz=1.5,
-        D=0.60,
-        A_h_deg=32.0,
-        O_h_deg=22.0,
-        A_k_deg=120.0,
-        S_f=0.02,
-        S_e=0.05,
+        f_hz=params.f_hz,
+        D=params.duty_factor,
+        A_h_deg=params.hip_amplitude_deg,
+        O_h_deg=params.hip_offset_deg,
+        A_k_deg=params.knee_amplitude_deg,
+        S_f=params.swing_start_offset,
+        S_e=params.swing_end_offset,
     )
-    left_params = CPGParams(phi0=-np.pi / 2 + phi_0_combined_offset, **common)
-    right_params = CPGParams(phi0=np.pi / 2 + phi_0_combined_offset, **common)
+    left_params = CPGParams(phi0=params.left_phase_offset_rad + params.combined_phase_offset_rad, **common)
+    right_params = CPGParams(phi0=params.right_phase_offset_rad + params.combined_phase_offset_rad, **common)
 
     return (
-        BirdBotCPGLeg(left_params, include_knee=True),
-        BirdBotCPGLeg(right_params, include_knee=True),
+        BirdBotCPGLeg(left_params, include_knee=params.include_knee),
+        BirdBotCPGLeg(right_params, include_knee=params.include_knee),
     )
 
 
-def make_sinusoidal_legs() -> tuple[SinusoidalLegController, SinusoidalLegController]:
+def make_sinusoidal_legs(params) -> tuple[SinusoidalLegController, SinusoidalLegController]:
     """Create left/right sinusoidal controllers over the same logical DOFs."""
     common = dict(
-        f_hz=3.0,
-        amplitude_deg={
-            "hip_roll": 0.0,
-            "hip_yaw": 0.0,
-            "hip_flexion": 45.0,
-            "knee_flexion": 75.0,
-        },
-        offset_deg={
-            "hip_roll": 0.0,
-            "hip_yaw": 0.0,
-            "hip_flexion": 0.0,
-            "knee_flexion": -75.0,
-        },
+        f_hz=params.f_hz,
+        amplitude_deg=params.amplitude_deg,
+        offset_deg=params.offset_deg,
     )
 
     return (
         SinusoidalLegController(
             SinusoidalParams(
-                phi0=0.0,
-                phase_rad={
-                    "hip_flexion": 0.0,
-                    "knee_flexion": 0.0,
-                },
+                phi0=params.left_phi0_rad,
+                phase_rad=params.left_phase_rad,
                 **common,
             )
         ),
         SinusoidalLegController(
             SinusoidalParams(
-                phi0=0.0,
-                phase_rad={
-                    "hip_flexion": 180.0,
-                    "knee_flexion": 180.0,
-                },
+                phi0=params.right_phi0_rad,
+                phase_rad=params.right_phase_rad,
                 **common,
             )
         ),
     )
 
 
-def make_leg_controllers(controller_name: str) -> tuple[LegControllerBase, LegControllerBase]:
+def make_leg_controllers(run_params) -> tuple[LegControllerBase, LegControllerBase]:
+    controller_name = run_params.controller
     if controller_name == "cpg":
-        return make_cpg_legs()
+        return make_cpg_legs(run_params.cpg)
     if controller_name == "sin":
-        return make_sinusoidal_legs()
+        return make_sinusoidal_legs(run_params.sinusoidal)
     raise ValueError(f"Unknown controller: {controller_name}")
 
 
@@ -371,6 +438,7 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
     mode = "JIT / TorchScript" if args.jit else "DEBUG / eager"
     print("\n=== Forrest tendon simulation ===")
     print(f"Mode:              {mode}")
+    print(f"Base constraint:   {args.constraint_mode}")
     print(f"Isaac device:      {args.device}")
     print(f"Torch CUDA:        {torch.cuda.is_available()}")
     print(f"Physics dt:        {sim_cfg.dt:.6f} s")
@@ -451,8 +519,8 @@ def main():
 
     camera, video_writer = setup_video_writer(args_cli, sim_cfg)
 
+    configure_base_constraint(sim, FORREST_PARAMS, args_cli.constraint_mode)
     sim.reset()
-    add_fixed_world_joint(sim, FORREST_PARAMS)
     # robot.write_joint_state_to_sim(
     #     position=robot.data.default_joint_pos,
     #     velocity=robot.data.default_joint_vel,
@@ -476,7 +544,8 @@ def main():
         ),
         tendon_damping=FORREST_PARAMS.tendon_damping(),
     )
-    left_controller, right_controller = make_leg_controllers(args_cli.controller)
+    FORREST_PARAMS.run.controller = args_cli.controller
+    left_controller, right_controller = make_leg_controllers(FORREST_PARAMS.run)
 
     mode_label = "jit" if args_cli.jit else "debug"
     wall_start = time.perf_counter()

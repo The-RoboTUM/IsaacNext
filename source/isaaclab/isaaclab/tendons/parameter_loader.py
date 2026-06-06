@@ -305,10 +305,53 @@ class TendonParameters:
 
 
 @dataclass
+class RunCPGControllerParameters:
+    f_hz: float = 1.5
+    duty_factor: float = 0.60
+    hip_amplitude_deg: float = 32.0
+    hip_offset_deg: float = 22.0
+    knee_amplitude_deg: float = 120.0
+    swing_start_offset: float = 0.02
+    swing_end_offset: float = 0.05
+    combined_phase_offset_rad: float = math.pi / 2
+    left_phase_offset_rad: float = -math.pi / 2
+    right_phase_offset_rad: float = math.pi / 2
+    include_knee: bool = True
+
+
+@dataclass
+class RunSinusoidalControllerParameters:
+    f_hz: float = 3.0
+    left_phi0_rad: float = 0.0
+    right_phi0_rad: float = 0.0
+    amplitude_deg: dict[str, float] = field(
+        default_factory=lambda: {
+            "hip_roll": 0.0,
+            "hip_yaw": 0.0,
+            "hip_flexion": 45.0,
+            "knee_flexion": 75.0,
+        }
+    )
+    offset_deg: dict[str, float] = field(
+        default_factory=lambda: {
+            "hip_roll": 0.0,
+            "hip_yaw": 0.0,
+            "hip_flexion": 0.0,
+            "knee_flexion": -75.0,
+        }
+    )
+    left_phase_rad: dict[str, float] = field(default_factory=lambda: {"hip_flexion": 0.0, "knee_flexion": 0.0})
+    right_phase_rad: dict[str, float] = field(default_factory=lambda: {"hip_flexion": 180.0, "knee_flexion": 180.0})
+
+
+@dataclass
 class RunScriptParameters:
     duration: float = 2.0
     status_interval: int = 100
     controller: str = "cpg"
+    constraint_mode: str = "static"
+    cpg: RunCPGControllerParameters = field(default_factory=RunCPGControllerParameters)
+    sinusoidal: RunSinusoidalControllerParameters = field(default_factory=RunSinusoidalControllerParameters)
     output_dir: str = "outputs"
     video_output: str = "outputs/simulation.mp4"
 

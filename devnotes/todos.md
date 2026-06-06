@@ -8,6 +8,7 @@
 - [ ] Look into how to obtain the required forces to train LNNs (++)
 - [ ] Build a tool to properly choose the lengths of the tendons (++)
 - [ ] Create a new USD (Make a list of mods for everything first) (DOCUMENT) (++)
+
 - [ ] Update the readme (+)
 - [ ] Solve the issue with the base name (+)
 - [ ] Clean up the repo -> Make branches stale, put legacy code away (+)
