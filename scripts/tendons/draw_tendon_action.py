@@ -23,11 +23,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import math
 import os
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
+DEFAULT_ALPHA_2_DEG = 280.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -69,8 +70,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--alpha-2-deg",
         type=float,
-        default=300.0,
-        help="Base link angle in degrees (default: 300).",
+        default=DEFAULT_ALPHA_2_DEG,
+        help=f"Base link angle in degrees (default: {DEFAULT_ALPHA_2_DEG:.1f}).",
     )
     parser.add_argument(
         "--parameters_file",
@@ -134,7 +135,7 @@ def main() -> None:
 
     animator = KinematicChainAnimator(
         all_data,
-        np.deg2rad(args.alpha_2_deg),
+        math.radians(args.alpha_2_deg),
         real_time=args.real_time and not save_path,
         data_fps=args.data_fps,
         verbose=args.verbose,

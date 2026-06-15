@@ -48,18 +48,15 @@ LEFT_FOOT_INDEX = CONTACT_PARAMS.left_foot_index
 
 # Foot reward frame convention.
 # Current model:
-#   forward = -Y  -> (0, -1, 0)
-#   lateral = +X  -> (1,  0, 0)
-# After fixing the USD so robot +X is front, change to:
-#   FEET_FORWARD_DIR_B = (1.0, 0.0, 0.0)
-#   FEET_LATERAL_DIR_B = (0.0, 1.0, 0.0)
+#   forward = +X -> (1, 0, 0)
+#   lateral = +Y -> (0, 1, 0)
 FEET_FORWARD_DIR_B = CONTACT_PARAMS.forward_dir_b
 FEET_LATERAL_DIR_B = CONTACT_PARAMS.lateral_dir_b
 
 # Kept for compatibility with older code/comments.
-FORWARD_AXIS = 1
-FORWARD_SIGN = -1.0
-LATERAL_AXIS = 0
+FORWARD_AXIS = 0
+FORWARD_SIGN = 1.0
+LATERAL_AXIS = 1
 LEFT_SIGN = 1.0
 
 

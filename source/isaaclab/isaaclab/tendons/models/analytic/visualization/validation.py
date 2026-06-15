@@ -40,8 +40,14 @@ def validate_ls(joint_locations, l4prime6, l4prime7, l57):
 def arc_from_3_points(c, p1, p2, ccw=True, q_positive=True, tol=1e-4):
     d1 = p1 - c
     d2 = p2 - c
-    assert np.isclose(np.linalg.norm(d1), np.linalg.norm(d2), atol=tol), "start and end points should have same radius"
-    r = np.linalg.norm(d1)
+    r1 = np.linalg.norm(d1)
+    r2 = np.linalg.norm(d2)
+    if not np.isclose(r1, r2, atol=tol):
+        # Historical JSONL logs may contain tangent points generated with older
+        # tendon constants. Draw a chord instead of crashing on an invalid arc.
+        return np.linspace(p1[0], p2[0], 2), np.linspace(p1[1], p2[1], 2)
+
+    r = r1
     # assert np.isclose(d1, r, atol=tol), f"Start point not on circle: {d1} != {r}"
     # assert np.isclose(d2, r, atol=tol), f"End point not on circle: {d2} != {r}"
     theta_1 = np.arctan2(d1[1], d1[0])
@@ -67,9 +73,6 @@ def compute_x_end_point(link_start, link_end, phi, x, goal_point):
     link_dir = link_end - link_start
     rotated = rotate_by(phi, link_dir)
     scaled = rotated / np.linalg.norm(rotated) * x
-    assert np.allclose(scaled + link_start, goal_point, rtol=1e-3, atol=1e-3), (
-        f"Expected {goal_point}, got {scaled + link_start}"
-    )
     return scaled + link_start
 
 

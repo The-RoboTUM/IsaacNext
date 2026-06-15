@@ -38,8 +38,8 @@ training:
     track_air_time: true  # Track foot air time for gait rewards.
     right_foot_index: 0  # Index of the right foot within foot_body_names/contact tensors.
     left_foot_index: 1  # Index of the left foot within foot_body_names/contact tensors.
-    forward_dir_b: [ 0.0, -1.0, 0.0 ]  # Robot forward direction expressed in base frame.
-    lateral_dir_b: [ 1.0, 0.0, 0.0 ]  # Robot lateral direction expressed in base frame.
+    forward_dir_b: [ 1.0, 0.0, 0.0 ]  # Robot forward direction expressed in base frame.
+    lateral_dir_b: [ 0.0, 1.0, 0.0 ]  # Robot lateral direction expressed in base frame.
   rewards:
     weights:
       alive: 0.0  # Constant survival reward per step.
@@ -94,8 +94,8 @@ training:
     disable_add_base_mass: true  # Disable random base mass changes during training.
     randomize_initial_base_pose: true  # Apply reset_base_pose_range once at startup so cloned envs do not all face the same way.
     reset_robot_joint_position_range: [ 1.0, 1.0 ]  # Multiplicative reset range for default joint positions; fixed at 1.0 means no randomization.
-    external_force_body_names: [ "world_corrected" ]  # Body names targeted by external force events.
-    base_com_body_names: [ "world_corrected" ]  # Body names targeted by center-of-mass randomization.
+    external_force_body_names: [ "base_assy_v2_1" ]  # Body names targeted by external force events.
+    base_com_body_names: [ "base_assy_v2_1" ]  # Body names targeted by center-of-mass randomization.
     reset_base_pose_range:
       x: [ -0.5, 0.5 ]  # Reset range for base x position in meters.
       y: [ -0.5, 0.5 ]  # Reset range for base y position in meters.
@@ -108,8 +108,8 @@ training:
       pitch: [ 0.0, 0.0 ]  # Reset range for base pitch angular velocity in rad/s.
       yaw: [ 0.0, 0.0 ]  # Reset range for base yaw angular velocity in rad/s.
   commands:
-    lin_vel_x: [ -0.0, 0.0 ]  # Commanded forward velocity sampling range in m/s.
-    lin_vel_y: [ -7.0, 0.5 ]  # Commanded lateral velocity sampling range in m/s.
+    lin_vel_x: [ -0.5, 7.0 ]  # Commanded forward velocity sampling range in m/s.
+    lin_vel_y: [ -0.0, 0.0 ]  # Commanded lateral velocity sampling range in m/s.
     ang_vel_z: [ -0.0, 0.0 ]  # Commanded yaw-rate sampling range in rad/s.
   terminations:
     base_too_low_height: 0.2  # Terminate when base height falls below this value in meters.

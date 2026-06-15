@@ -71,7 +71,7 @@ N_JOINTS: int = 4
 N_TENDON_TANGENCY_ANGLES: int = 4
 N_GST_TENDON_TANGENCY_ANGLES: int = 4
 
-JOINT_AXIS_IDX = 0  # axis index for joint torques around x-axis
+JOINT_AXIS_IDX = 1  # axis index for joint torques around y-axis
 
 
 def list_from_dict(d: dict, n: int) -> list:
@@ -122,7 +122,7 @@ joint_names_left = list_from_dict(
 )
 
 all_joint_names_right = [
-    "r0_acetabulofemoral_roll,"  # j0, position/torque control
+    "r0_acetabulofemoral_roll",  # j0, position/torque control
     "r1_acetabulofemoral_lateral",  # j1, position/torque control
     "rp1_pantograph",  # pantograph, actuated but always set to 0.0
     "r2_pseudo_acetabulofemoral_flexion",  # j2, position control
@@ -133,7 +133,7 @@ all_joint_names_right = [
     "r4p_intertarsal_pulley",  # j4, not actuated but affected by tendon
     "r5_metatarsophalangeal",  # j5, not actuated but affected by tendon
     "r6_interphalangeal",  # j6, not actuated but affected by tendon
-    "virtual_s23_assyv18_1_anchor",  # exporter anchor, not actuated
+    "virtual_s23_assy_1_anchor",  # exporter anchor, not actuated
 ]
 
 

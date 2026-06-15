@@ -18,21 +18,21 @@
 schema_version: 1  # Config schema version used to guard future migrations.
 
 robot:
-  prim_path: "{ENV_REGEX_NS}/forrest_urdf_latest"  # Prim path pattern for the robot inside each env namespace.
-  usd_path: "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"  # USD asset loaded for Forrest.
-  height_scanner_prim_path: "{ENV_REGEX_NS}/forrest_urdf_latest/world_corrected"  # Prim followed by the terrain height scanner.
-  initial_base_position: [ 0.0, 0.0, 1.45 ]  # Initial robot root position in meters.
+  prim_path: "{ENV_REGEX_NS}/forrest_isaac"  # Prim path pattern for the robot inside each env namespace.
+  usd_path: "symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd"  # USD asset loaded for Forrest.
+  height_scanner_prim_path: "{ENV_REGEX_NS}/forrest_isaac/base_assy_v2_1"  # Prim followed by the terrain height scanner.
+  initial_base_position: [ 0.0, 0.0, 1.32 ]  # Initial robot root position in meters.
   soft_joint_pos_limit_factor: 0.9  # Scale applied to USD joint limits to keep actions away from hard stops.
-  fixed_world_body_path: "/World/Bot/world_corrected"  # Body anchored by the fixed-world joint in the tendon run script.
-  fixed_world_joint_path: "/World/Bot/world_corrected_fixed_joint"  # USD path where the fixed-world joint is created.
+  fixed_world_body_path: "/World/Bot/base_assy_v2_1"  # Body anchored by the fixed-world joint in the tendon run script.
+  fixed_world_joint_path: "/World/Bot/base_assy_v2_1_fixed_joint"  # USD path where the fixed-world joint is created.
   fixed_world_joint_local_pos0: null  # null reads current body world position; set explicitly only for anchor debugging.
   fixed_world_joint_local_rot0_wxyz: null  # null reads current body world orientation as wxyz quaternion.
 
 boom:
-  body_path_template: "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected"  # Rigid body constrained by the boom.
-  joint_path_template: "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected_planar_boom_joint"  # Boom joint prim path.
-  locked_axes: [ "transX", "rotY", "rotZ" ]  # D6 axes locked by the planar boom.
-  lock_x_angle: true  # Also lock rotX when true.
+  body_path_template: "/World/envs/env_{env_id}/forrest_isaac/base_assy_v2_1"  # Rigid body constrained by the boom.
+  joint_path_template: "/World/envs/env_{env_id}/forrest_isaac/base_assy_v2_1_planar_boom_joint"  # Boom joint prim path.
+  locked_axes: [ "transY", "rotX", "rotZ" ]  # D6 axes locked by the +X-front planar boom.
+  lock_x_angle: true  # Legacy flag; with +X front this also locks pitch about rotY.
   body_anchor_pos: [ 0.0, 0.0, 0.0 ]  # Joint anchor position in the constrained body frame.
   body_anchor_rot_wxyz: [ 1.0, 0.0, 0.0, 0.0 ]  # Joint anchor orientation in the constrained body frame.
   debug: false  # Print created boom joints and locked axes.
@@ -58,60 +58,64 @@ physics:
 actuation:
   flexor_angle_deg: 0.0  # Default flexor angle offset used by tendon/controller setup.
   pantograph:
-    joint_names_expr: [ "rp1_pantograph", "rp2_pantograph" ]  # Joint name patterns controlled by this actuator group.
+    joint_names_expr: [ "rp1_pantograph", "lp1_pantograph" ]  # Joint name patterns controlled by this actuator group.
     effort_limit_sim: 10000000000.0  # Sim effort limit for the actuator group.
-    velocity_limit_sim: 100.0  # Sim velocity limit for the actuator group.
+    velocity_limit_sim: 10000.0  # Sim velocity limit for the actuator group.
     stiffness: 128000.0  # PD stiffness for the implicit actuator.
     damping: 480  # PD damping for the implicit actuator.
   hip_swing:
     joint_names_expr: [ "r2_pseudo_acetabulofemoral_flexion", "l2_pseudo_acetabulofemoral_flexion" ]  # Hip flexion joints.
-    effort_limit_sim: 100.0  # Sim effort limit for hip swing joints.
+    effort_limit_sim: 100000.0  # Sim effort limit for hip swing joints.
     velocity_limit_sim: 28.0  # Sim velocity limit for hip swing joints.
-    stiffness: 200.0  # PD stiffness for hip swing joints.
+    stiffness: 20000.0  # PD stiffness for hip swing joints.
     damping: 2.0  # PD damping for hip swing joints.
   hip_roll:
     joint_names_expr: [ "r0_acetabulofemoral_roll", "l0_acetabulofemoral_roll" ]  # Hip roll joints.
-    effort_limit_sim: 140.0  # Sim effort limit for hip roll joints.
+    effort_limit_sim: 140000.0  # Sim effort limit for hip roll joints.
     velocity_limit_sim: 13.0  # Sim velocity limit for hip roll joints.
-    stiffness: 200.0  # PD stiffness for hip roll joints.
+    stiffness: 20000.0  # PD stiffness for hip roll joints.
     damping: 2.0  # PD damping for hip roll joints.
   hip_lateral:
     joint_names_expr: [ "r1_acetabulofemoral_lateral", "l1_acetabulofemoral_lateral" ]  # Hip lateral/yaw joints.
-    effort_limit_sim: 100.0  # Sim effort limit for hip lateral joints.
+    effort_limit_sim: 100000.0  # Sim effort limit for hip lateral joints.
     velocity_limit_sim: 28.0  # Sim velocity limit for hip lateral joints.
-    stiffness: 200.0  # PD stiffness for hip lateral joints.
+    stiffness: 20000.0  # PD stiffness for hip lateral joints.
     damping: 2.0  # PD damping for hip lateral joints.
   knee_flex:
     joint_names_expr: [ "r8_knee_flexor", "l8_knee_flexor" ]  # Knee flexor joints.
-    effort_limit_sim: 140.0  # Sim effort limit for knee flexor joints.
+    effort_limit_sim: 140000.0  # Sim effort limit for knee flexor joints.
     velocity_limit_sim: 13.0  # Sim velocity limit for knee flexor joints.
-    stiffness: 200.0  # PD stiffness for knee flexor joints.
+    stiffness: 20000.0  # PD stiffness for knee flexor joints.
     damping: 2.0  # PD damping for knee flexor joints.
 
 tendons:
   baseline:
     stiffness:
-      gst: 200000.0  # Gastrocnemius spring stiffness.
-      #      dft: 50000.0  # Deep flexor tendon stiffness.
-      #      edt1: 500000.0  # Extensor tendon 1 stiffness.
-      #      edt2: 500000.0  # Extensor tendon 2 stiffness.
+      gst: 25000.0  # Gastrocnemius spring stiffness.
+      #      gst: 0.0  # Gastrocnemius spring stiffness.
+      #      dft: 300000.0  # Deep flexor tendon stiffness.
+      #      edt1: 400000.0  # Extensor tendon 1 stiffness.
+      #      edt2: 400000.0  # Extensor tendon 2 stiffness.
       #      kft: 500000.0  # Knee flexor tendon stiffness.
-      dft: 0.0  # Deep flexor tendon stiffness.
-      edt1: 0.0  # Extensor tendon 1 stiffness.
-      edt2: 0.0  # Extensor tendon 2 stiffness.
-      kft: 10000.0  # Knee flexor tendon stiffness.
+      dft: 100000.0  # Deep flexor tendon stiffness.
+      edt1: 100000.0  # Extensor tendon 1 stiffness.
+      edt2: 100000.0  # Extensor tendon 2 stiffness.
+      kft: 100000.0  # Knee flexor tendon stiffness.
     lengths:
       gst_spring_rest: 0.06  # GST spring rest length.
-      upper_gst: 0.6917  # Upper GST path nominal length.
+      #      upper_gst: 0.6917  # Upper GST path nominal length.
+      upper_gst: 0.6217  # Upper GST path nominal length.
       lower_gst: 0.6314  # Lower GST path nominal length.
       dft: 0.384  # DFT nominal tendon length.
+      #      edt1: 0.54  # EDT1 nominal tendon length.
       edt1: 0.54  # EDT1 nominal tendon length.
-      edt2: 0.65  # EDT2 nominal tendon length.
+      #      edt2: 0.65  # EDT2 nominal tendon length.
+      edt2: 0.63  # EDT2 nominal tendon length.
       #      kft: 0.452  # KFT nominal tendon length.
-      kft: 0.402  # KFT nominal tendon length.
+      kft: 0.452  # KFT nominal tendon length.
     joint_offsets_theta_deg:
-      j3: 227.671  # Joint 3 angular offset used by tendon geometry.
-      j4: 225.931  # Joint 4 angular offset used by tendon geometry.
+      j3: 225.066  # Joint 3 angular offset used by tendon geometry.
+      j4: 224.484  # Joint 4 angular offset used by tendon geometry.
       j5: 180.0  # Joint 5 angular offset used by tendon geometry.
       j6: 270.0  # Joint 6 angular offset used by tendon geometry.
       j8: 180.0  # Joint 8 angular offset used by tendon geometry.
@@ -138,7 +142,7 @@ tendons:
       chain_38: 0.33  # Link length from joint 3 to joint 8.
       chain_34: 0.461  # Link length from joint 3 to joint 4.
       chain_4prime5: 0.357  # Link length from virtual joint 4 prime to joint 5.
-      chain_56: 0.165  # Link length from joint 5 to joint 6.
+      chain_56: 0.17  # Link length from joint 5 to joint 6.
       chain_67: 0.044  # Link length from joint 6 to joint 7/end segment.
     connector_link_lengths_longitudinal:
       gst_23: 0.1072  # Longitudinal GST connector offset between joints 2 and 3.
@@ -215,8 +219,10 @@ tendons:
       gst_phi_23_j3: [ 0.0, 0.0 ]  # Additive randomization for GST phi angle in radians.
       angle_4prime5_to_j44prime: [ 0.0, 0.0 ]  # Additive randomization for 4-prime geometry angle in radians.
   damping:
-    gst: 2.0  # Viscous damping applied to GST tendon force model.
-    dft: 2.0  # Viscous damping applied to DFT tendon force model.
-    kft: 2.0  # Viscous damping applied to KFT tendon force model.
-    edt1: 2.0  # Viscous damping applied to EDT1 tendon force model.
-    edt2: 2.0  # Viscous damping applied to EDT2 tendon force model.
+    gst: 100.0  # Viscous damping applied to GST tendon force model.
+    #    gst: 0.0  # Viscous damping applied to GST tendon force model.
+    dft: 00.0  # Viscous damping applied to DFT tendon force model.
+    edt1: 100.0  # Viscous damping applied to EDT1 tendon force model.
+    edt2: 100.0  # Viscous damping applied to EDT2 tendon force model.
+    kft: 000.0  # Viscous damping applied to KFT tendon force model.
+#    kft: 0.0  # Viscous damping applied to KFT tendon force model.

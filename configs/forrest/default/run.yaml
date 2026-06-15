@@ -4,10 +4,12 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 run:
-  duration: 5.0  # Standalone tendon simulation duration in seconds when --duration is not passed.
+  duration: 8.0  # Standalone tendon simulation duration in seconds when --duration is not passed.
   status_interval: 100  # Print one progress line every N simulation steps.
+  startup_hold_enabled: true  # Hold initial measured joint targets before starting the gait controller.
+  startup_hold_duration: 2.0  # Startup hold duration in seconds.
   controller: "sin"  # Default open-loop controller for scripts/tendons/run.py: "sin" or "cpg".
-  constraint_mode: "static"  # Base constraint for scripts/tendons/run.py: "freefall", "boom", or "static".
+  constraint_mode: "boom"  # Base constraint for scripts/tendons/run.py: "freefall", "boom", or "static".
   cpg:
     f_hz: 1.5  # CPG cycle frequency in Hz.
     duty_factor: 0.60  # Fraction of the gait cycle spent in stance.
@@ -21,29 +23,24 @@ run:
     right_phase_offset_rad: 1.5707963267948966  # Right leg phase offset before common offset.
     include_knee: true  # Include knee flexion command in the CPG controller.
   sinusoidal:
-    f_hz: 1.0  # Sinusoidal controller frequency in Hz.
+    f_hz: 0.8  # Sinusoidal controller frequency in Hz.
     left_phi0_rad: 0.0  # Left leg base phase offset.
-    right_phi0_rad: 0.0  # Right leg base phase offset.
+    right_phi0_rad: 3.141592653589793  # Right leg base phase offset.
     amplitude_deg:
       hip_roll: 0.0
       hip_yaw: 0.0
-      #      hip_flexion: 45.0
-      #      knee_flexion: 75.0
-      hip_flexion: 0.0
-      knee_flexion: 90.0
+      hip_flexion: 24.0
+      knee_flexion: 34.0
     offset_deg:
       hip_roll: 0.0
       hip_yaw: 0.0
-      hip_flexion: 0.0
-      knee_flexion: 0.0
-    #      knee_flexion: -75.0
+      hip_flexion: 8.0
+      knee_flexion: 34.0
     left_phase_rad:
       hip_flexion: 0.0
-      knee_flexion: 0.0
+      knee_flexion: 1.5707963267948966
     right_phase_rad:
-      #      hip_flexion: 180.0
-      knee_flexion: 180.0
       hip_flexion: 0.0
-  #      knee_flexion: 0.0
+      knee_flexion: 1.5707963267948966
   output_dir: "outputs"  # Directory for debug JSONL logs and generated artifacts.
   video_output: "outputs/simulation.mp4"  # Default MP4 path when video recording is enabled.

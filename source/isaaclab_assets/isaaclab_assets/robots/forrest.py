@@ -66,7 +66,7 @@ def get_forrest_cfg(config: ForrestParameterConfig) -> ArticulationCfg:
             pos=tuple(robot.initial_base_position),
             joint_pos={
                 # Left leg
-                "rp2_pantograph": 0.0,
+                "lp1_pantograph": 0.0,
                 "l0_acetabulofemoral_roll": 0.0,
                 "l1_acetabulofemoral_lateral": 0.0,
                 "l2_pseudo_acetabulofemoral_flexion": 0.0,

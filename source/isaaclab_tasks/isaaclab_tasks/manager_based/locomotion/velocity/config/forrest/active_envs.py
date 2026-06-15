@@ -21,7 +21,7 @@ class BoomMixin:
         self.scene.replicate_physics = False
 
         pose_range = dict(self.events.reset_base.params["pose_range"])
-        pose_range["x"] = (0.0, 0.0)
+        pose_range["y"] = (0.0, 0.0)
         pose_range["yaw"] = (0.0, 0.0)
         self.events.reset_base.params["pose_range"] = pose_range
         if self.events.startup_reset_base is not None:

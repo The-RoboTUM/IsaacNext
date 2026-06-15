@@ -17,14 +17,15 @@ from isaaclab.utils import configclass
 class BoomConstraintCfg:
     """USD D6-joint setup for a sagittal-plane boom.
 
-    Forrest's current convention is front = -Y and up = +Z, so the sagittal
-    plane is Y-Z. The boom locks lateral X translation and rotations about Y/Z.
-    Set ``lock_x_angle`` to also lock rotation about X.
+    Forrest's current convention is front = +X and up = +Z, so the sagittal
+    plane is X-Z. The boom locks lateral Y translation and rotations about X/Z.
+    Set ``lock_x_angle`` to also lock the sagittal pitch axis; the name is kept
+    for older YAML profiles.
     """
 
-    body_path_template: str = "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected"
-    joint_path_template: str = "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected_planar_boom_joint"
-    locked_axes: tuple[str, ...] = ("transX", "rotY", "rotZ")
+    body_path_template: str = "/World/envs/env_{env_id}/forrest_isaac/base_assy_v2_1"
+    joint_path_template: str = "/World/envs/env_{env_id}/forrest_isaac/base_assy_v2_1_planar_boom_joint"
+    locked_axes: tuple[str, ...] = ("transY", "rotX", "rotZ")
     lock_x_angle: bool = False
     body_anchor_pos: tuple[float, float, float] = (0.0, 0.0, 0.0)
     body_anchor_rot_wxyz: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
@@ -32,8 +33,9 @@ class BoomConstraintCfg:
 
 
 def _resolve_locked_axes(cfg: BoomConstraintCfg) -> tuple[str, ...]:
-    if cfg.lock_x_angle and "rotX" not in cfg.locked_axes:
-        return (*cfg.locked_axes, "rotX")
+    pitch_axis = "rotY" if "transY" in cfg.locked_axes else "rotX"
+    if cfg.lock_x_angle and pitch_axis not in cfg.locked_axes:
+        return (*cfg.locked_axes, pitch_axis)
     return cfg.locked_axes
 
 

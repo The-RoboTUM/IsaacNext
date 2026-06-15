@@ -78,13 +78,13 @@ def _constant_range_dict(
 class RobotAssetParameters:
     """Asset and spawn parameters for Forrest."""
 
-    prim_path: str = "{ENV_REGEX_NS}/forrest_urdf_latest"
-    usd_path: str = "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"
-    height_scanner_prim_path: str = "{ENV_REGEX_NS}/forrest_urdf_latest/world_corrected"
+    prim_path: str = "{ENV_REGEX_NS}/forrest_isaac"
+    usd_path: str = "symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd"
+    height_scanner_prim_path: str = "{ENV_REGEX_NS}/forrest_isaac/base_assy_v2_1"
     initial_base_position: tuple[float, float, float] = (0.0, 0.0, 1.45)
     soft_joint_pos_limit_factor: float = 0.9
-    fixed_world_body_path: str = "/World/Bot/world_corrected"
-    fixed_world_joint_path: str = "/World/Bot/world_corrected_fixed_joint"
+    fixed_world_body_path: str = "/World/Bot/base_assy_v2_1"
+    fixed_world_joint_path: str = "/World/Bot/base_assy_v2_1_fixed_joint"
     fixed_world_joint_local_pos0: tuple[float, float, float] | None = None
     fixed_world_joint_local_rot0_wxyz: tuple[float, float, float, float] | None = None
 
@@ -93,9 +93,9 @@ class RobotAssetParameters:
 class BoomParameters:
     """Planar boom constraint parameters for Forrest manager-based envs."""
 
-    body_path_template: str = "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected"
-    joint_path_template: str = "/World/envs/env_{env_id}/forrest_urdf_latest/world_corrected_planar_boom_joint"
-    locked_axes: tuple[str, ...] = ("transX", "rotY", "rotZ")
+    body_path_template: str = "/World/envs/env_{env_id}/forrest_isaac/base_assy_v2_1"
+    joint_path_template: str = "/World/envs/env_{env_id}/forrest_isaac/base_assy_v2_1_planar_boom_joint"
+    locked_axes: tuple[str, ...] = ("transY", "rotX", "rotZ")
     lock_x_angle: bool = False
     body_anchor_pos: tuple[float, float, float] = (0.0, 0.0, 0.0)
     body_anchor_rot_wxyz: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
@@ -144,7 +144,7 @@ class ActuationParameters:
     flexor_angle_deg: float = 0.0
     pantograph: ActuatorParameters = field(
         default_factory=lambda: ActuatorParameters(
-            joint_names_expr=["rp1_pantograph", "rp2_pantograph"],
+            joint_names_expr=["rp1_pantograph", "lp1_pantograph"],
             effort_limit_sim=1.0e6,
             velocity_limit_sim=100.0,
             stiffness=128.0e3,
@@ -348,8 +348,10 @@ class RunSinusoidalControllerParameters:
 class RunScriptParameters:
     duration: float = 2.0
     status_interval: int = 100
+    startup_hold_enabled: bool = True
+    startup_hold_duration: float = 2.0
     controller: str = "cpg"
-    constraint_mode: str = "static"
+    constraint_mode: str = "boom"
     cpg: RunCPGControllerParameters = field(default_factory=RunCPGControllerParameters)
     sinusoidal: RunSinusoidalControllerParameters = field(default_factory=RunSinusoidalControllerParameters)
     output_dir: str = "outputs"
@@ -516,8 +518,8 @@ class ContactParameters:
     track_air_time: bool = True
     right_foot_index: int = 0
     left_foot_index: int = 1
-    forward_dir_b: tuple[float, float, float] = (0.0, -1.0, 0.0)
-    lateral_dir_b: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    forward_dir_b: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    lateral_dir_b: tuple[float, float, float] = (0.0, 1.0, 0.0)
 
 
 @dataclass
@@ -526,8 +528,8 @@ class EventParameters:
     disable_add_base_mass: bool = True
     randomize_initial_base_pose: bool = True
     reset_robot_joint_position_range: tuple[float, float] = (1.0, 1.0)
-    external_force_body_names: tuple[str, ...] = ("world_corrected",)
-    base_com_body_names: tuple[str, ...] = ("world_corrected",)
+    external_force_body_names: tuple[str, ...] = ("base_assy_v2_1",)
+    base_com_body_names: tuple[str, ...] = ("base_assy_v2_1",)
     reset_base_pose_range: dict[str, tuple[float, float]] = field(
         default_factory=lambda: {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-0.0, 0.0)}
     )
@@ -545,8 +547,8 @@ class EventParameters:
 
 @dataclass
 class CommandParameters:
-    lin_vel_x: tuple[float, float] = (-0.0, 0.0)
-    lin_vel_y: tuple[float, float] = (-4.0, -2.0)
+    lin_vel_x: tuple[float, float] = (2.0, 4.0)
+    lin_vel_y: tuple[float, float] = (-0.0, 0.0)
     ang_vel_z: tuple[float, float] = (-0.5, 0.5)
 
 

@@ -47,6 +47,18 @@ parser.add_argument(
     help="Print one status line every N simulation steps.",
 )
 parser.add_argument(
+    "--startup_hold",
+    action=argparse.BooleanOptionalAction,
+    default=None,
+    help="Hold the measured initial joint targets before starting the gait controller.",
+)
+parser.add_argument(
+    "--startup_hold_duration",
+    type=float,
+    default=None,
+    help="Startup hold duration in seconds.",
+)
+parser.add_argument(
     "--controller",
     choices=("cpg", "sin"),
     default=None,
@@ -77,6 +89,14 @@ args_cli.duration = args_cli.duration if args_cli.duration is not None else FORR
 args_cli.status_interval = (
     args_cli.status_interval if args_cli.status_interval is not None else FORREST_PARAMS.run.status_interval
 )
+args_cli.startup_hold = (
+    args_cli.startup_hold if args_cli.startup_hold is not None else FORREST_PARAMS.run.startup_hold_enabled
+)
+args_cli.startup_hold_duration = (
+    args_cli.startup_hold_duration
+    if args_cli.startup_hold_duration is not None
+    else FORREST_PARAMS.run.startup_hold_duration
+)
 args_cli.controller = args_cli.controller or FORREST_PARAMS.run.controller
 args_cli.constraint_mode = args_cli.constraint_mode or FORREST_PARAMS.run.constraint_mode
 
@@ -98,12 +118,15 @@ from isaaclab.tendons.controllers.sinusoidal import SinusoidalLegController, Sin
 from isaaclab.tendons.manager import TendonManager
 from isaaclab.tendons.models.analytic.constants import joint_names_left, joint_names_right
 from isaaclab.tendons.models.analytic.tendon_data import TendonData
+from isaaclab.utils.math import create_rotation_matrix_from_view, quat_from_matrix
 
 from isaaclab_assets.robots.forrest import get_forrest_cfg
 
-USD_PATH = "symlinks/forrest_urdf_latest/forrest_urdf_latest.usd"
+USD_PATH = "symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd"
 VIRTUAL_GROUND_HEIGHT = FORREST_PARAMS.physics.virtual_ground_height
 SIM_DT = FORREST_PARAMS.physics.sim_dt
+CAMERA_EYE = (2.5, -8.0, 2.0)
+CAMERA_TARGET = (2.5, 0.0, 0.85)
 
 
 # Enable this while hunting for autograd issues in the tendon model.
@@ -166,6 +189,9 @@ def setup_video_writer(args, sim_cfg):
     import isaacsim.core.utils.prims as prim_utils
 
     prim_utils.create_prim("/World/Camera", "Xform")
+    camera_eye = torch.tensor([CAMERA_EYE], dtype=torch.float32)
+    camera_target = torch.tensor([CAMERA_TARGET], dtype=torch.float32)
+    camera_rot = quat_from_matrix(create_rotation_matrix_from_view(camera_eye, camera_target, up_axis="Z"))[0]
 
     camera_cfg = TiledCameraCfg(
         prim_path="/World/Camera/RecordCamera",
@@ -180,9 +206,9 @@ def setup_video_writer(args, sim_cfg):
             clipping_range=(0.1, 1.0e5),
         ),
         offset=TiledCameraCfg.OffsetCfg(
-            pos=(2.0, 0.0, 1.0),
-            rot=(0.0, 0.0, 0.0, 1.0),
-            convention="world",
+            pos=CAMERA_EYE,
+            rot=tuple(float(value) for value in camera_rot),
+            convention="opengl",
         ),
     )
     camera = TiledCamera(camera_cfg)
@@ -196,7 +222,7 @@ def setup_video_writer(args, sim_cfg):
 
 
 def add_fixed_world_joint(sim, params):
-    """Lock /World/Bot/world_corrected to the world with a fixed USD joint."""
+    """Lock the configured Forrest base body to the world with a fixed USD joint."""
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 
     stage = sim.stage
@@ -238,8 +264,9 @@ def add_fixed_world_joint(sim, params):
 def resolve_boom_locked_axes(params) -> tuple[str, ...]:
     """Return the configured boom D6 axes, including the optional sagittal angle lock."""
     locked_axes = tuple(params.boom.locked_axes)
-    if params.boom.lock_x_angle and "rotX" not in locked_axes:
-        return (*locked_axes, "rotX")
+    pitch_axis = "rotY" if "transY" in locked_axes else "rotX"
+    if params.boom.lock_x_angle and pitch_axis not in locked_axes:
+        return (*locked_axes, pitch_axis)
     return locked_axes
 
 
@@ -364,6 +391,8 @@ def controller_command_tensor(
     left_controller: LegControllerBase,
     right_controller: LegControllerBase,
     actuated_dof_specs,
+    initial_joint_positions: torch.Tensor,
+    controller_zero: torch.Tensor,
     device,
 ) -> torch.Tensor:
     controllers = {
@@ -376,7 +405,8 @@ def controller_command_tensor(
         q, _qd = controllers[spec["side"]].joint(spec["dof"], t)
         commands.append(spec["sign"] * q)
 
-    return torch.tensor([commands], dtype=torch.float32, device=device)
+    controller_target = torch.tensor([commands], dtype=torch.float32, device=device)
+    return initial_joint_positions + controller_target - controller_zero
 
 
 def make_cpg_legs(params) -> tuple[BirdBotCPGLeg, BirdBotCPGLeg]:
@@ -436,9 +466,12 @@ def make_leg_controllers(run_params) -> tuple[LegControllerBase, LegControllerBa
 
 def print_startup_summary(args, sim_cfg, num_steps: int):
     mode = "JIT / TorchScript" if args.jit else "DEBUG / eager"
+    startup_hold_duration = args.startup_hold_duration if args.startup_hold else 0.0
     print("\n=== Forrest tendon simulation ===")
     print(f"Mode:              {mode}")
     print(f"Base constraint:   {args.constraint_mode}")
+    print(f"Controller:        {args.controller}")
+    print(f"Startup hold:      {startup_hold_duration:.3f} s")
     print(f"Isaac device:      {args.device}")
     print(f"Torch CUDA:        {torch.cuda.is_available()}")
     print(f"Physics dt:        {sim_cfg.dt:.6f} s")
@@ -503,7 +536,7 @@ def main():
     print_startup_summary(args_cli, sim_cfg, num_steps)
 
     sim = SimulationContext(sim_cfg)
-    sim.set_camera_view([2.0, 2.0, 2.0], [0.0, 0.0, 0.5])
+    sim.set_camera_view(CAMERA_EYE, CAMERA_TARGET)
 
     robot_cfg = get_forrest_cfg(FORREST_PARAMS).replace(prim_path="/World/Bot")
     robot = Articulation(robot_cfg)
@@ -526,14 +559,43 @@ def main():
     #     velocity=robot.data.default_joint_vel,
     # )
     # robot.write_data_to_sim()
+    # Push configured init_state into live PhysX state
+    robot.write_root_pose_to_sim(robot.data.default_root_state[:, :7])
+    robot.write_root_velocity_to_sim(robot.data.default_root_state[:, 7:])
+    robot.write_joint_state_to_sim(
+        position=robot.data.default_joint_pos,
+        velocity=robot.data.default_joint_vel,
+    )
+
+    # Important for implicit actuators: also set drive targets to same pose
+    robot.set_joint_position_target(robot.data.default_joint_pos)
+    robot.write_data_to_sim()
+
+    robot.reset()
+    robot.update(0.0)
+
+    joint_indices_right, _ = robot.find_joints(joint_names_right, preserve_order=True)
+    joint_indices_left, _ = robot.find_joints(joint_names_left, preserve_order=True)
+
     sim.step()
     robot.update(sim.get_physics_dt())
     time.sleep(0.1)
 
-    joint_indices_right, _ = robot.find_joints(joint_names_right, preserve_order=True)
-    joint_indices_left, _ = robot.find_joints(joint_names_left, preserve_order=True)
     actuated_dof_specs = make_actuated_dof_specs(robot_cfg)
     actuated_joint_indices = find_actuated_joint_indices(robot, actuated_dof_specs)
+    FORREST_PARAMS.run.controller = args_cli.controller
+    left_controller, right_controller = make_leg_controllers(FORREST_PARAMS.run)
+    initial_controller_targets = controller_command_tensor(
+        t=0.0,
+        left_controller=left_controller,
+        right_controller=right_controller,
+        actuated_dof_specs=actuated_dof_specs,
+        initial_joint_positions=torch.zeros((1, len(actuated_joint_indices)), dtype=torch.float32, device=robot.device),
+        controller_zero=torch.zeros((1, len(actuated_joint_indices)), dtype=torch.float32, device=robot.device),
+        device=robot.device,
+    )
+    initial_joint_positions = robot.data.joint_pos[:, actuated_joint_indices].clone()
+    startup_hold_duration = max(0.0, float(args_cli.startup_hold_duration)) if args_cli.startup_hold else 0.0
 
     tendon_manager = TendonManager(
         robot,
@@ -544,8 +606,6 @@ def main():
         ),
         tendon_damping=FORREST_PARAMS.tendon_damping(),
     )
-    FORREST_PARAMS.run.controller = args_cli.controller
-    left_controller, right_controller = make_leg_controllers(FORREST_PARAMS.run)
 
     mode_label = "jit" if args_cli.jit else "debug"
     wall_start = time.perf_counter()
@@ -554,20 +614,31 @@ def main():
         for iteration in range(num_steps):
             t = iteration * sim.get_physics_dt()
             debug_info = None
+            debug_joint_pos_left = None
+            debug_joint_pos_right = None
 
             if args_cli.jit:
                 tendon_manager.apply_jit(virtual_ground_height=VIRTUAL_GROUND_HEIGHT, dt=SIM_DT)
             else:
+                # apply_debug reads the current pre-step joint state; keep the JSONL joint_pos aligned with it.
+                debug_joint_pos_left = robot.data.joint_pos[0, joint_indices_left].detach().clone()
+                debug_joint_pos_right = robot.data.joint_pos[0, joint_indices_right].detach().clone()
                 debug_info = tendon_manager.apply_debug(virtual_ground_height=VIRTUAL_GROUND_HEIGHT, dt=SIM_DT)
                 data_left, data_right = leg_tensordict_to_python_dict(debug_info)
 
-            commanded_positions = controller_command_tensor(
-                t=t,
-                left_controller=left_controller,
-                right_controller=right_controller,
-                actuated_dof_specs=actuated_dof_specs,
-                device=robot.device,
-            )
+            controller_t = max(0.0, t - startup_hold_duration)
+            if t < startup_hold_duration:
+                commanded_positions = initial_joint_positions
+            else:
+                commanded_positions = controller_command_tensor(
+                    t=controller_t,
+                    left_controller=left_controller,
+                    right_controller=right_controller,
+                    actuated_dof_specs=actuated_dof_specs,
+                    initial_joint_positions=initial_joint_positions,
+                    controller_zero=initial_controller_targets,
+                    device=robot.device,
+                )
 
             robot.set_joint_position_target(
                 commanded_positions,
@@ -585,8 +656,12 @@ def main():
                 video_writer.write(bgr_image)
 
             if debug_info is not None:
-                data_left["joint_pos"] = tensor_to_python(robot.data.joint_pos[0, joint_indices_left])
-                data_right["joint_pos"] = tensor_to_python(robot.data.joint_pos[0, joint_indices_right])
+                data_left["sim_time"] = t
+                data_right["sim_time"] = t
+                data_left["joint_pos"] = tensor_to_python(debug_joint_pos_left)
+                data_right["joint_pos"] = tensor_to_python(debug_joint_pos_right)
+                data_left["joint_pos_after_step"] = tensor_to_python(robot.data.joint_pos[0, joint_indices_left])
+                data_right["joint_pos_after_step"] = tensor_to_python(robot.data.joint_pos[0, joint_indices_right])
                 append_jsonl(debug_left_path, data_left)
                 append_jsonl(debug_right_path, data_right)
 

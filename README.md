@@ -107,7 +107,7 @@ isaacsim
 ```
 - Use the URDF Importer to import Forrest from:
 ```bash
-../urdfheim/complex/forrest_urdf_latest_description/urdf/
+symlinks/forrest_ws/urdf/
 ```
 - Before importing, use these settings:
 ![See the screenshot](images/urdf_import_setting.png)
@@ -116,11 +116,11 @@ isaacsim
   - Choose `Convex Decomposition`
 - The generated USD folder must be:
 ```bash
-../urdfheim/complex/forrest_urdf_latest_description/urdf/forrest_urdf_latest/
+symlinks/forrest_ws/urdf/forrest_isaac/
 ```
 - The expected USD file is:
 ```bash
-../urdfheim/complex/forrest_urdf_latest_description/urdf/forrest_urdf_latest/forrest_urdf_latest.usd
+symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd
 ```
 
 ### Run the Automatic Setup
@@ -135,7 +135,7 @@ This script:
 - creates or updates the `sim` conda environment from `environment.yml`
 - installs the Isaac Lab source extensions with `./isaaclab.sh -i`
 - installs the Git pre-commit hooks
-- creates `symlinks/forrest_urdf_latest`
+- creates `symlinks/forrest_ws`
 - configures Isaac Sim extension paths for PyCharm/static analysis
 
 After setup, activate the environment:
@@ -160,7 +160,7 @@ Useful setup variants:
 ```
 
 ## Joints Parameter Settings
-- In Isaac Sim, open `/IsaacNext/symlinks/forrest_urdf_latest/forrest_urdf_latest.usd`.
+- In Isaac Sim, open `/IsaacNext/symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd`.
 - After opening the USD file, find the joints folder in the right-hand Stage panel:
 ![See the joits folder in the screenshot](images/joints%20folder%20in%20the%20IsaacSim.png)
 
@@ -185,7 +185,7 @@ Useful setup variants:
 - `l4b_intertarsal_back` = [-180, 35]
 - `l3f_femorotibial_front` = [-76, 18]
 - `l4f_intertarsal_front` = [-180, 180]
-- `Virtual_S23_Assyv18_mirror_1_anchor` = [-0.0573, 0.0573]
+- `virtual_s23_assy_2_anchor` = [-0.0573, 0.0573]
 - `l5_metatarsophalangeal` = [-20, 40]
 - `l6_interphalangeal` = [-100, 90]
 - `l4p_intertarsal_pulley` = [-180, 180]
@@ -200,7 +200,7 @@ Useful setup variants:
 - `r3f_femorotibial_front` = [-76, 18]
 - `r4f_intertarsal_front` = [-180, 180]
 - `r4p_intertarsal_pulley` = [-180, 180]
-- `Virtual_S23_Assyv18_1_anchor` = [-0.0573, 0.0573]
+- `virtual_s23_assy_1_anchor` = [-0.0573, 0.0573]
 - `r5_metatarsophalangeal` = [-20, 40]
 - `r6_interphalangeal` = [-100, 90]
 - `r2p_acetabulofemoral_pulley` = [-180, 180]
@@ -216,7 +216,7 @@ After you have set the stiffness and motion range for each joint of the Forrest'
 First, go to the Stage panel on the right side, locate the corresponding link, and click the ➕, Then, find `Collision`, open it, and locate the corresponding item. Click the ➕, then select `mesh`. In the Property panel below, go to `Extra Properties`, find `Collision Enabled`, and following the instructions below, choose whether to activate or deactivate it.
 
 There is an example that illustrates the operation steps more vividly:
-- `base_link`:
+- `base_assy_v2_1`:
   - `Collision`
     - `Base_Assy_V2v18_1`
       - `mesh`: Collision Enabled ✅️

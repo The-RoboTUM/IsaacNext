@@ -67,6 +67,7 @@ class TendonManager:
             "edt2": 2.0,
         }
         self._prev_delta_lengths = None
+        self._damping_valid_envs = None
         self._profile_enabled = os.getenv("ISAACLAB_TENDON_PROFILE", "0").lower() in ("1", "true", "yes", "on")
         self._profile_interval = max(1, int(os.getenv("ISAACLAB_TENDON_PROFILE_INTERVAL", "1000")))
         self._profile_count = 0
@@ -201,6 +202,24 @@ class TendonManager:
 
     def _store_delta_lengths(self, deltas: dict[str, torch.Tensor]):
         self._prev_delta_lengths = {name: delta.detach().clone() for name, delta in deltas.items()}
+        self._damping_valid_envs = torch.ones(self.robot.num_instances, dtype=torch.bool, device=self.device)
+
+    def reset_damping_state(self, env_ids=None):
+        """Clear damping history for all envs or suppress damping for selected envs for one step."""
+        if env_ids is None or self._prev_delta_lengths is None:
+            self._prev_delta_lengths = None
+            self._damping_valid_envs = None
+            return
+
+        if self._damping_valid_envs is None:
+            self._damping_valid_envs = torch.ones(self.robot.num_instances, dtype=torch.bool, device=self.device)
+        if isinstance(env_ids, slice):
+            self._damping_valid_envs[env_ids] = False
+        else:
+            env_ids = torch.as_tensor(env_ids, device=self.device)
+            if env_ids.dtype != torch.bool:
+                env_ids = env_ids.to(dtype=torch.long)
+            self._damping_valid_envs[env_ids] = False
 
     def _damping_potential(
         self,
@@ -223,15 +242,28 @@ class TendonManager:
 
             # Match current slack logic: tendons are active when delta_l <= 0.
             active = delta.detach() <= 0.0
+            valid = self._damping_valid_leg_mask(delta)
+            if valid is not None:
+                active = active & valid
 
-            coeff = -float(self.tendon_damping[name]) * delta_dot * active
+            coeff = float(self.tendon_damping[name]) * delta_dot * active
 
-            # Gradient of this gives: c * delta_dot * d(delta_l)/dq
+            # With delta_l = rest_length - path_length, this damps tendon lengthening.
             term = (coeff.detach() * delta).sum()
 
             damping = term if damping is None else damping + term
 
         return damping
+
+    def _damping_valid_leg_mask(self, delta: torch.Tensor) -> torch.Tensor | None:
+        if self._damping_valid_envs is None:
+            return None
+
+        valid = torch.cat((self._damping_valid_envs, self._damping_valid_envs), dim=0)
+        valid = valid.to(device=delta.device)
+        while valid.ndim < delta.ndim:
+            valid = valid.unsqueeze(-1)
+        return valid
 
     def _delta_tuple_to_dict(
         self,

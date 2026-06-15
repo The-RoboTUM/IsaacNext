@@ -35,7 +35,7 @@ N_QHAT_OFFSETS: int = (
 
 N_TENDON_TANGENCY_ANGLES: int = 9  # number of fixed tendon tangency angles used in the computation
 
-JOINT_AXIS_IDX: int = 0  # axis index for joint torques around x-axis
+JOINT_AXIS_IDX: int = 1  # axis index for joint torques around y-axis
 
 dev = "cuda"
 
@@ -64,7 +64,7 @@ link_names_left = list_from_dict(
 joint_names_right = list_from_dict(
     {
         tids.I_JOINT_3: "r3f_femorotibial_front",  # j3
-        tids.I_JOINT_4: "r4p_intertarsal_pulley",  # j4
+        tids.I_JOINT_4: "r4f_intertarsal_front",  # j4, leg-chain intertarsal joint
         tids.I_JOINT_5: "r5_metatarsophalangeal",  # j5
         tids.I_JOINT_6: "r6_interphalangeal",  # j6
         tids.I_JOINT_8: "r8_knee_flexor",  # j8
@@ -74,7 +74,7 @@ joint_names_right = list_from_dict(
 joint_names_left = list_from_dict(
     {
         tids.I_JOINT_3: "l3f_femorotibial_front",  # j3
-        tids.I_JOINT_4: "l4p_intertarsal_pulley",  # j4
+        tids.I_JOINT_4: "l4f_intertarsal_front",  # j4, leg-chain intertarsal joint
         tids.I_JOINT_5: "l5_metatarsophalangeal",  # j5
         tids.I_JOINT_6: "l6_interphalangeal",  # j6
         tids.I_JOINT_8: "l8_knee_flexor",  # j8
@@ -103,7 +103,7 @@ actuated_joint_names = [
 ]
 
 all_joint_names_right = [
-    "r0_acetabulofemoral_roll,"  # j0, position/torque control
+    "r0_acetabulofemoral_roll",  # j0, position/torque control
     "r1_acetabulofemoral_lateral",  # j1, position/torque control
     "rp1_pantograph",
     # pantograph, actuated but always set to 0.0
@@ -114,16 +114,16 @@ all_joint_names_right = [
     "r3f_femorotibial_front",
     # j3, torque control applied with tendon torques
     "r4f_intertarsal_front",
-    # pulley position q4'
+    # j4, leg-chain intertarsal joint
     "r4b_intertarsal_back",
     # fourbar link above j4, not actuated
     "r4p_intertarsal_pulley",
-    # j4, not actuated but affected by tendon
+    # pulley position q4'
     "r5_metatarsophalangeal",
     # j5, not actuated but affected by tendon
     "r6_interphalangeal",
     # j6, not actuated but affected by tendon
-    "virtual_s23_assyv18_1_anchor",
+    "virtual_s23_assy_1_anchor",
     # exporter anchor, not actuated
     "r8_knee_flexor",  # j8, position/torque control
 ]
@@ -157,8 +157,8 @@ class TendonConstants:
         torch.tensor(
             list_from_dict(
                 {
-                    tids.I_JOINT_3: 227.671,
-                    tids.I_JOINT_4: 225.931,
+                    tids.I_JOINT_3: 225.066,
+                    tids.I_JOINT_4: 224.484,
                     tids.I_JOINT_5: 180.0,
                     tids.I_JOINT_6: 270.0,
                     tids.I_JOINT_8: 180.0,
@@ -207,7 +207,7 @@ class TendonConstants:
                 tids.I_CHAIN_LINK_38: 0.33,
                 tids.I_CHAIN_LINK_34: 0.461,
                 tids.I_CHAIN_LINK_4prime5: 0.357,
-                tids.I_CHAIN_LINK_56: 0.165,
+                tids.I_CHAIN_LINK_56: 0.17,
                 tids.I_CHAIN_LINK_67: 0.044,
             },
             N_CHAIN_LINKS_PER_LEG,

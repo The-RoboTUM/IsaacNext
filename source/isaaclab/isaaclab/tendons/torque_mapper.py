@@ -17,7 +17,7 @@ def joint_to_link_torques_jit_kernel(
 ) -> torch.Tensor:
     """TorchScript tensor-only joint-to-link torque mapping."""
     N_CHAIN_LINKS_PER_LEG: int = 6
-    JOINT_AXIS_IDX: int = 0
+    JOINT_AXIS_IDX: int = 1
     I_CHAIN_LINK_23: int = 0
     I_CHAIN_LINK_34: int = 1
     I_CHAIN_LINK_38: int = 5

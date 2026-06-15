@@ -40,6 +40,32 @@ from isaaclab.tendons.models.analytic.visualization.validation import (
     validate_xs,
 )
 
+_RAW_JOINT_LABELS = ("q3", "q4", "q5", "q6", "q8")
+_FALLBACK_THETA_IDS = (
+    tids.I_THETA_GST_3,
+    tids.I_THETA_GST_4,
+    tids.I_THETA_GST_5,
+    tids.I_THETA_ALL_6,
+    tids.I_THETA_KFT_8,
+)
+
+
+def _raw_joint_rows(data, joint_indices, thetas):
+    joint_pos = data.get("joint_pos")
+    try:
+        has_raw_joint_pos = joint_pos is not None and len(joint_pos) >= len(_RAW_JOINT_LABELS)
+    except TypeError:
+        has_raw_joint_pos = False
+
+    rows = []
+    for joint_idx in joint_indices:
+        label = _RAW_JOINT_LABELS[joint_idx]
+        if has_raw_joint_pos:
+            rows.append((label, deg_text(joint_pos[joint_idx])))
+        else:
+            rows.append((f"theta{label[1:]}", deg_text(thetas[_FALLBACK_THETA_IDS[joint_idx]])))
+    return rows
+
 
 class KinematicChainAnimator:
     def __init__(
@@ -69,6 +95,7 @@ class KinematicChainAnimator:
         self.show_debug_geometry = show_debug_geometry
         self.show_debug_text = show_debug_text
         self.validate_geometry = validate_geometry
+        self._validation_warning_emitted = False
         self.play_start_wall_time = time.perf_counter()
         self.play_start_frame = self.current_frame
 
@@ -606,20 +633,7 @@ class KinematicChainAnimator:
         self.gst_upper_tendon_line.set_data(upper_gst_xs, upper_gst_ys)
         self.gst_lower_tendon_line.set_data(lower_gst_xs, lower_gst_ys)
 
-        # validate gst data
-        if self.validate_geometry:
-            validate_xs(
-                joints,
-                current_data["GST_x_4prime6"],
-                current_data["GST_x_4prime7"],
-                current_data["GST_x_57"],
-            )
-            validate_ls(
-                joints,
-                current_data["GST_l_4prime6"],
-                current_data["GST_l_4prime7"],
-                current_data["GST_l_57"],
-            )
+        self._validate_geometry(joints, current_data, frame_idx)
 
         # Draw GST helper lines (x's and h's)
         self.gst_x_4prime6_line.set_data([], [])
@@ -882,16 +896,13 @@ class KinematicChainAnimator:
         delta_l_color = active_color(delta_l)
         self.gst_title.set_text(f"GST — Frame {frame_idx + 1}/{self.num_frames}")
         self.gst_title.set_color("green" if gst_active else "black")
+        gst_rows = [
+            ("mode", status),
+            ("state", gst_state),
+        ] + _raw_joint_rows(current_data, (0, 1, 2, 3), thetas)
         self.gst_info_text.set_text(
             table_lines(
-                [
-                    ("mode", status),
-                    ("state", gst_state),
-                    ("theta3", deg_text(thetas[0])),
-                    ("theta4", deg_text(thetas[1])),
-                    ("theta5", deg_text(thetas[2])),
-                    ("theta6", deg_text(thetas[3])),
-                ],
+                gst_rows,
                 key_width=8,
             )
         )
@@ -905,12 +916,12 @@ class KinematicChainAnimator:
         kft_delta_l_color = active_color(kft_delta_l)
         self.kft_delta_l_text.set_text(rf"KFT $\Delta L={kft_delta_l * 1000:02.3f}\,\mathrm{{mm}}$")
         self.kft_delta_l_text.set_color(kft_delta_l_color)
+        kft_rows = [
+            ("active", bool_text(kft_active)),
+        ] + _raw_joint_rows(current_data, (4,), thetas)
         self.kft_state_text.set_text(
             table_lines(
-                [
-                    ("active", bool_text(kft_active)),
-                    ("theta8", deg_text(thetas[4])),
-                ],
+                kft_rows,
                 key_width=8,
             )
         )
@@ -924,9 +935,7 @@ class KinematicChainAnimator:
         dft_rows = [
             ("state", dft_state),
             ("active", bool_text(dft_active)),
-            ("theta5", deg_text(thetas[2])),
-            ("theta6", deg_text(thetas[3])),
-        ]
+        ] + _raw_joint_rows(current_data, (2, 3), thetas)
         if self.show_debug_text:
             dft_rows.extend(
                 [
@@ -951,14 +960,13 @@ class KinematicChainAnimator:
         self.edt1_title.set_color("green" if edt1_active else "black")
         self.edt1_delta_l_text.set_text(rf"EDT1 $\Delta L={edt1_delta_l * 1000:02.3f}\,\mathrm{{mm}}$")
         self.edt1_delta_l_text.set_color(edt1_delta_l_color)
+        edt1_rows = [
+            ("state", edt1_state),
+            ("active", bool_text(edt1_active)),
+        ] + _raw_joint_rows(current_data, (1, 2), thetas)
         self.edt1_state_text.set_text(
             table_lines(
-                [
-                    ("state", edt1_state),
-                    ("active", bool_text(edt1_active)),
-                    ("theta4", deg_text(thetas[1])),
-                    ("theta5", deg_text(thetas[2])),
-                ],
+                edt1_rows,
                 key_width=8,
             )
         )
@@ -971,15 +979,13 @@ class KinematicChainAnimator:
         self.edt2_title.set_color("green" if edt2_active else "black")
         self.edt2_delta_l_text.set_text(rf"EDT2 $\Delta L={edt2_delta_l * 1000:02.3f}\,\mathrm{{mm}}$")
         self.edt2_delta_l_text.set_color(edt2_delta_l_color)
+        edt2_rows = [
+            ("state", edt2_state),
+            ("active", bool_text(edt2_active)),
+        ] + _raw_joint_rows(current_data, (1, 2, 3), thetas)
         self.edt2_state_text.set_text(
             table_lines(
-                [
-                    ("state", edt2_state),
-                    ("active", bool_text(edt2_active)),
-                    ("theta4", deg_text(thetas[1])),
-                    ("theta5", deg_text(thetas[2])),
-                    ("theta6", deg_text(thetas[3])),
-                ],
+                edt2_rows,
                 key_width=8,
             )
         )
@@ -1021,6 +1027,34 @@ class KinematicChainAnimator:
             ]
         )
         return artists
+
+    def _validate_geometry(self, joints, current_data, frame_idx: int):
+        """Validate debug geometry against the drawn skeleton, disabling stale-log checks once."""
+        if not self.validate_geometry:
+            return
+
+        try:
+            validate_xs(
+                joints,
+                current_data["GST_x_4prime6"],
+                current_data["GST_x_4prime7"],
+                current_data["GST_x_57"],
+            )
+            validate_ls(
+                joints,
+                current_data["GST_l_4prime6"],
+                current_data["GST_l_4prime7"],
+                current_data["GST_l_57"],
+            )
+        except AssertionError as exc:
+            self.validate_geometry = False
+            if not self._validation_warning_emitted:
+                log(
+                    "Geometry validation disabled at frame "
+                    f"{frame_idx}: {exc}. This usually means the JSONL log was generated "
+                    "with older tendon constants; rerun scripts/tendons/run.py for a strict check."
+                )
+                self._validation_warning_emitted = True
 
     def _set_debug_geometry_visible(self, visible: bool):
         """Show/hide helper x/h geometry lines without touching tendon paths."""

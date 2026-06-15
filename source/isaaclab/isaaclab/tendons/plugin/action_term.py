@@ -41,6 +41,25 @@ if TYPE_CHECKING:
     from isaaclab.tendons.plugin.action_term_cfg import TendonActionTermCfg, TendonActionTermHybridCfg
 
 
+def _get_physics_dt(env: ManagerBasedEnv) -> float:
+    """Best-effort physics dt lookup for manager-based envs."""
+    for attr_name in ("physics_dt", "step_dt", "dt"):
+        value = getattr(env, attr_name, None)
+        if value is None:
+            continue
+        if callable(value):
+            value = value()
+        if value is not None:
+            return float(value)
+
+    sim = getattr(env, "sim", None)
+    if sim is not None and hasattr(sim, "get_physics_dt"):
+        return float(sim.get_physics_dt())
+
+    # Fallback: no damping contribution in TendonManager.
+    return 0.0
+
+
 class TendonActionTermHybrid(ActionTerm):
     """Passive tendon dynamics action term.
 
@@ -60,7 +79,8 @@ class TendonActionTermHybrid(ActionTerm):
 
         self.robot = env.scene.articulations[cfg.asset_name]
         self._env = env
-        tendon_constants = load_forrest_parameter_config(cfg.parameters_file).to_tendon_constants()
+        forrest_params = load_forrest_parameter_config(cfg.parameters_file)
+        tendon_constants = forrest_params.to_tendon_constants()
 
         self.tendon_manager = TendonManager(
             robot=self.robot,
@@ -69,6 +89,7 @@ class TendonActionTermHybrid(ActionTerm):
                 randomization_ranges=cfg.randomization_ranges,
                 tc=tendon_constants,
             ),
+            tendon_damping=forrest_params.tendon_damping(),
         )
 
         # Keep these tensors so the ActionManager/debug interface can query them.
@@ -142,13 +163,10 @@ class TendonActionTermHybrid(ActionTerm):
             env_ids: The environment ids. Defaults to None, in which case all
                 environments are considered.
         """
-        # The manager stores previous tendon delta lengths for damping. Clear it
-        # on reset so new episodes do not inherit damping state from old ones.
-        self.tendon_manager._prev_delta_lengths = None
-
         # Keep this guarded because older TendonData versions may not expose reset.
         if hasattr(self.tendon_manager.tendon_data, "reset"):
             self.tendon_manager.tendon_data.reset(env_ids)
+        self.tendon_manager.reset_damping_state(env_ids)
 
     def _get_physics_dt(self) -> float:
         """Best-effort physics dt lookup for manager-based envs.
@@ -157,21 +175,7 @@ class TendonActionTermHybrid(ActionTerm):
         environments the exact attribute name can vary, so this helper tries the
         common locations and falls back to 0.0 if none are available.
         """
-        for attr_name in ("physics_dt", "step_dt", "dt"):
-            value = getattr(self._env, attr_name, None)
-            if value is None:
-                continue
-            if callable(value):
-                value = value()
-            if value is not None:
-                return float(value)
-
-        sim = getattr(self._env, "sim", None)
-        if sim is not None and hasattr(sim, "get_physics_dt"):
-            return float(sim.get_physics_dt())
-
-        # Fallback: no damping contribution in TendonManager.
-        return 0.0
+        return _get_physics_dt(self._env)
 
 
 class TendonActionTerm(ActionTerm):
@@ -187,7 +191,9 @@ class TendonActionTerm(ActionTerm):
         # Additional initialization for tendon actions can be added here
 
         self.robot = env.scene.articulations[cfg.asset_name]
-        tendon_constants = load_forrest_parameter_config(cfg.parameters_file).to_tendon_constants()
+        self._env = env
+        forrest_params = load_forrest_parameter_config(cfg.parameters_file)
+        tendon_constants = forrest_params.to_tendon_constants()
 
         self.tendon_manager = TendonManager(
             robot=self.robot,
@@ -196,6 +202,7 @@ class TendonActionTerm(ActionTerm):
                 randomization_ranges=cfg.randomization_ranges,
                 tc=tendon_constants,
             ),
+            tendon_damping=forrest_params.tendon_damping(),
         )
 
         self._raw_actions: torch.Tensor = torch.zeros((env.num_envs, self.action_dim), device=env.device)
@@ -244,10 +251,10 @@ class TendonActionTerm(ActionTerm):
         (
             tendon_torques_left,
             tendon_torques_right,
-        ) = self.tendon_manager.compute_torques_jit()  # pyright: ignore[reportAssignmentType]
+        ) = self.tendon_manager.compute_torques_jit(dt=_get_physics_dt(self._env))  # pyright: ignore[reportAssignmentType]
 
         batch_size = self.robot.num_instances
-        # 4) apply torques: with axis [0 -1 0], to each link
+        # 4) apply torques around the local Y flexion axis to each link.
         tendon_torques_full = torch.zeros((batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device)
 
         # Fix coordinate system inversion for joint 3 and 4
@@ -297,6 +304,6 @@ class TendonActionTerm(ActionTerm):
             env_ids: The environment ids. Defaults to None, in which case
                 all environments are considered.
         """
-        self.tendon_manager._prev_delta_lengths = None
         if hasattr(self.tendon_manager.tendon_data, "reset"):
             self.tendon_manager.tendon_data.reset(env_ids)
+        self.tendon_manager.reset_damping_state(env_ids)

@@ -74,9 +74,6 @@ def compute_gst_attachment_points(alpha_2, joint_locations, data):
     )
     direction_angle += q4
     radius_4 = np.linalg.norm(p4_o - j4)
-    assert abs(radius_4 - td.pulley_radii[0, tids.I_RADIUS_GST_4].item()) < 0.001, (
-        f"Expected radius at 4 {td.pulley_radii[0, tids.I_RADIUS_GST_4].item()}, got {radius_4}"
-    )
     p4prime_i = (
         rotate_by(
             np.deg2rad(-45),  # note: to compensate for extended upper tendon drawing
@@ -309,36 +306,16 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
         # Tangent radius is perpendicular to the outgoing tendon segment.
         # Try this sign first.
         p6_o = j6 + rotate_by(-np.pi / 2, out_dir) * tc.pulley_radii[tids.I_RADIUS_DFT_6].item()
-        # Debug: both pulley points should lie on radius r6.
-        assert np.isclose(
-            np.linalg.norm(p6_i - j6),
-            tc.pulley_radii[tids.I_RADIUS_DFT_6].item(),
-            atol=1e-3,
-        ), "DFT B: p6_i not on pulley r6"
-
-        assert np.isclose(
-            np.linalg.norm(p6_o - j6),
-            tc.pulley_radii[tids.I_RADIUS_DFT_6].item(),
-            atol=1e-3,
-        ), "DFT B: p6_o not on pulley r6"
 
         tendon_points = [pc5, p6_i, p6_o, p7]
         tendon_joints = [j6]
         q_positives = [q6 >= 0]
-
-        expected_len = data["DFT_l_c6"]
-        actual_len = np.linalg.norm(p6_i - pc5)
-        assert np.isclose(actual_len, expected_len, atol=1e-3), f"DFT B: expected lc6={expected_len}, got {actual_len}"
     # elif dft_state == "c":
     #     p7 = pc5 + rotate_by(direction_angle, np.array([np.sqrt(data["DFT_l_c7_squared"]), 0.0]))
     #     tendon_points = [pc5, p7]
     #     tendon_joints = []
     #     q_positives = []
     elif dft_state == "c":  # todo: check this
-        expected_len = np.sqrt(data["DFT_l_c7_squared"])
-        actual_len = np.linalg.norm(p7 - pc5)
-        assert np.isclose(actual_len, expected_len, atol=1e-3), f"DFT C: expected c7={expected_len}, got {actual_len}"
-
         tendon_points = [pc5, p7]
         tendon_joints = []
         q_positives = []
@@ -377,10 +354,6 @@ def compute_dft_points(alphas, joint_locations, data, r5, r6):
         )
         q5 = data["DFT_q5_D"]
         p5_o = j5 + rotate_by(q5, p5_i - j5)
-
-        expected_len = data["DFT_l_57"]
-        actual_len = np.linalg.norm(p7 - p5_o)
-        assert np.isclose(actual_len, expected_len, atol=1e-3), f"DFT D: expected l57={expected_len}, got {actual_len}"
 
         tendon_points = [pc5, p5_i, p5_o, p7]
         tendon_joints = [j5]

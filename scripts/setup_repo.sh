@@ -94,10 +94,10 @@ else
 fi
 
 setup_symlink() {
-    local target_dir="${URDFHEIM_DIR}/complex/forrest_urdf_latest_description/urdf/forrest_urdf_latest"
-    local target_usd="${target_dir}/forrest_urdf_latest.usd"
+    local target_dir="${URDFHEIM_DIR}/complex/forrest_isaac_description"
+    local target_usd="${target_dir}/urdf/forrest_isaac/forrest_isaac.usd"
     local link_dir="${REPO_ROOT}/symlinks"
-    local link_path="${link_dir}/forrest_urdf_latest"
+    local link_path="${link_dir}/forrest_ws"
 
     [[ -d "${URDFHEIM_DIR}" ]] || error "urdfheim not found at: ${URDFHEIM_DIR}"
     [[ -d "${target_dir}" ]] || error "Forrest USD directory not found: ${target_dir}"

@@ -15,8 +15,9 @@ from isaaclab.tendons.models.analytic.constants import tids
 from isaaclab.tendons.models.analytic.tendon_data import TendonData
 from isaaclab.tendons.parameter_loader import load_forrest_parameter_config
 
-# draw the leg, starting at joint 2
-DEFAULT_ALPHA_2 = np.deg2rad(300)
+# Draw the leg from joint 2 in the +X/Z sagittal projection. The new Forrest
+# URDF has j2->j3 at atan2(z, x) ~= -80 deg.
+DEFAULT_ALPHA_2 = np.deg2rad(280)
 
 # Keep these module-level objects so the split code behaves like the original script.
 _forrest_params = load_forrest_parameter_config()
