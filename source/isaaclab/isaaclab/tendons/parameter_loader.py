@@ -20,6 +20,8 @@ from typing import Any
 
 import yaml
 
+from isaaclab.curriculums.command_bins import CommandBinCurriculumParameters
+
 DEFAULT_FORREST_CONFIG_ENV = "ISAACNEXT_FORREST_CONFIG"
 DEFAULT_FORREST_CONFIG_RELATIVE_PATH = Path("configs/forrest/default")
 PROFILE_CONFIG_FILENAMES = ("base.yaml", "train.yaml", "run.yaml", "agent.yaml")
@@ -117,7 +119,16 @@ class RigidBodyPhysicsParameters:
 class ArticulationPhysicsParameters:
     enabled_self_collisions: bool = False
     solver_position_iteration_count: int = 4
-    solver_velocity_iteration_count: int = 0
+    solver_velocity_iteration_count: int = 1
+    selective_self_collision_body_names: tuple[str, ...] = (
+        "s23_assy_1",
+        "s34_foot_connector_assy_1",
+        "s45_digit_assy_1",
+        "s23_assy_2",
+        "s34_foot_connector_assy_2",
+        "s45_digit_assy_2",
+    )
+    selective_self_collision_debug: bool = False
 
 
 @dataclass
@@ -126,6 +137,8 @@ class PhysicsParameters:
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
     virtual_ground_height: float | None = None
     physx_gpu_collision_stack_size: int = 160 * 1024 * 1024
+    physx_gpu_found_lost_aggregate_pairs_capacity: int = 2**27
+    physx_gpu_total_aggregate_pairs_capacity: int = 2**22
     rigid_body: RigidBodyPhysicsParameters = field(default_factory=RigidBodyPhysicsParameters)
     articulation: ArticulationPhysicsParameters = field(default_factory=ArticulationPhysicsParameters)
 
@@ -168,6 +181,30 @@ class ActuationParameters:
     )
     knee_flex: ActuatorParameters = field(
         default_factory=lambda: ActuatorParameters(joint_names_expr=["r8_knee_flexor", "l8_knee_flexor"])
+    )
+    passive_tendon_chain: ActuatorParameters = field(
+        default_factory=lambda: ActuatorParameters(
+            joint_names_expr=[
+                "l3b_femorotibial_back",
+                "l4b_intertarsal_back",
+                "l3f_femorotibial_front",
+                "l4f_intertarsal_front",
+                "l4p_intertarsal_pulley",
+                "l5_metatarsophalangeal",
+                "l6_interphalangeal",
+                "r3b_femorotibial_back",
+                "r4b_intertarsal_back",
+                "r3f_femorotibial_front",
+                "r4f_intertarsal_front",
+                "r4p_intertarsal_pulley",
+                "r5_metatarsophalangeal",
+                "r6_interphalangeal",
+            ],
+            effort_limit_sim=10.0,
+            velocity_limit_sim=100.0,
+            stiffness=0.0,
+            damping=0.05,
+        )
     )
 
 
@@ -301,7 +338,15 @@ class TendonRandomizationParameters:
 class TendonParameters:
     baseline: TendonBaselineParameters = field(default_factory=TendonBaselineParameters)
     randomization: TendonRandomizationParameters = field(default_factory=TendonRandomizationParameters)
-    damping: dict[str, float] = field(default_factory=lambda: {name: 2.0 for name in TENDON_NAMES})
+    damping: dict[str, float] = field(
+        default_factory=lambda: {
+            "gst": 20.0,
+            "dft": 30.0,
+            "edt1": 30.0,
+            "edt2": 30.0,
+            "kft": 30.0,
+        }
+    )
 
 
 @dataclass
@@ -317,6 +362,27 @@ class RunCPGControllerParameters:
     left_phase_offset_rad: float = -math.pi / 2
     right_phase_offset_rad: float = math.pi / 2
     include_knee: bool = True
+
+
+@dataclass
+class RunCpgOscillatorControllerParameters:
+    f_hz: float = 0.8
+    duty_factor: float = 0.60
+    left_phase_rad: float = 0.0
+    right_phase_rad: float = math.pi
+    hip_flexion_amplitude_deg: float = 24.0
+    hip_flexion_offset_deg: float = 8.0
+    hip_flexion_phase_rad: float = 0.0
+    knee_flexion_amplitude_deg: float = 34.0
+    knee_flexion_offset_deg: float = 0.0
+    knee_flexion_phase_rad: float = math.pi / 2.0
+    knee_swing_power: float = 1.5
+    hip_roll_amplitude_deg: float = 0.0
+    hip_roll_offset_deg: float = 0.0
+    hip_roll_phase_rad: float = 0.0
+    hip_yaw_amplitude_deg: float = 0.0
+    hip_yaw_offset_deg: float = 0.0
+    hip_yaw_phase_rad: float = 0.0
 
 
 @dataclass
@@ -353,6 +419,7 @@ class RunScriptParameters:
     controller: str = "cpg"
     constraint_mode: str = "boom"
     cpg: RunCPGControllerParameters = field(default_factory=RunCPGControllerParameters)
+    cpg_oscillator: RunCpgOscillatorControllerParameters = field(default_factory=RunCpgOscillatorControllerParameters)
     sinusoidal: RunSinusoidalControllerParameters = field(default_factory=RunSinusoidalControllerParameters)
     output_dir: str = "outputs"
     video_output: str = "outputs/simulation.mp4"
@@ -425,6 +492,7 @@ class RewardParameters:
             "termination_penalty": -200.0,
             "track_base_height_exp": 0.0,
             "track_lin_vel_xy_exp": 2.0,
+            "forward_vel_x": 0.0,
             "track_ang_vel_z_exp": 0.1,
             "feet_crossing": -0.0,
             "feet_parallel_contact": -0.0,
@@ -467,8 +535,7 @@ class RewardParameters:
     feet_air_time_threshold: float = 0.4
     gait_symmetry: dict[str, Any] = field(
         default_factory=lambda: {
-            "max_forward_separation": 0.25,
-            "max_forward_error": 0.75,
+            "alpha": 0.001,
             "debug": False,
             "debug_every": 10,
             "debug_env_id": 0,
@@ -566,6 +633,7 @@ class TrainingParameters:
     contacts: ContactParameters = field(default_factory=ContactParameters)
     events: EventParameters = field(default_factory=EventParameters)
     commands: CommandParameters = field(default_factory=CommandParameters)
+    command_curriculum: CommandBinCurriculumParameters = field(default_factory=CommandBinCurriculumParameters)
     terminations: TerminationParameters = field(default_factory=TerminationParameters)
 
 
@@ -723,7 +791,11 @@ def _load_forrest_config_file(file_path: Path, *, visited: set[Path]) -> list[tu
         include_path = Path(include).expanduser()
         if not include_path.is_absolute():
             include_path = file_path.parent / include_path
-        items.extend(_load_forrest_config_file(include_path, visited=visited))
+        if include_path.is_dir():
+            for include_file_path in iter_forrest_config_files(include_path):
+                items.extend(_load_forrest_config_file(include_file_path, visited=visited))
+        else:
+            items.extend(_load_forrest_config_file(include_path, visited=visited))
     if parameters:
         items.append((file_path, parameters))
     return items

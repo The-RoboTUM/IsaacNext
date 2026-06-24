@@ -1,0 +1,47 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+# Minimal Optuna meta-optimization config for PSO algorithm hyperparameters.
+#
+# This intentionally tunes PSO behavior, not objective weights. Keeping the
+# objective fixed makes best_score comparable across trials.
+
+study_name: "forrest_pso_meta"
+storage: "sqlite:///outputs/pso_meta/forrest_pso_meta.db"
+output_dir: "outputs/pso_meta/forrest_pso_meta"
+base_pso_config: "configs/pso.yaml"
+parameters_file: null
+n_trials: 20
+timeout_s: null
+device: "cuda:0"
+headless: true
+trial_info: "summary"
+
+# Keep each Optuna trial affordable and comparable.
+fixed_overrides:
+  swarm:
+    iterations: 100
+    seed: 42
+  objective:
+    duration: 4.0
+    status_interval: 10
+  output:
+    save_every: 25
+    best_checkpoint_interval: 50
+
+search_space:
+  num_particles: [ 64, 96, 128, 192, 256 ]
+  num_env_multiplier: [ 2, 3, 4 ]
+  inertia_start: [ 0.65, 1.05 ]
+  inertia_drop: [ 0.05, 0.65 ]
+  inertia_end_min: 0.20
+  cognitive: [ 0.50, 2.50 ]
+  social: [ 0.50, 2.50 ]
+  velocity_clamp: [ 0.05, 0.50 ]
+  topology: [ "ring", "global" ]
+  neighborhood_size: [ 3, 5, 7, 9, 15 ]
+  initialization: [ "sobol", "random" ]
+  restart_after_iterations: [ 0, 5, 10, 15, 20 ]
+  restart_fraction: [ 0.10, 0.50 ]

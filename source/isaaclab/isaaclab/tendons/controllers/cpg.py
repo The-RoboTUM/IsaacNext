@@ -30,6 +30,73 @@ class CPGParams:
     roll_O_deg: float = 0.0
 
 
+@dataclass
+class HopfCPGParams:
+    f_hz: float = 0.8
+    duty_factor: float = 0.60
+    phi0: float = 0.0
+    hip_flexion_amplitude_deg: float = 24.0
+    hip_flexion_offset_deg: float = 8.0
+    hip_flexion_phase_rad: float = 0.0
+    knee_flexion_amplitude_deg: float = 34.0
+    knee_flexion_offset_deg: float = 0.0
+    knee_flexion_phase_rad: float = np.pi / 2.0
+    knee_swing_power: float = 1.5
+    hip_roll_amplitude_deg: float = 0.0
+    hip_roll_offset_deg: float = 0.0
+    hip_roll_phase_rad: float = 0.0
+    hip_yaw_amplitude_deg: float = 0.0
+    hip_yaw_offset_deg: float = 0.0
+    hip_yaw_phase_rad: float = 0.0
+
+
+class HopfCPGLeg(LegControllerBase):
+    """Phase-locked Hopf-style CPG leg controller.
+
+    The oscillator is evaluated on its stable limit cycle.  Duty-factor phase
+    warping separates stance and swing timing, while half-wave knee activation
+    avoids the always-bending knee motion of a plain sinusoid.
+    """
+
+    def __init__(self, params: HopfCPGParams):
+        self.p = params
+        self.omega = TWOPI * float(self.p.f_hz)
+        self.duty_factor = float(np.clip(self.p.duty_factor, 0.05, 0.95))
+        self.hip_flexion_amplitude = np.deg2rad(self.p.hip_flexion_amplitude_deg)
+        self.hip_flexion_offset = np.deg2rad(self.p.hip_flexion_offset_deg)
+        self.knee_flexion_amplitude = np.deg2rad(self.p.knee_flexion_amplitude_deg)
+        self.knee_flexion_offset = np.deg2rad(self.p.knee_flexion_offset_deg)
+        self.hip_roll_amplitude = np.deg2rad(self.p.hip_roll_amplitude_deg)
+        self.hip_roll_offset = np.deg2rad(self.p.hip_roll_offset_deg)
+        self.hip_yaw_amplitude = np.deg2rad(self.p.hip_yaw_amplitude_deg)
+        self.hip_yaw_offset = np.deg2rad(self.p.hip_yaw_offset_deg)
+
+    def _theta(self, t: float) -> float:
+        return theta_warp(self.omega * t + float(self.p.phi0), self.duty_factor)
+
+    def joint(self, dof: str, t: float) -> tuple[float, float]:
+        theta = self._theta(t)
+        if dof == "hip_roll":
+            q = self.hip_roll_amplitude * np.sin(theta + float(self.p.hip_roll_phase_rad)) + self.hip_roll_offset
+            return float(q), 0.0
+        if dof == "hip_yaw":
+            q = self.hip_yaw_amplitude * np.sin(theta + float(self.p.hip_yaw_phase_rad)) + self.hip_yaw_offset
+            return float(q), 0.0
+        if dof == "hip_flexion":
+            q = (
+                self.hip_flexion_amplitude * np.sin(theta + float(self.p.hip_flexion_phase_rad))
+                + self.hip_flexion_offset
+            )
+            return float(q), 0.0
+        if dof == "knee_flexion":
+            swing = max(0.0, np.sin(theta + float(self.p.knee_flexion_phase_rad)))
+            q = self.knee_flexion_offset + self.knee_flexion_amplitude * swing ** max(
+                0.1, float(self.p.knee_swing_power)
+            )
+            return float(q), 0.0
+        raise KeyError(f"Unknown controller DOF: {dof}")
+
+
 class BirdBotCPGLeg(LegControllerBase):
     """CPG-based leg controller using the common controller interface."""
 

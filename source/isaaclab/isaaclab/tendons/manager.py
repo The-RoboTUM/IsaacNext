@@ -60,11 +60,11 @@ class TendonManager:
         self.foot_link_indices = self.robot_io.foot_link_indices
 
         self.tendon_damping = tendon_damping or {
-            "gst": 2.0,
-            "dft": 2.0,
-            "kft": 2.0,
-            "edt1": 2.0,
-            "edt2": 2.0,
+            "gst": 20.0,
+            "dft": 30.0,
+            "kft": 30.0,
+            "edt1": 30.0,
+            "edt2": 30.0,
         }
         self._prev_delta_lengths = None
         self._damping_valid_envs = None
@@ -246,14 +246,24 @@ class TendonManager:
             if valid is not None:
                 active = active & valid
 
-            coeff = float(self.tendon_damping[name]) * delta_dot * active
+            spring_coeff = self._tendon_stiffness(name, delta) * delta.detach()
+            raw_damping_coeff = float(self.tendon_damping[name]) * delta_dot
+            total_coeff = torch.clamp(spring_coeff + raw_damping_coeff, max=0.0)
+            coeff = (total_coeff - spring_coeff) * active.to(dtype=delta.dtype)
 
-            # With delta_l = rest_length - path_length, this damps tendon lengthening.
+            # Tendons can only pull: clamp damping so spring+damping tension never reverses.
             term = (coeff.detach() * delta).sum()
 
             damping = term if damping is None else damping + term
 
         return damping
+
+    def _tendon_stiffness(self, name: str, delta: torch.Tensor) -> torch.Tensor:
+        stiffness = getattr(self.tendon_data, f"{name}_stiffness")
+        stiffness = stiffness.to(device=delta.device, dtype=delta.dtype)
+        while stiffness.ndim < delta.ndim:
+            stiffness = stiffness.unsqueeze(-1)
+        return stiffness
 
     def _damping_valid_leg_mask(self, delta: torch.Tensor) -> torch.Tensor | None:
         if self._damping_valid_envs is None:

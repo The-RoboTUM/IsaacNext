@@ -60,7 +60,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--controller",
-    choices=("cpg", "sin"),
+    choices=("cpg", "cpg_oscillator", "sin"),
     default=None,
     help="Leg controller to use for actuated joints.",
 )
@@ -112,12 +112,17 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.sensors.camera import TiledCamera, TiledCameraCfg
 from isaaclab.sim import SimulationContext
-from isaaclab.tendons.controllers.base import DOF_ORDER, DOF_SIGN, DOF_TO_ACTUATOR_GROUP, LegControllerBase
-from isaaclab.tendons.controllers.cpg import BirdBotCPGLeg, CPGParams
-from isaaclab.tendons.controllers.sinusoidal import SinusoidalLegController, SinusoidalParams
 from isaaclab.tendons.manager import TendonManager
 from isaaclab.tendons.models.analytic.constants import joint_names_left, joint_names_right
 from isaaclab.tendons.models.analytic.tendon_data import TendonData
+from isaaclab.tendons.runner import (
+    configure_base_constraint,
+    controller_command_tensor,
+    find_actuated_joint_indices,
+    make_actuated_dof_specs,
+    make_leg_controllers,
+    reset_robot_to_default,
+)
 from isaaclab.utils.math import create_rotation_matrix_from_view, quat_from_matrix
 
 from isaaclab_assets.robots.forrest import get_forrest_cfg
@@ -221,249 +226,6 @@ def setup_video_writer(args, sim_cfg):
     return camera, video_writer
 
 
-def add_fixed_world_joint(sim, params):
-    """Lock the configured Forrest base body to the world with a fixed USD joint."""
-    from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
-
-    stage = sim.stage
-    body_path = Sdf.Path(params.robot.fixed_world_body_path)
-    joint_path = Sdf.Path(params.robot.fixed_world_joint_path)
-    body_prim = stage.GetPrimAtPath(body_path)
-    if not body_prim.IsValid():
-        raise RuntimeError(f"Cannot create fixed world joint: body prim does not exist: {body_path}")
-
-    body_tf = UsdGeom.Xformable(body_prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
-    body_tf.Orthonormalize()
-    body_pos_w = body_tf.ExtractTranslation()
-    body_rot_w = body_tf.ExtractRotationQuat()
-
-    if params.robot.fixed_world_joint_local_pos0 is None:
-        local_pos0 = Gf.Vec3f(float(body_pos_w[0]), float(body_pos_w[1]), float(body_pos_w[2]))
-    else:
-        local_pos0 = Gf.Vec3f(*params.robot.fixed_world_joint_local_pos0)
-
-    if params.robot.fixed_world_joint_local_rot0_wxyz is None:
-        local_rot0 = Gf.Quatf(
-            float(body_rot_w.real),
-            float(body_rot_w.imaginary[0]),
-            float(body_rot_w.imaginary[1]),
-            float(body_rot_w.imaginary[2]),
-        )
-    else:
-        local_rot0 = Gf.Quatf(*params.robot.fixed_world_joint_local_rot0_wxyz)
-
-    fixed_joint = UsdPhysics.FixedJoint.Define(stage, joint_path)
-    fixed_joint.CreateBody1Rel().SetTargets([body_path])
-    fixed_joint.CreateLocalPos0Attr(local_pos0)
-    fixed_joint.CreateLocalRot0Attr(local_rot0)
-    fixed_joint.CreateLocalPos1Attr(Gf.Vec3f(0.0, 0.0, 0.0))
-    fixed_joint.CreateLocalRot1Attr(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
-    fixed_joint.CreateCollisionEnabledAttr(False)
-
-
-def resolve_boom_locked_axes(params) -> tuple[str, ...]:
-    """Return the configured boom D6 axes, including the optional sagittal angle lock."""
-    locked_axes = tuple(params.boom.locked_axes)
-    pitch_axis = "rotY" if "transY" in locked_axes else "rotX"
-    if params.boom.lock_x_angle and pitch_axis not in locked_axes:
-        return (*locked_axes, pitch_axis)
-    return locked_axes
-
-
-def lock_d6_axis(joint_prim, axis: str) -> None:
-    from pxr import UsdPhysics
-
-    limit_api = UsdPhysics.LimitAPI.Apply(joint_prim, getattr(UsdPhysics.Tokens, axis))
-    # In USD Physics/PhysX, low > high means a locked D6 axis.
-    limit_api.CreateLowAttr(1.0)
-    limit_api.CreateHighAttr(-1.0)
-
-
-def add_planar_boom_joint(sim, params):
-    """Constrain /World/Bot to the configured sagittal plane with a world-to-body D6 joint."""
-    from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
-
-    stage = sim.stage
-    body_path = Sdf.Path(params.robot.fixed_world_body_path)
-    joint_path = Sdf.Path(params.robot.fixed_world_joint_path + "_planar_boom")
-    body_prim = stage.GetPrimAtPath(body_path)
-
-    if not body_prim.IsValid():
-        raise RuntimeError(f"Cannot create Forrest boom: body prim does not exist: {body_path}")
-    if not body_prim.HasAPI(UsdPhysics.RigidBodyAPI):
-        raise RuntimeError(f"Cannot create Forrest boom: target prim is not a rigid body: {body_path}")
-
-    body_anchor_pos = Gf.Vec3f(*params.boom.body_anchor_pos)
-    body_anchor_rot = Gf.Quatf(*params.boom.body_anchor_rot_wxyz)
-    body_tf_w = UsdGeom.Xformable(body_prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
-    body_tf_w.Orthonormalize()
-    world_anchor_pos = body_tf_w.Transform(Gf.Vec3d(*params.boom.body_anchor_pos))
-    world_anchor_rot = body_tf_w.ExtractRotationQuat()
-
-    joint = UsdPhysics.Joint.Define(stage, joint_path)
-    joint.CreateBody1Rel().SetTargets([body_path])
-    joint.CreateLocalPos0Attr().Set(Gf.Vec3f(*world_anchor_pos))
-    joint.CreateLocalRot0Attr().Set(
-        Gf.Quatf(
-            float(world_anchor_rot.real),
-            float(world_anchor_rot.imaginary[0]),
-            float(world_anchor_rot.imaginary[1]),
-            float(world_anchor_rot.imaginary[2]),
-        )
-    )
-    joint.CreateLocalPos1Attr().Set(body_anchor_pos)
-    joint.CreateLocalRot1Attr().Set(body_anchor_rot)
-    joint.CreateCollisionEnabledAttr(False)
-
-    locked_axes = resolve_boom_locked_axes(params)
-    joint_prim = joint.GetPrim()
-    for axis in locked_axes:
-        lock_d6_axis(joint_prim, axis)
-
-    if params.boom.debug:
-        print(f"[ForrestBoom] Created standalone planar boom D6 joint at {joint_path} with locked axes: {locked_axes}.")
-
-
-def configure_base_constraint(sim, params, constraint_mode: str) -> None:
-    """Author the selected standalone base constraint before PhysX startup."""
-    if constraint_mode == "freefall":
-        return
-    if constraint_mode == "boom":
-        add_planar_boom_joint(sim, params)
-        return
-    if constraint_mode == "static":
-        add_fixed_world_joint(sim, params)
-        return
-    raise ValueError(f"Unknown constraint_mode: {constraint_mode!r}")
-
-
-def make_actuated_dof_specs(robot_cfg):
-    """Build target joint specs from the configured Forrest actuators.
-
-    run.py intentionally does not contain concrete joint names. The actual
-    joint regex/name strings come from the robot config actuator groups.
-    """
-    specs = []
-
-    for side_prefix, side_name in (("l", "left"), ("r", "right")):
-        for dof in DOF_ORDER:
-            actuator_group = DOF_TO_ACTUATOR_GROUP[dof]
-            actuator_cfg = robot_cfg.actuators[actuator_group]
-
-            matches = [expr for expr in actuator_cfg.joint_names_expr if expr.startswith(side_prefix)]
-
-            if len(matches) != 1:
-                raise RuntimeError(
-                    f"Expected exactly one {side_name} joint expression for "
-                    f"controller DOF {dof!r} in actuator group {actuator_group!r}; "
-                    f"got {matches}"
-                )
-
-            specs.append(
-                {
-                    "side": side_name,
-                    "dof": dof,
-                    "joint_expr": matches[0],
-                    "sign": DOF_SIGN[dof],
-                }
-            )
-
-    return specs
-
-
-def find_actuated_joint_indices(robot, actuated_dof_specs):
-    joint_exprs = [spec["joint_expr"] for spec in actuated_dof_specs]
-    joint_indices, found_joint_names = robot.find_joints(joint_exprs, preserve_order=True)
-
-    if len(joint_indices) != len(joint_exprs):
-        raise RuntimeError(f"Could not find all actuated joints. Requested: {joint_exprs}; found: {found_joint_names}")
-
-    print("Actuated controller DOFs:")
-    for spec, joint_name in zip(actuated_dof_specs, found_joint_names):
-        print(f"  {spec['side']:>5} {spec['dof']:<13} -> {joint_name}")
-
-    return joint_indices
-
-
-def controller_command_tensor(
-    *,
-    t: float,
-    left_controller: LegControllerBase,
-    right_controller: LegControllerBase,
-    actuated_dof_specs,
-    initial_joint_positions: torch.Tensor,
-    controller_zero: torch.Tensor,
-    device,
-) -> torch.Tensor:
-    controllers = {
-        "left": left_controller,
-        "right": right_controller,
-    }
-
-    commands = []
-    for spec in actuated_dof_specs:
-        q, _qd = controllers[spec["side"]].joint(spec["dof"], t)
-        commands.append(spec["sign"] * q)
-
-    controller_target = torch.tensor([commands], dtype=torch.float32, device=device)
-    return initial_joint_positions + controller_target - controller_zero
-
-
-def make_cpg_legs(params) -> tuple[BirdBotCPGLeg, BirdBotCPGLeg]:
-    """Create left/right CPG controllers."""
-    common = dict(
-        f_hz=params.f_hz,
-        D=params.duty_factor,
-        A_h_deg=params.hip_amplitude_deg,
-        O_h_deg=params.hip_offset_deg,
-        A_k_deg=params.knee_amplitude_deg,
-        S_f=params.swing_start_offset,
-        S_e=params.swing_end_offset,
-    )
-    left_params = CPGParams(phi0=params.left_phase_offset_rad + params.combined_phase_offset_rad, **common)
-    right_params = CPGParams(phi0=params.right_phase_offset_rad + params.combined_phase_offset_rad, **common)
-
-    return (
-        BirdBotCPGLeg(left_params, include_knee=params.include_knee),
-        BirdBotCPGLeg(right_params, include_knee=params.include_knee),
-    )
-
-
-def make_sinusoidal_legs(params) -> tuple[SinusoidalLegController, SinusoidalLegController]:
-    """Create left/right sinusoidal controllers over the same logical DOFs."""
-    common = dict(
-        f_hz=params.f_hz,
-        amplitude_deg=params.amplitude_deg,
-        offset_deg=params.offset_deg,
-    )
-
-    return (
-        SinusoidalLegController(
-            SinusoidalParams(
-                phi0=params.left_phi0_rad,
-                phase_rad=params.left_phase_rad,
-                **common,
-            )
-        ),
-        SinusoidalLegController(
-            SinusoidalParams(
-                phi0=params.right_phi0_rad,
-                phase_rad=params.right_phase_rad,
-                **common,
-            )
-        ),
-    )
-
-
-def make_leg_controllers(run_params) -> tuple[LegControllerBase, LegControllerBase]:
-    controller_name = run_params.controller
-    if controller_name == "cpg":
-        return make_cpg_legs(run_params.cpg)
-    if controller_name == "sin":
-        return make_sinusoidal_legs(run_params.sinusoidal)
-    raise ValueError(f"Unknown controller: {controller_name}")
-
-
 def print_startup_summary(args, sim_cfg, num_steps: int):
     mode = "JIT / TorchScript" if args.jit else "DEBUG / eager"
     startup_hold_duration = args.startup_hold_duration if args.startup_hold else 0.0
@@ -532,6 +294,8 @@ def main():
 
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=tuple(FORREST_PARAMS.physics.gravity))
     sim_cfg.dt = SIM_DT
+    sim_cfg.physx.enable_external_forces_every_iteration = True
+    sim_cfg.physx.min_velocity_iteration_count = max(1, int(sim_cfg.physx.min_velocity_iteration_count))
     num_steps = int(args_cli.duration / sim_cfg.dt)
     print_startup_summary(args_cli, sim_cfg, num_steps)
 
@@ -554,24 +318,7 @@ def main():
 
     configure_base_constraint(sim, FORREST_PARAMS, args_cli.constraint_mode)
     sim.reset()
-    # robot.write_joint_state_to_sim(
-    #     position=robot.data.default_joint_pos,
-    #     velocity=robot.data.default_joint_vel,
-    # )
-    # robot.write_data_to_sim()
-    # Push configured init_state into live PhysX state
-    robot.write_root_pose_to_sim(robot.data.default_root_state[:, :7])
-    robot.write_root_velocity_to_sim(robot.data.default_root_state[:, 7:])
-    robot.write_joint_state_to_sim(
-        position=robot.data.default_joint_pos,
-        velocity=robot.data.default_joint_vel,
-    )
-
-    # Important for implicit actuators: also set drive targets to same pose
-    robot.set_joint_position_target(robot.data.default_joint_pos)
-    robot.write_data_to_sim()
-
-    robot.reset()
+    reset_robot_to_default(robot)
     robot.update(0.0)
 
     joint_indices_right, _ = robot.find_joints(joint_names_right, preserve_order=True)

@@ -218,18 +218,21 @@ def _feet_parallel_contact_penalty_core(
 def _feet_symmetry_penalty_core(
     pos_b: torch.Tensor,
     forward_dir: torch.Tensor,
-    max_forward_separation: float,
-    max_forward_error: float,
-) -> torch.Tensor:
+    foot0_ahead_avg: torch.Tensor,
+    foot1_ahead_avg: torch.Tensor,
+    alpha: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     forward_dir = _normalize_vec3_tensor(forward_dir)
     forward_coord = _project_along(pos_b, forward_dir)
-    forward_separation = torch.abs(forward_coord[:, 0] - forward_coord[:, 1])
-    forward_error = torch.clamp(
-        forward_separation - max_forward_separation,
-        min=0.0,
-        max=max_forward_error,
-    )
-    return _safe_nonnegative_reward_bounded(forward_error.square(), max_forward_error * max_forward_error)
+    foot0_ahead = (forward_coord[:, 0] > forward_coord[:, 1]).to(dtype=forward_coord.dtype)
+    foot1_ahead = 1.0 - foot0_ahead
+
+    next_foot0_ahead_avg = (1.0 - alpha) * foot0_ahead_avg + alpha * foot0_ahead
+    next_foot1_ahead_avg = (1.0 - alpha) * foot1_ahead_avg + alpha * foot1_ahead
+
+    diff = next_foot0_ahead_avg - next_foot1_ahead_avg
+    penalty = diff.square()
+    return _safe_nonnegative_reward_bounded(penalty, 1.0), next_foot0_ahead_avg, next_foot1_ahead_avg, forward_coord
 
 
 @torch.jit.script
@@ -279,7 +282,7 @@ def feet_crossing_penalty(
 
     ``expected_foot0_lateral_order`` means:
         -1.0: foot 0 should be on the negative side of foot 1 along ``lateral_dir_b``.
-              With current settings this means foot 0 should have smaller +X than foot 1.
+              With current settings this means foot 0 should have smaller +Y than foot 1.
         +1.0: foot 0 should be on the positive side of foot 1 along ``lateral_dir_b``.
 
     For your debug logs, crossed poses had foot_0_lateral > foot_1_lateral, so the
@@ -415,39 +418,59 @@ def get_feet_pose_base(env, feet_cfg: SceneEntityCfg = FEET_CFG):
 def feet_symmetry_penalty(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = FEET_CFG,
-    alpha: float = 0.01,  # kept for backward compatibility; unused by this direct penalty
+    alpha: float = 0.001,
     forward_dir_b: tuple[float, float, float] = FEET_FORWARD_DIR_B,
-    max_forward_separation: float = 0.25,
-    max_forward_error: float = 0.75,
     debug: bool = False,
     debug_every: int = 100,
     debug_env_id: int = 0,
 ) -> torch.Tensor:
-    """Penalize excessive fore/aft foot split.
+    """Penalize one foot being ahead much more often than the other.
 
-    The old EMA "which foot is ahead" term stayed near zero for short rollouts
-    and did not push against the observed static one-leg-ahead posture. This
-    direct term is still order-agnostic, but immediately penalizes excessive
-    separation along the robot forward axis.
+    The term keeps an exponential moving average per environment of which foot
+    index is ahead along the robot forward axis. A symmetric alternating gait
+    drives both averages toward 0.5, while a static one-foot-ahead posture drives
+    one average toward 1.0 and the other toward 0.0.
     """
     pos_b, _ = get_feet_pose_base(env, asset_cfg)
     forward_dir = _unit_vec(forward_dir_b, env.device, dtype=pos_b.dtype)
 
-    penalty = _feet_symmetry_penalty_core(
+    num_envs = pos_b.shape[0]
+    if (
+        not hasattr(env, "_feet_ahead_avg")
+        or env._feet_ahead_avg["foot0"].shape[0] != num_envs
+        or env._feet_ahead_avg["foot0"].device != pos_b.device
+    ):
+        env._feet_ahead_avg = {
+            "foot0": torch.zeros(num_envs, device=pos_b.device, dtype=pos_b.dtype),
+            "foot1": torch.zeros(num_envs, device=pos_b.device, dtype=pos_b.dtype),
+        }
+
+    if hasattr(env, "episode_length_buf"):
+        reset_mask = env.episode_length_buf <= 1
+        env._feet_ahead_avg["foot0"] = torch.where(
+            reset_mask,
+            torch.zeros_like(env._feet_ahead_avg["foot0"]),
+            env._feet_ahead_avg["foot0"],
+        )
+        env._feet_ahead_avg["foot1"] = torch.where(
+            reset_mask,
+            torch.zeros_like(env._feet_ahead_avg["foot1"]),
+            env._feet_ahead_avg["foot1"],
+        )
+
+    penalty, foot0_avg, foot1_avg, forward_coord = _feet_symmetry_penalty_core(
         pos_b,
         forward_dir,
-        float(max_forward_separation),
-        float(max_forward_error),
+        env._feet_ahead_avg["foot0"],
+        env._feet_ahead_avg["foot1"],
+        float(alpha),
     )
+    env._feet_ahead_avg["foot0"] = foot0_avg.detach()
+    env._feet_ahead_avg["foot1"] = foot1_avg.detach()
 
     # Debug values are intentionally kept outside the scripted core.
-    forward_coord = _project_along(pos_b, forward_dir)
-    forward_separation = torch.abs(forward_coord[:, 0] - forward_coord[:, 1])
-    forward_error = torch.clamp(
-        forward_separation - max_forward_separation,
-        min=0.0,
-        max=max_forward_error,
-    )
+    foot0_ahead = forward_coord[:, 0] > forward_coord[:, 1]
+    diff = foot0_avg - foot1_avg
 
     if debug and hasattr(env, "common_step_counter") and debug_every > 0:
         if env.common_step_counter % debug_every == 0:
@@ -455,13 +478,15 @@ def feet_symmetry_penalty(
             print("\n[feet_symmetry_penalty]")
             print(f"  step: {env.common_step_counter}")
             print(f"  forward_dir_b: {forward_dir_b}")
+            print(f"  alpha: {alpha:.6f}")
             print(f"  foot_0_pos_b: {pos_b[i, 0].detach().cpu().numpy()}")
             print(f"  foot_1_pos_b: {pos_b[i, 1].detach().cpu().numpy()}")
             print(f"  foot_0_forward: {forward_coord[i, 0].item():.4f}")
             print(f"  foot_1_forward: {forward_coord[i, 1].item():.4f}")
-            print(f"  forward_separation: {forward_separation[i].item():.4f}")
-            print(f"  max_forward_separation: {max_forward_separation:.4f}")
-            print(f"  forward_error: {forward_error[i].item():.4f}")
+            print(f"  foot_0_ahead_now: {bool(foot0_ahead[i].item())}")
+            print(f"  foot_0_ahead_avg: {foot0_avg[i].item():.4f}")
+            print(f"  foot_1_ahead_avg: {foot1_avg[i].item():.4f}")
+            print(f"  ahead_avg_diff: {diff[i].item():.4f}")
             print(f"  penalty_unweighted: {penalty[i].item():.6f}")
 
     return penalty
@@ -545,6 +570,12 @@ class ForrestRewards(RewardsCfg):
         params={"command_name": "base_velocity", "std": REWARD_PARAMS.track_velocity["lin_vel_xy_std"]},
     )
 
+    forward_vel_x = RewTerm(
+        func=mdp.forward_vel_x_world,
+        weight=REWARD_WEIGHTS["forward_vel_x"],
+        params={"asset_cfg": SceneEntityCfg("robot")},
+    )
+
     track_ang_vel_z_exp = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
         weight=REWARD_WEIGHTS["track_ang_vel_z_exp"],
@@ -604,9 +635,8 @@ class ForrestRewards(RewardsCfg):
         weight=REWARD_WEIGHTS["gait_symmetry"],
         params={
             "asset_cfg": FEET_CFG,
+            "alpha": REWARD_PARAMS.gait_symmetry["alpha"],
             "forward_dir_b": FEET_FORWARD_DIR_B,
-            "max_forward_separation": REWARD_PARAMS.gait_symmetry["max_forward_separation"],
-            "max_forward_error": REWARD_PARAMS.gait_symmetry["max_forward_error"],
             "debug": REWARD_PARAMS.gait_symmetry["debug"],
             "debug_every": REWARD_PARAMS.gait_symmetry["debug_every"],
             "debug_env_id": REWARD_PARAMS.gait_symmetry["debug_env_id"],

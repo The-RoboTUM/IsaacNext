@@ -8,10 +8,10 @@ training:
   play_episode_length_s: 40.0  # Episode length used by play/evaluation config.
   actions:
     scale_deg:
-      ".*roll": 15.0  # Max commanded roll joint offset in degrees for matching joints.
-      ".*lateral": 5.0  # Max commanded lateral/yaw hip joint offset in degrees.
-      ".*flexion": 20.0  # Max commanded hip flexion joint offset in degrees.
-      ".*flexor": 45.0  # Max commanded knee flexor joint offset in degrees.
+      ".*roll": 25.0  # Max commanded roll joint offset in degrees for matching joints.
+      ".*lateral": 15.0  # Max commanded lateral/yaw hip joint offset in degrees.
+      ".*flexion": 60.0  # Max commanded hip flexion joint offset in degrees.
+      ".*flexor": 90.0  # Max commanded knee flexor joint offset in degrees.
     use_default_offset: true  # Add action commands around the robot's default joint pose.
   contacts:
     foot_body_names: [ "s45_digit_assy_1", "s45_digit_assy_2" ]  # Bodies treated as feet for foot rewards.
@@ -43,9 +43,10 @@ training:
   rewards:
     weights:
       alive: 0.0  # Constant survival reward per step.
-      termination_penalty: -200.0  # Penalty applied when an episode terminates early.
+      termination_penalty: -50.0  # Penalty applied when an episode terminates early.
       track_base_height_exp: 0.0  # Weight for tracking target base height.
       track_lin_vel_xy_exp: 2.0  # Weight for commanded horizontal velocity tracking.
+      forward_vel_x: 0.0  # Reward positive world-frame +X base velocity.
       track_ang_vel_z_exp: 0.1  # Weight for commanded yaw-rate tracking.
       feet_crossing: -0.0  # Penalty for feet crossing laterally.
       feet_parallel_contact: -0.0  # Penalty for invalid/parallel foot contact orientation.
@@ -53,9 +54,9 @@ training:
       feet_slide: 0.0  # Penalty for sliding feet while in contact.
       joint_deviation_l1: -0.1  # Penalty for joint positions away from nominal pose.
       hip_deviation_l1: -0.3  # Stronger penalty for hip deviation.
-      gait_symmetry: -0.1  # Penalty for asymmetric foot placement/gait timing.
+      gait_symmetry: -10.0  # Penalty for asymmetric foot placement/gait timing.
       foot_connector_contact: -1.0  # Penalty when foot connector bodies contact the ground.
-      lin_vel_z_l2: -0.1  # Penalty for vertical base velocity.
+      lin_vel_z_l2: -0.3  # Penalty for vertical base velocity.
       flat_orientation_l2: -1.0  # Penalty for body tilt away from upright.
       action_rate_l2: -0.0025  # Penalty for rapidly changing actions.
       dof_acc_l2: -1.25e-7  # Penalty for large joint accelerations.
@@ -79,12 +80,11 @@ training:
       target_height: 1.4  # Desired base height in meters.
       std: 0.3  # Exponential reward width for height tracking.
     track_velocity:
-      lin_vel_xy_std: 0.5  # Exponential reward width for linear velocity tracking.
-      ang_vel_z_std: 0.5  # Exponential reward width for yaw-rate tracking.
+      lin_vel_xy_std: 0.30  # Exponential reward width for linear velocity tracking.
+      ang_vel_z_std: 0.30  # Exponential reward width for yaw-rate tracking.
     feet_air_time_threshold: 0.4  # Air-time threshold in seconds before reward is credited.
     gait_symmetry:
-      max_forward_separation: 0.25  # Desired cap on forward separation between feet.
-      max_forward_error: 0.75  # Error where gait symmetry penalty saturates.
+      alpha: 0.001  # EMA update rate for measuring how often each foot is ahead.
       debug: false  # Print/debug this reward term.
       debug_every: 10  # Debug print interval in steps.
       debug_env_id: 0  # Environment index used for debug output.
@@ -108,8 +108,27 @@ training:
       pitch: [ 0.0, 0.0 ]  # Reset range for base pitch angular velocity in rad/s.
       yaw: [ 0.0, 0.0 ]  # Reset range for base yaw angular velocity in rad/s.
   commands:
-    lin_vel_x: [ -0.5, 7.0 ]  # Commanded forward velocity sampling range in m/s.
+    lin_vel_x: [ -0.5, 1.0 ]  # Commanded forward velocity sampling range in m/s.
     lin_vel_y: [ -0.0, 0.0 ]  # Commanded lateral velocity sampling range in m/s.
     ang_vel_z: [ -0.0, 0.0 ]  # Commanded yaw-rate sampling range in rad/s.
+  command_curriculum:
+    enabled: false
+    command_name: "base_velocity"
+    initial_unlocked_bin: 0
+    successes_to_unlock: 64
+    min_attempts_to_unlock: 128
+    min_success_rate_to_unlock: 0.1
+    max_attempts_to_track: 512
+    success_velocity_tolerance: 0.25
+    success_yaw_rate_tolerance: 0.4
+    success_min_survival_fraction: 0.25
+    sample_only_frontier: false
+    reset_counts_on_unlock: false
+    include_stand_bin: true
+    lin_vel_x_min: 0.0
+    lin_vel_x_max: 4.0
+    lin_vel_x_bin_width: 0.25
+    lin_vel_y: 0.0
+    ang_vel_z: 0.0
   terminations:
-    base_too_low_height: 0.2  # Terminate when base height falls below this value in meters.
+    base_too_low_height: 0.8  # Terminate when base height falls below this value in meters.

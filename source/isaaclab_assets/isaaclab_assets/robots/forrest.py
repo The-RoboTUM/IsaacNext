@@ -100,6 +100,7 @@ def get_forrest_cfg(config: ForrestParameterConfig) -> ArticulationCfg:
             "hip_roll": _implicit_actuator_cfg(actuation.hip_roll),
             "hip_lateral": _implicit_actuator_cfg(actuation.hip_lateral),
             "knee_flex": _implicit_actuator_cfg(actuation.knee_flex),
+            "passive_tendon_chain": _implicit_actuator_cfg(actuation.passive_tendon_chain),
         },
     )
 

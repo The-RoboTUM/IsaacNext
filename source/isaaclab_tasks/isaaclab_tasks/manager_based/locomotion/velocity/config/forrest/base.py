@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+from isaaclab.curriculums.command_bins_rl import BinnedVelocityCommandCfg, make_binned_velocity_curriculum_term
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg, TerminationTermCfg
 from isaaclab.sensors import ContactSensorCfg
@@ -24,6 +25,14 @@ from .rl_env_cfg import (
     reset_root_state_uniform_all_envs_on_startup,
     terminate_if_base_too_low,
 )
+from .self_collision import SelectiveSelfCollisionCfg, create_selective_self_collision_filter
+
+
+def _disable_zero_weight_rewards(rewards_cfg, reward_weights: dict[str, float]) -> None:
+    """Remove zero-weight Forrest reward terms so they are not evaluated each step."""
+    for reward_name, weight in reward_weights.items():
+        if float(weight) == 0.0 and hasattr(rewards_cfg, reward_name):
+            setattr(rewards_cfg, reward_name, None)
 
 
 @configclass
@@ -46,9 +55,20 @@ class ForrestBaseEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Scene
         self.scene.robot = get_forrest_cfg(FORREST_PARAMS).replace(prim_path=FORREST_PARAMS.robot.prim_path)
         self.scene.height_scanner.prim_path = FORREST_PARAMS.robot.height_scanner_prim_path
+        if (
+            FORREST_PARAMS.physics.articulation.enabled_self_collisions
+            and FORREST_PARAMS.physics.articulation.selective_self_collision_body_names
+        ):
+            self.scene.replicate_physics = False
 
         # Solve issue with dropping contacts
         self.sim.physx.gpu_collision_stack_size = FORREST_PARAMS.physics.physx_gpu_collision_stack_size
+        self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = (
+            FORREST_PARAMS.physics.physx_gpu_found_lost_aggregate_pairs_capacity
+        )
+        self.sim.physx.gpu_total_aggregate_pairs_capacity = (
+            FORREST_PARAMS.physics.physx_gpu_total_aggregate_pairs_capacity
+        )
 
         # Sensors
         self.scene.contact_forces = ContactSensorCfg(
@@ -84,6 +104,25 @@ class ForrestBaseEnvCfg(LocomotionVelocityRoughEnvCfg):
                 },
             )
         self.events.base_com.params["asset_cfg"].body_names = list(TRAINING_PARAMS.events.base_com_body_names)
+        if (
+            FORREST_PARAMS.physics.articulation.enabled_self_collisions
+            and FORREST_PARAMS.physics.articulation.selective_self_collision_body_names
+        ):
+            self.events.filter_forrest_self_collisions = EventTerm(
+                func=create_selective_self_collision_filter,
+                mode="prestartup",
+                params={
+                    "cfg": SelectiveSelfCollisionCfg(
+                        robot_path_template=FORREST_PARAMS.robot.prim_path.replace(
+                            "{ENV_REGEX_NS}", "/World/envs/env_{env_id}"
+                        ),
+                        allowed_body_names=tuple(
+                            FORREST_PARAMS.physics.articulation.selective_self_collision_body_names
+                        ),
+                        debug=FORREST_PARAMS.physics.articulation.selective_self_collision_debug,
+                    )
+                },
+            )
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = REWARD_WEIGHTS["lin_vel_z_l2"]
@@ -110,6 +149,8 @@ class ForrestBaseEnvCfg(LocomotionVelocityRoughEnvCfg):
             joint_names=actuated_joint_names,
         )
 
+        _disable_zero_weight_rewards(self.rewards, REWARD_WEIGHTS)
+
         # Terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = CONTACT_PARAMS.base_termination_body_names
         self.terminations.base_too_low = TerminationTermCfg(
@@ -118,6 +159,21 @@ class ForrestBaseEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # Commands
-        self.commands.base_velocity.ranges.lin_vel_x = TRAINING_PARAMS.commands.lin_vel_x
-        self.commands.base_velocity.ranges.lin_vel_y = TRAINING_PARAMS.commands.lin_vel_y
-        self.commands.base_velocity.ranges.ang_vel_z = TRAINING_PARAMS.commands.ang_vel_z
+        if TRAINING_PARAMS.command_curriculum.enabled:
+            self.commands.base_velocity = BinnedVelocityCommandCfg(
+                asset_name="robot",
+                resampling_time_range=(10.0, 10.0),
+                rel_standing_envs=0.0,
+                rel_heading_envs=0.0,
+                heading_command=False,
+                debug_vis=True,
+                ranges=self.commands.base_velocity.ranges,
+                curriculum=TRAINING_PARAMS.command_curriculum,
+            )
+            self.curriculum.command_bins = make_binned_velocity_curriculum_term(
+                TRAINING_PARAMS.command_curriculum.command_name
+            )
+        else:
+            self.commands.base_velocity.ranges.lin_vel_x = TRAINING_PARAMS.commands.lin_vel_x
+            self.commands.base_velocity.ranges.lin_vel_y = TRAINING_PARAMS.commands.lin_vel_y
+            self.commands.base_velocity.ranges.ang_vel_z = TRAINING_PARAMS.commands.ang_vel_z
