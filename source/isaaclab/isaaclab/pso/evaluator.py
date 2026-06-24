@@ -209,7 +209,8 @@ class ForrestPsoEvaluator:
         self.tendon_data = TendonData(
             self.robot.num_instances,
             forrest_params.to_tendon_randomization_ranges(),
-            tc=forrest_params.to_tendon_constants(),
+            tc=forrest_params.to_tendon_constants(device=self.robot.device),
+            device=self.robot.device,
         )
         self.tendon_manager = TendonManager(
             self.robot,

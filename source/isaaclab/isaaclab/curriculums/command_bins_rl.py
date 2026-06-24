@@ -118,11 +118,17 @@ class BinnedVelocityCommand(UniformVelocityCommand):
         next curriculum update measures duration from the new episode start.
         """
 
+        if env_ids is None:
+            env_ids_tensor = torch.arange(self.num_envs, dtype=torch.long, device=self.device)
+        else:
+            env_ids_tensor = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
+        if env_ids_tensor.numel() > 0 and hasattr(self._env, "reset_terminated"):
+            self._record_attempts(env_ids_tensor, terminated=self._env.reset_terminated[env_ids_tensor])
+
         extras = super().reset(env_ids)
         if env_ids is None:
             self.command_start_step[:] = 0
         else:
-            env_ids_tensor = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
             if env_ids_tensor.numel() > 0:
                 self.command_start_step[env_ids_tensor] = 0
         return extras

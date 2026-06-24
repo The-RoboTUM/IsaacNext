@@ -37,7 +37,7 @@ N_TENDON_TANGENCY_ANGLES: int = 9  # number of fixed tendon tangency angles used
 
 JOINT_AXIS_IDX: int = 1  # axis index for joint torques around y-axis
 
-dev = "cuda"
+dev = "cuda" if torch.cuda.is_available() else "cpu"
 
 link_names_right = list_from_dict(
     {

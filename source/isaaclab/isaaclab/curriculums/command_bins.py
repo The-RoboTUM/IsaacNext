@@ -148,16 +148,22 @@ def command_tracking_success(
     velocity_tolerance: float,
     yaw_rate_tolerance: float,
 ) -> torch.Tensor:
-    """Return success mask for completed command attempts.
-
-    Command-bin progression only checks forward x velocity.
-    """
+    """Return success mask for completed command attempts."""
 
     safe_duration = torch.clamp(duration, min=1.0e-6)
     achieved_xy = displacement_xy / safe_duration.unsqueeze(1)
+    achieved_yaw_rate = heading_delta / safe_duration
     x_error = torch.abs(achieved_xy[:, 0] - command[:, 0])
+    y_error = torch.abs(achieved_xy[:, 1] - command[:, 1])
+    yaw_error = torch.abs(achieved_yaw_rate - command[:, 2])
     survived = duration >= min_survival_duration
-    return (~terminated) & survived & (x_error <= velocity_tolerance)
+    return (
+        (~terminated)
+        & survived
+        & (x_error <= velocity_tolerance)
+        & (y_error <= velocity_tolerance)
+        & (yaw_error <= yaw_rate_tolerance)
+    )
 
 
 @torch.jit.script

@@ -15,6 +15,7 @@ dependencies:
   - pip
   - cmake
   - make
+  - ripgrep
   - pip:
       - --extra-index-url https://pypi.nvidia.com
       - isaacsim[all,extscache]==5.1.0
@@ -27,3 +28,6 @@ dependencies:
       - isort==5.13.2
       - pre-commit
       - ruff==0.14.10
+      - wandb>=0.17
+      - optuna
+      - opencv-python

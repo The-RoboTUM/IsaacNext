@@ -407,7 +407,7 @@ class RunSinusoidalControllerParameters:
         }
     )
     left_phase_rad: dict[str, float] = field(default_factory=lambda: {"hip_flexion": 0.0, "knee_flexion": 0.0})
-    right_phase_rad: dict[str, float] = field(default_factory=lambda: {"hip_flexion": 180.0, "knee_flexion": 180.0})
+    right_phase_rad: dict[str, float] = field(default_factory=lambda: {"hip_flexion": math.pi, "knee_flexion": math.pi})
 
 
 @dataclass
@@ -668,7 +668,7 @@ class ForrestParameterConfig:
             _merge_dataclass(config, parameters, path="forrest")
         return config
 
-    def to_tendon_constants(self):
+    def to_tendon_constants(self, *, device: Any | None = None):
         import torch
 
         from isaaclab.tendons.models.analytic.constants import (
@@ -682,6 +682,7 @@ class ForrestParameterConfig:
 
         baseline = self.tendons.baseline
         constants = TendonConstants()
+        target_device = dev if device is None else device
 
         for name in TENDON_NAMES:
             setattr(constants, f"{name}_stiffness", float(baseline.stiffness[name]))
@@ -695,18 +696,28 @@ class ForrestParameterConfig:
         constants.kft_length = float(baseline.lengths["kft"])
 
         constants.joint_offsets_theta = torch.deg2rad(
-            _named_tensor(baseline.joint_offsets_theta_deg, JOINT_INDEX, N_JOINTS, device=dev)
+            _named_tensor(baseline.joint_offsets_theta_deg, JOINT_INDEX, N_JOINTS, device=target_device)
         )
-        constants.joint_directions = _named_tensor(baseline.joint_directions, JOINT_INDEX, N_JOINTS, device=dev)
-        constants.pulley_radii = _named_tensor(baseline.pulley_radii, PULLEY_RADIUS_INDEX, N_RADII, device=dev)
+        constants.joint_directions = _named_tensor(
+            baseline.joint_directions, JOINT_INDEX, N_JOINTS, device=target_device
+        )
+        constants.pulley_radii = _named_tensor(
+            baseline.pulley_radii, PULLEY_RADIUS_INDEX, N_RADII, device=target_device
+        )
         constants.chain_link_lengths = _named_tensor(
-            baseline.chain_link_lengths, CHAIN_LINK_INDEX, N_CHAIN_LINKS_PER_LEG, device=dev
+            baseline.chain_link_lengths, CHAIN_LINK_INDEX, N_CHAIN_LINKS_PER_LEG, device=target_device
         )
         constants.connector_link_lengths_longitudinal = _named_tensor(
-            baseline.connector_link_lengths_longitudinal, CONNECTOR_LINK_INDEX, N_CONNECTOR_OFFSETS
+            baseline.connector_link_lengths_longitudinal,
+            CONNECTOR_LINK_INDEX,
+            N_CONNECTOR_OFFSETS,
+            device=target_device,
         )
         constants.connector_link_lengths_lateral = _named_tensor(
-            baseline.connector_link_lengths_lateral, CONNECTOR_LINK_INDEX, N_CONNECTOR_OFFSETS
+            baseline.connector_link_lengths_lateral,
+            CONNECTOR_LINK_INDEX,
+            N_CONNECTOR_OFFSETS,
+            device=target_device,
         )
         constants.gst_phi_23_j3 = math.radians(float(baseline.angles_deg["gst_phi_23_j3"]))
         constants.angle_4prime5_to_j44prime = math.radians(float(baseline.angles_deg["angle_4prime5_to_j44prime"]))

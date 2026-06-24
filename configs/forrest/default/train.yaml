@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 training:
-  episode_length_s: null  # Training episode length override in seconds; null keeps parent env default.
+  episode_length_s: 4.0  # Training episode length override in seconds; null keeps parent env default.
   play_episode_length_s: 40.0  # Episode length used by play/evaluation config.
   actions:
     scale_deg:
@@ -42,8 +42,8 @@ training:
     lateral_dir_b: [ 0.0, 1.0, 0.0 ]  # Robot lateral direction expressed in base frame.
   rewards:
     weights:
-      alive: 0.0  # Constant survival reward per step.
-      termination_penalty: -50.0  # Penalty applied when an episode terminates early.
+      alive: 1.0  # Constant survival reward per step.
+      termination_penalty: -200.0  # Penalty applied when an episode terminates early.
       track_base_height_exp: 0.0  # Weight for tracking target base height.
       track_lin_vel_xy_exp: 2.0  # Weight for commanded horizontal velocity tracking.
       forward_vel_x: 0.0  # Reward positive world-frame +X base velocity.

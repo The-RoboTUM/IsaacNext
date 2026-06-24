@@ -45,7 +45,9 @@ class TendonManager:
         self.robot = robot
         self.device = robot.device
         self.tendon_data = (
-            tendon_data if tendon_data is not None else TendonData(robot.num_instances, dummy_randomization)
+            tendon_data
+            if tendon_data is not None
+            else TendonData(robot.num_instances, dummy_randomization, device=self.device)
         )
         self.model = model if model is not None else AnalyticTendonEnergyModel(self.tendon_data)
         self.robot_io = robot_io if robot_io is not None else TendonRobotIO(robot)
@@ -72,6 +74,7 @@ class TendonManager:
         self._profile_interval = max(1, int(os.getenv("ISAACLAB_TENDON_PROFILE_INTERVAL", "1000")))
         self._profile_count = 0
         self._profile_totals = {"compute": 0.0, "map": 0.0, "forces": 0.0, "set": 0.0}
+        self._profile_external_profiler = None
 
     def _compute_torques_from_energy(self, joint_angles: torch.Tensor, energy: torch.Tensor):
         if not torch.is_grad_enabled():
@@ -126,32 +129,60 @@ class TendonManager:
 
     def compute_torques_jit(self, *, dt: float = 0.0):
         """TorchScript-backed torque computation with tendon damping."""
+        profiler = self._external_profiler()
+        profile_active = bool(getattr(profiler, "enabled", False))
         with torch.inference_mode(False), torch.enable_grad():
+            t0 = self._profile_time() if profile_active else 0.0
             joint_angles = self.robot_io.get_leg_joint_angles(requires_grad=True)
             joint_angles = joint_angles.detach().clone().requires_grad_(True)
+            t_joint_angles = self._profile_time() if profile_active else 0.0
 
             if hasattr(self.model, "energy_from_delta_lengths_jit") and hasattr(self.model, "delta_lengths_jit"):
                 delta_tuple = self.model.delta_lengths_jit(joint_angles)
                 deltas = self._delta_tuple_to_dict(delta_tuple)
+                t_delta = self._profile_time() if profile_active else 0.0
                 energy = self.model.energy_from_delta_lengths_jit(delta_tuple)
+                t_energy = self._profile_time() if profile_active else 0.0
 
                 damping = self._damping_potential(deltas, dt)
                 total_energy = energy + damping
+                t_damping = self._profile_time() if profile_active else 0.0
 
                 left, right = self._compute_torques_from_energy(joint_angles, total_energy)
+                t_autograd = self._profile_time() if profile_active else 0.0
 
                 self._store_delta_lengths(deltas)
+                t_store = self._profile_time() if profile_active else 0.0
+                if profile_active:
+                    profiler.record_elapsed("tendon/joint_angles", t_joint_angles - t0)
+                    profiler.record_elapsed("tendon/delta_lengths_jit", t_delta - t_joint_angles)
+                    profiler.record_elapsed("tendon/energy_jit", t_energy - t_delta)
+                    profiler.record_elapsed("tendon/damping", t_damping - t_energy)
+                    profiler.record_elapsed("tendon/autograd_torques", t_autograd - t_damping)
+                    profiler.record_elapsed("tendon/store_delta_lengths", t_store - t_autograd)
+                    profiler.record_elapsed("tendon/compute_torques_jit", t_store - t0)
 
                 return left, right
 
             # Fallback for non-analytic models.
             output = self.model.energy(joint_angles, debug=False)
+            t_energy = self._profile_time() if profile_active else 0.0
             damping = self._damping_potential(output.delta_lengths, dt)
             total_energy = output.energy + damping
+            t_damping = self._profile_time() if profile_active else 0.0
 
             left, right = self._compute_torques_from_energy(joint_angles, total_energy)
+            t_autograd = self._profile_time() if profile_active else 0.0
 
             self._store_delta_lengths(output.delta_lengths)
+            t_store = self._profile_time() if profile_active else 0.0
+            if profile_active:
+                profiler.record_elapsed("tendon/joint_angles", t_joint_angles - t0)
+                profiler.record_elapsed("tendon/energy_eager", t_energy - t_joint_angles)
+                profiler.record_elapsed("tendon/damping", t_damping - t_energy)
+                profiler.record_elapsed("tendon/autograd_torques", t_autograd - t_damping)
+                profiler.record_elapsed("tendon/store_delta_lengths", t_store - t_autograd)
+                profiler.record_elapsed("tendon/compute_torques_jit", t_store - t0)
 
             return left, right
 
@@ -184,6 +215,8 @@ class TendonManager:
         Isaac Lab state and quaternion utilities.
         """
         batch_size = self.robot.num_instances
+        profiler = self._external_profiler()
+        profile_active = bool(getattr(profiler, "enabled", False))
         t0 = self._profile_time()
         left, right = self.compute_torques_jit(dt=dt)
         t1 = self._profile_time()
@@ -199,10 +232,47 @@ class TendonManager:
         )
         t4 = self._profile_time()
         self._profile_record(t0, t1, t2, t3, t4)
+        if profile_active:
+            profiler.record_elapsed("tendon/apply_jit_total", t4 - t0)
+            profiler.record_elapsed("tendon/torque_mapping_jit", t2 - t1)
+            profiler.record_elapsed("tendon/external_forces", t3 - t2)
+            profiler.record_elapsed("tendon/set_wrenches", t4 - t3)
 
     def _store_delta_lengths(self, deltas: dict[str, torch.Tensor]):
         self._prev_delta_lengths = {name: delta.detach().clone() for name, delta in deltas.items()}
         self._damping_valid_envs = torch.ones(self.robot.num_instances, dtype=torch.bool, device=self.device)
+
+    def get_tendon_metrics(self) -> dict[str, float]:
+        """Return physically meaningful tendon safety metrics from the last dynamics step.
+
+        The analytic model treats tendons as pulling-only springs. A tendon is
+        slack when its length delta is positive, and tension magnitude is
+        ``stiffness * max(-delta, 0)``. No saturation metric is reported here
+        because this model does not define a tendon saturation limit.
+        """
+        if not self._prev_delta_lengths:
+            return {}
+
+        tensions = []
+        slack_values = []
+        for name, delta in self._prev_delta_lengths.items():
+            delta = delta.detach()
+            stiffness = self._tendon_stiffness(name, delta)
+            tension = torch.clamp(-delta, min=0.0) * stiffness
+            tensions.append(tension.reshape(-1))
+            slack_values.append((delta > 0.0).to(dtype=torch.float32).reshape(-1))
+
+        if not tensions:
+            return {}
+
+        tension_values = torch.cat(tensions)
+        slack_fraction = torch.cat(slack_values).mean()
+        return {
+            "tendon/tension_mean": float(tension_values.mean().cpu().item()),
+            "tendon/tension_p95": float(torch.quantile(tension_values, 0.95).cpu().item()),
+            "tendon/tension_max": float(tension_values.max().cpu().item()),
+            "tendon/slack_fraction": float(slack_fraction.cpu().item()),
+        }
 
     def reset_damping_state(self, env_ids=None):
         """Clear damping history for all envs or suppress damping for selected envs for one step."""
@@ -288,11 +358,14 @@ class TendonManager:
         }
 
     def _profile_time(self) -> float:
-        if not self._profile_enabled:
+        if not self._profile_enabled and not bool(getattr(self._external_profiler(), "enabled", False)):
             return 0.0
         if torch.cuda.is_available() and "cuda" in str(self.device):
             torch.cuda.synchronize(device=self.device)
         return time.perf_counter()
+
+    def _external_profiler(self):
+        return self._profile_external_profiler
 
     def _profile_record(self, t0: float, t1: float, t2: float, t3: float, t4: float):
         if not self._profile_enabled:

@@ -185,10 +185,11 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         Returns:
             A tuple containing the observations, rewards, resets (terminated and truncated) and extras.
         """
-        t_start = self._profile_time()
+        profile_active = self._profile_is_active()
+        t_start = self._profile_time() if profile_active else 0.0
         # process actions
         self.action_manager.process_action(action.to(self.device))
-        t_action = self._profile_time()
+        t_action = self._profile_time() if profile_active else 0.0
 
         self.recorder_manager.record_pre_step()
 
@@ -197,23 +198,43 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         is_rendering = self.sim.has_gui() or self.sim.has_rtx_sensors()
 
         # perform physics stepping
+        physics_action_apply_s = 0.0
+        physics_write_s = 0.0
+        physics_sim_s = 0.0
+        physics_record_s = 0.0
+        physics_render_s = 0.0
+        physics_scene_update_s = 0.0
         for _ in range(self.cfg.decimation):
             self._sim_step_counter += 1
             # set actions into buffers
+            t_loop = self._profile_time() if profile_active else 0.0
             self.action_manager.apply_action()
+            t_apply = self._profile_time() if profile_active else 0.0
             # set actions into simulator
             self.scene.write_data_to_sim()
+            t_write = self._profile_time() if profile_active else 0.0
             # simulate
             self.sim.step(render=False)
+            t_sim = self._profile_time() if profile_active else 0.0
             self.recorder_manager.record_post_physics_decimation_step()
+            t_record_decimation = self._profile_time() if profile_active else 0.0
             # render between steps only if the GUI or an RTX sensor needs it
             # note: we assume the render interval to be the shortest accepted rendering interval.
             #    If a camera needs rendering at a faster frequency, this will lead to unexpected behavior.
             if self._sim_step_counter % self.cfg.sim.render_interval == 0 and is_rendering:
                 self.sim.render()
+            t_render = self._profile_time() if profile_active else 0.0
             # update buffers at sim dt
             self.scene.update(dt=self.physics_dt)
-        t_physics = self._profile_time()
+            t_update = self._profile_time() if profile_active else 0.0
+            if profile_active:
+                physics_action_apply_s += t_apply - t_loop
+                physics_write_s += t_write - t_apply
+                physics_sim_s += t_sim - t_write
+                physics_record_s += t_record_decimation - t_sim
+                physics_render_s += t_render - t_record_decimation
+                physics_scene_update_s += t_update - t_render
+        t_physics = self._profile_time() if profile_active else 0.0
 
         # post-step:
         # -- update env counters (used for curriculum generation)
@@ -223,16 +244,16 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         self.reset_buf = self.termination_manager.compute()
         self.reset_terminated = self.termination_manager.terminated
         self.reset_time_outs = self.termination_manager.time_outs
-        t_termination = self._profile_time()
+        t_termination = self._profile_time() if profile_active else 0.0
         # -- reward computation
         self.reward_buf = self.reward_manager.compute(dt=self.step_dt)
-        t_reward = self._profile_time()
+        t_reward = self._profile_time() if profile_active else 0.0
 
         if len(self.recorder_manager.active_terms) > 0:
             # update observations for recording if needed
             self.obs_buf = self.observation_manager.compute()
             self.recorder_manager.record_post_step()
-        t_record = self._profile_time()
+        t_record = self._profile_time() if profile_active else 0.0
 
         # -- reset envs that terminated/timed-out and log the episode information
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
@@ -249,18 +270,18 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
 
             # trigger recorder terms for post-reset calls
             self.recorder_manager.record_post_reset(reset_env_ids)
-        t_reset = self._profile_time()
+        t_reset = self._profile_time() if profile_active else 0.0
 
         # -- update command
         self.command_manager.compute(dt=self.step_dt)
         # -- step interval events
         if "interval" in self.event_manager.available_modes:
             self.event_manager.apply(mode="interval", dt=self.step_dt)
-        t_command_event = self._profile_time()
+        t_command_event = self._profile_time() if profile_active else 0.0
         # -- compute observations
         # note: done after reset to get the correct observations for reset envs
         self.obs_buf = self.observation_manager.compute(update_history=True)
-        t_observation = self._profile_time()
+        t_observation = self._profile_time() if profile_active else 0.0
         self._profile_record(
             t_start,
             t_action,
@@ -272,6 +293,24 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
             t_command_event,
             t_observation,
         )
+        if profile_active:
+            self._profile_record_external(
+                t_start=t_start,
+                t_action=t_action,
+                t_physics=t_physics,
+                t_termination=t_termination,
+                t_reward=t_reward,
+                t_record=t_record,
+                t_reset=t_reset,
+                t_command_event=t_command_event,
+                t_observation=t_observation,
+                physics_action_apply_s=physics_action_apply_s,
+                physics_write_s=physics_write_s,
+                physics_sim_s=physics_sim_s,
+                physics_record_s=physics_record_s,
+                physics_render_s=physics_render_s,
+                physics_scene_update_s=physics_scene_update_s,
+            )
 
         # return observations, rewards, resets and extras
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
@@ -355,11 +394,15 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
     """
 
     def _profile_time(self) -> float:
-        if not self._profile_enabled:
+        if not self._profile_is_active():
             return 0.0
         if torch.cuda.is_available() and "cuda" in str(self.device):
             torch.cuda.synchronize(device=self.device)
         return time.perf_counter()
+
+    def _profile_is_active(self) -> bool:
+        external_profiler = getattr(self, "_external_profiler", None)
+        return self._profile_enabled or bool(getattr(external_profiler, "enabled", False))
 
     def _profile_record(
         self,
@@ -404,6 +447,44 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         )
         for key in self._profile_totals:
             self._profile_totals[key] = 0.0
+
+    def _profile_record_external(
+        self,
+        *,
+        t_start: float,
+        t_action: float,
+        t_physics: float,
+        t_termination: float,
+        t_reward: float,
+        t_record: float,
+        t_reset: float,
+        t_command_event: float,
+        t_observation: float,
+        physics_action_apply_s: float,
+        physics_write_s: float,
+        physics_sim_s: float,
+        physics_record_s: float,
+        physics_render_s: float,
+        physics_scene_update_s: float,
+    ) -> None:
+        profiler = getattr(self, "_external_profiler", None)
+        if not bool(getattr(profiler, "enabled", False)):
+            return
+        profiler.record_elapsed("env/action_process", t_action - t_start)
+        profiler.record_elapsed("env/physics_total", t_physics - t_action)
+        profiler.record_elapsed("env/physics/action_apply", physics_action_apply_s)
+        profiler.record_elapsed("env/physics/write_data_to_sim", physics_write_s)
+        profiler.record_elapsed("env/physics/sim_step", physics_sim_s)
+        profiler.record_elapsed("env/physics/recorder", physics_record_s)
+        profiler.record_elapsed("env/physics/render", physics_render_s)
+        profiler.record_elapsed("env/physics/scene_update", physics_scene_update_s)
+        profiler.record_elapsed("env/termination", t_termination - t_physics)
+        profiler.record_elapsed("env/reward", t_reward - t_termination)
+        profiler.record_elapsed("env/record", t_record - t_reward)
+        profiler.record_elapsed("env/reset", t_reset - t_record)
+        profiler.record_elapsed("env/command_event", t_command_event - t_reset)
+        profiler.record_elapsed("env/observation", t_observation - t_command_event)
+        profiler.record_elapsed("env/total", t_observation - t_start)
 
     def _configure_gym_env_spaces(self):
         """Configure the action and observation spaces for the Gym environment."""

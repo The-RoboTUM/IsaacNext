@@ -15,6 +15,16 @@ from isaaclab.tendons.models.analytic.geometry.kinematics import TendonCoordinat
 from isaaclab.tendons.models.analytic.tendon_data import TendonDataJIT
 
 
+@torch.jit.script
+def _safe_sqrt(value: torch.Tensor) -> torch.Tensor:
+    return torch.sqrt(torch.clamp(value, min=1.0e-12))
+
+
+@torch.jit.script
+def _safe_acos(value: torch.Tensor) -> torch.Tensor:
+    return torch.acos(torch.clamp(value, -1.0 + 1.0e-6, 1.0 - 1.0e-6))
+
+
 class SharedTendonGeometry(NamedTuple):
     """Intermediate geometric terms computed once and reused by tendon calculators.
 
@@ -274,19 +284,19 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         * tendon_data.link_lengths[:, tids.I_LINK_56]
         * torch.cos(thetas[:, tids.I_THETA_GST_5])
     )
-    GST_x_4prime6 = torch.sqrt(GST_x_4prime6_squared)
+    GST_x_4prime6 = _safe_sqrt(GST_x_4prime6_squared)
     GST_l_4prime6_squared = (
         GST_x_4prime6_squared
         - (tendon_data.pulley_radii[:, tids.I_RADIUS_GST_4prime] - tendon_data.pulley_radii[:, tids.I_RADIUS_GST_6])
         ** 2
     )
-    GST_l_4prime6 = torch.sqrt(GST_l_4prime6_squared)
+    GST_l_4prime6 = _safe_sqrt(GST_l_4prime6_squared)
     GST_phi_4prime_a = angle_from_sws(
         tendon_data.link_lengths[:, tids.I_LINK_4prime5],
         tendon_data.link_lengths[:, tids.I_LINK_56],
         thetas[:, tids.I_THETA_GST_5],
     )
-    GST_phi_4prime_b = torch.acos(
+    GST_phi_4prime_b = _safe_acos(
         (
             tendon_data.pulley_radii_squared[:, tids.I_RADIUS_GST_4prime]
             + GST_x_4prime6_squared
@@ -307,9 +317,9 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         + tendon_data.link_lengths_squared[:, tids.I_LINK_67]
         - 2 * GST_x_4prime6 * tendon_data.link_lengths[:, tids.I_LINK_67] * torch.cos(GST_theta_6_b)
     )
-    GST_x_4prime7 = torch.sqrt(GST_x_4prime7_squared)
+    GST_x_4prime7 = _safe_sqrt(GST_x_4prime7_squared)
     GST_phi_4prime_d = angle_from_sws(GST_x_4prime6, tendon_data.link_lengths[:, tids.I_LINK_67], GST_theta_6_b)
-    GST_phi_4prime_c = torch.acos(tendon_data.pulley_radii[:, tids.I_RADIUS_GST_4prime] / GST_x_4prime7)
+    GST_phi_4prime_c = _safe_acos(tendon_data.pulley_radii[:, tids.I_RADIUS_GST_4prime] / GST_x_4prime7)
     GST_phi_4prime_C = GST_phi_4prime_a + GST_phi_4prime_c + GST_phi_4prime_d
     GST_h5_C = tendon_data.pulley_radii[:, tids.I_RADIUS_GST_4prime] - tendon_data.link_lengths[
         :, tids.I_LINK_4prime5
@@ -326,15 +336,15 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         * tendon_data.link_lengths[:, tids.I_LINK_67]
         * torch.cos(thetas[:, tids.I_THETA_ALL_6])
     )
-    GST_x_57 = torch.sqrt(GST_x_57_squared)
+    GST_x_57 = _safe_sqrt(GST_x_57_squared)
     GST_l_57_squared = GST_x_57_squared - tendon_data.pulley_radii[:, tids.I_RADIUS_GST_5] ** 2
-    GST_l_57 = torch.sqrt(GST_l_57_squared)
+    GST_l_57 = _safe_sqrt(GST_l_57_squared)
     GST_phi_5_a = angle_from_sws(
         tendon_data.link_lengths[:, tids.I_LINK_56],
         tendon_data.link_lengths[:, tids.I_LINK_67],
         thetas[:, tids.I_THETA_ALL_6],
     )
-    GST_phi_5_b = torch.acos(tendon_data.pulley_radii[:, tids.I_RADIUS_GST_5] / GST_x_57)
+    GST_phi_5_b = _safe_acos(tendon_data.pulley_radii[:, tids.I_RADIUS_GST_5] / GST_x_57)
     GST_phi_5_D = GST_phi_5_a + GST_phi_5_b
     GST_h6_D = tendon_data.pulley_radii[:, tids.I_RADIUS_GST_5] - tendon_data.link_lengths[
         :, tids.I_LINK_56
@@ -349,7 +359,7 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         * tendon_data.link_lengths[:, tids.I_LINK_KFT_3C]
         * torch.cos(theta_hats[:, tids.I_THETA_KFT_3])
     )
-    KFT_l_8c = torch.sqrt(KFT_l_8c_j_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_KFT_8])
+    KFT_l_8c = _safe_sqrt(KFT_l_8c_j_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_KFT_8])
     KFT_phi_8 = torch.atan2(KFT_l_8c, tendon_data.pulley_radii[:, tids.I_RADIUS_KFT_8])
     KFT_phi_8_a = angle_from_sws(
         tendon_data.link_lengths[:, tids.I_LINK_38],
@@ -373,11 +383,11 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         * tendon_data.link_lengths[:, tids.I_LINK_56]
         * torch.cos(thetas[:, tids.I_THETA_DFT_5])
     )
-    DFT_x_c6 = torch.sqrt(DFT_x_c6_squared)
+    DFT_x_c6 = _safe_sqrt(DFT_x_c6_squared)
 
     # state B
     DFT_l_c6_squared = DFT_x_c6_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_DFT_6]
-    DFT_l_c6 = torch.sqrt(DFT_l_c6_squared)
+    DFT_l_c6 = _safe_sqrt(DFT_l_c6_squared)
     DFT_phi_4_b = torch.atan2(tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_6], DFT_l_c6)
     DFT_phi_4_B = DFT_phi_4_a + DFT_phi_4_b
     DFT_phi_6_B = torch.pi * 1.5 - DFT_phi_4_B - thetas[:, tids.I_THETA_DFT_5]
@@ -405,9 +415,9 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
     DFT_x_57_squared = GST_x_57_squared
     DFT_x_57 = GST_x_57
     DFT_l_57_squared = DFT_x_57_squared - tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_5] ** 2
-    DFT_l_57 = torch.sqrt(DFT_l_57_squared)
+    DFT_l_57 = _safe_sqrt(DFT_l_57_squared)
     DFT_phi_5_a = GST_phi_5_a
-    DFT_phi_5_b = torch.acos(tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_5] / DFT_x_57)
+    DFT_phi_5_b = _safe_acos(tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_5] / DFT_x_57)
     DFT_phi_5_D = DFT_phi_5_a + DFT_phi_5_b
     DFT_h6_D = tendon_data.pulley_radii[:, tids.I_RADIUS_DFT_5] - tendon_data.link_lengths[
         :, tids.I_LINK_56
@@ -422,14 +432,14 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         * tendon_data.link_lengths[:, tids.I_LINK_4prime5]
         * torch.cos(theta_hats[:, tids.I_THETA_EDT1_4])
     )
-    EDT1_x_c5 = torch.sqrt(EDT1_x_c5_squared)
+    EDT1_x_c5 = _safe_sqrt(EDT1_x_c5_squared)
     EDT1_phi_4_a = angle_from_sws(
         tendon_data.link_lengths[:, tids.I_LINK_EDT1_C4],
         tendon_data.link_lengths[:, tids.I_LINK_4prime5],
         theta_hats[:, tids.I_THETA_EDT1_4],
     )
     EDT1_thetahat_5_a = torch.pi - theta_hats[:, tids.I_THETA_EDT1_4] - EDT1_phi_4_a
-    EDT1_l_c5_A = torch.sqrt(EDT1_x_c5_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_EDT1_5])
+    EDT1_l_c5_A = _safe_sqrt(EDT1_x_c5_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_EDT1_5])
     EDT1_phi_45_A = torch.atan2(EDT1_l_c5_A, tendon_data.pulley_radii[:, tids.I_RADIUS_EDT1_5])
     EDT1_q5_A = (
         2 * torch.pi
@@ -441,7 +451,7 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
     EDT1_thetahat_5_b = theta_hats[:, tids.I_THETA_EDT1_5] - EDT1_thetahat_5_a
     EDT1_phi_4_b = angle_from_sws(EDT1_x_c5, tendon_data.link_lengths[:, tids.I_LINK_EDT1_5C], EDT1_thetahat_5_b)
     EDT1_h5_B = EDT1_x_c5 * torch.sin(EDT1_phi_4_b)
-    EDT1_l_cc = torch.sqrt(
+    EDT1_l_cc = _safe_sqrt(
         EDT1_x_c5_squared
         + tendon_data.link_lengths_squared[:, tids.I_LINK_EDT1_5C]
         - 2 * EDT1_x_c5 * tendon_data.link_lengths[:, tids.I_LINK_EDT1_5C] * torch.cos(EDT1_thetahat_5_b)
@@ -456,7 +466,7 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         * tendon_data.link_lengths[:, tids.I_LINK_4prime5]
         * torch.cos(theta_hats[:, tids.I_THETA_EDT2_4])
     )
-    EDT2_x_c5 = torch.sqrt(EDT2_x_c5_squared)
+    EDT2_x_c5 = _safe_sqrt(EDT2_x_c5_squared)
     EDT2_phi_4_a = angle_from_sws(
         tendon_data.link_lengths[:, tids.I_LINK_EDT2_C4],
         tendon_data.link_lengths[:, tids.I_LINK_4prime5],
@@ -465,7 +475,7 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
     EDT2_thetahat_5_a = torch.pi - theta_hats[:, tids.I_THETA_EDT2_4] - EDT2_phi_4_a
 
     # state A: tendon wraps around j5 and j6 pulleys
-    EDT2_l_c5_A = torch.sqrt(EDT2_x_c5_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_EDT2_5])
+    EDT2_l_c5_A = _safe_sqrt(EDT2_x_c5_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_EDT2_5])
     EDT2_phi_45_A = torch.atan2(EDT2_l_c5_A, tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_5])
     EDT2_q5_A = (
         2 * torch.pi
@@ -484,7 +494,7 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         * tendon_data.link_lengths[:, tids.I_LINK_56]
         * torch.cos(theta_hats[:, tids.I_THETA_EDT2_5])
     )
-    EDT2_x_64prime = torch.sqrt(EDT2_x_64prime_squared)
+    EDT2_x_64prime = _safe_sqrt(EDT2_x_64prime_squared)
     EDT2_phi_6_a = angle_from_sws(
         tendon_data.link_lengths[:, tids.I_LINK_56],
         tendon_data.link_lengths[:, tids.I_LINK_4prime5],
@@ -497,13 +507,13 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         + tendon_data.link_lengths_squared[:, tids.I_LINK_EDT2_C4]
         - 2 * EDT2_x_64prime * tendon_data.link_lengths[:, tids.I_LINK_EDT2_C4] * torch.cos(EDT2_thetahat_4_b)
     )
-    EDT2_x_6c = torch.sqrt(EDT2_x_6c_squared)
+    EDT2_x_6c = _safe_sqrt(EDT2_x_6c_squared)
     EDT2_phi_6_d = angle_from_sws(
         EDT2_x_64prime,
         tendon_data.link_lengths[:, tids.I_LINK_EDT2_C4],
         EDT2_thetahat_4_b,
     )
-    EDT2_l_c6_B = torch.sqrt(EDT2_x_6c_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_EDT2_6])
+    EDT2_l_c6_B = _safe_sqrt(EDT2_x_6c_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_EDT2_6])
     EDT2_phi_6_c = torch.atan2(EDT2_l_c6_B, tendon_data.pulley_radii[:, tids.I_RADIUS_EDT2_6])
     EDT2_phi_6_B = EDT2_phi_6_a + EDT2_phi_6_c + EDT2_phi_6_d
     EDT2_q6_B = (
@@ -524,7 +534,7 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         * tendon_data.link_lengths[:, tids.I_LINK_56]
         * torch.cos(thetas[:, tids.I_THETA_EDT2_5])
     )
-    EDT2_l_46_j = torch.sqrt(EDT2_l_46_j_squared)
+    EDT2_l_46_j = _safe_sqrt(EDT2_l_46_j_squared)
     EDT2_gamma_4 = angle_from_sws(
         tendon_data.link_lengths[:, tids.I_LINK_4prime5],
         tendon_data.link_lengths[:, tids.I_LINK_56],
@@ -537,7 +547,7 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         + EDT2_l_46_j_squared
         - 2 * tendon_data.link_lengths[:, tids.I_LINK_EDT2_C4] * EDT2_l_46_j * torch.cos(EDT2_thetatilde_4)
     )
-    EDT2_x_c6 = torch.sqrt(EDT2_x_c6_squared)
+    EDT2_x_c6 = _safe_sqrt(EDT2_x_c6_squared)
     EDT2_phi_4_b = angle_from_sws(
         tendon_data.link_lengths[:, tids.I_LINK_EDT2_C4],
         EDT2_l_46_j,
@@ -551,7 +561,7 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         + tendon_data.link_lengths_squared[:, tids.I_LINK_67]
         - 2 * EDT2_x_c6 * tendon_data.link_lengths[:, tids.I_LINK_67] * torch.cos(EDT2_thetatilde_6_b)
     )
-    EDT2_l_cc_C = torch.sqrt(EDT2_l_cc_squared)
+    EDT2_l_cc_C = _safe_sqrt(EDT2_l_cc_squared)
     EDT2_phi_4_d = angle_from_sws(EDT2_x_c6, tendon_data.link_lengths[:, tids.I_LINK_67], EDT2_thetatilde_6_b)
 
     EDT2_h6_C = EDT2_x_c6 * torch.sin(EDT2_phi_4_d)
@@ -566,8 +576,8 @@ def compute_shared_tendon_geometry(coords: TendonCoordinates, tendon_data: Tendo
         * tendon_data.link_lengths[:, tids.I_LINK_67]
         * torch.cos(theta_hats[:, tids.I_THETA_ALL_6])
     )
-    EDT2_x_56 = torch.sqrt(EDT2_x_56_squared)
-    EDT2_l_5c_D = torch.sqrt(EDT2_x_56_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_EDT2_5])
+    EDT2_x_56 = _safe_sqrt(EDT2_x_56_squared)
+    EDT2_l_5c_D = _safe_sqrt(EDT2_x_56_squared - tendon_data.pulley_radii_squared[:, tids.I_RADIUS_EDT2_5])
     EDT2_phi_56_a = angle_from_sws(
         tendon_data.link_lengths[:, tids.I_LINK_56],
         tendon_data.link_lengths[:, tids.I_LINK_67],

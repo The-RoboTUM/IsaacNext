@@ -15,6 +15,9 @@
   - [Collision Parameter Settings](#collision-parameter-settings)
   - [🚀 Reinforcement Learning Pipeline](#-reinforcement-learning-pipeline)
     - [Train Forrest](#train-forrest)
+    - [Experiment Tracking](#experiment-tracking)
+    - [Deterministic Evaluation](#deterministic-evaluation)
+    - [Training Profiling](#training-profiling)
     - [Play Forrest](#play-forrest)
 
 
@@ -123,6 +126,17 @@ symlinks/forrest_ws/urdf/forrest_isaac/
 symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd
 ```
 
+After importing or re-importing the Forrest USD, patch the generated USD layers:
+
+```bash
+conda activate sim
+python scripts/tools/patch_forrest_usd.py
+```
+
+This must be done because the URDF importer can leave stale references to the virtual anchor visual prims
+`/visuals/s23_assy_1_virtual` and `/visuals/s23_assy_2_virtual`. Without the patch, Isaac Sim prints repeated
+`omni.usd` unresolved reference warnings once per cloned RL environment.
+
 ### Run the Automatic Setup
 
 From the IsaacNext repository root:
@@ -136,6 +150,7 @@ This script:
 - installs the Isaac Lab source extensions with `./isaaclab.sh -i`
 - installs the Git pre-commit hooks
 - creates `symlinks/forrest_ws`
+- patches the generated Forrest USD virtual visual references
 - configures Isaac Sim extension paths for PyCharm/static analysis
 
 After setup, activate the environment:
@@ -157,6 +172,7 @@ Useful setup variants:
 ./scripts/setup_repo.sh --urdfheim-dir /path/to/urdfheim
 ./scripts/setup_repo.sh --skip-conda --skip-install --skip-pre-commit
 ./scripts/setup_repo.sh --skip-ide-paths
+./scripts/setup_repo.sh --skip-usd-patch
 ```
 
 ## Joints Parameter Settings
@@ -366,6 +382,101 @@ In each iteration, data is collected from multiple environments and used to upda
 - `--resume`
 Continues training from a previously saved checkpoint instead of starting from scratch.
 
+
+### Experiment Tracking
+
+Training now writes reproducibility metadata and checkpoint aliases into each run directory:
+
+```text
+logs/rsl_rl/<experiment>/<run>/
+├── latest.pt
+├── final.pt
+├── params/
+└── tracking/run_metadata.json
+```
+
+Run normally with tracking disabled:
+
+```bash
+./isaaclab.sh \
+ -p scripts/reinforcement_learning/rsl_rl/train.py \
+ --task=Isaac-Velocity-Rough-Forrest-v0 \
+ --headless \
+ --num_envs=4096
+```
+
+Enable Weights & Biases:
+
+```bash
+wandb login
+
+./isaaclab.sh \
+ -p scripts/reinforcement_learning/rsl_rl/train.py \
+ --task=Isaac-Velocity-Rough-Forrest-v0 \
+ --headless \
+ --num_envs=4096 \
+ --logger=wandb \
+ --log_project_name=isaacnext-forrest
+```
+
+Extra tracking metrics are throttled separately from RSL-RL's own logging. Useful knobs:
+
+```bash
+--tracking_raw_reward_interval=10
+--tracking_tendon_metrics_interval=10
+--tracking_checkpoint_artifact_interval=0
+```
+
+Resume from the latest checkpoint in a run:
+
+```bash
+./isaaclab.sh \
+ -p scripts/reinforcement_learning/rsl_rl/train.py \
+ --task=Isaac-Velocity-Rough-Forrest-v0 \
+ --headless \
+ --resume \
+ --load_run=<run-folder-name> \
+ --checkpoint=latest.pt
+```
+
+See [RL experiment tracking](docs/source/rl_experiment_tracking.md) for the metric namespaces and file layout.
+
+
+### Deterministic Evaluation
+
+Use the standalone evaluator to compare checkpoints without changing training state:
+
+```bash
+./isaaclab.sh \
+ -p scripts/reinforcement_learning/rsl_rl/evaluate.py \
+ --task=Isaac-Velocity-Flat-Forrest-Play-v0 \
+ --num_envs=64 \
+ --episodes=128 \
+ --load_run=<run-folder-name> \
+ --checkpoint=latest.pt \
+ --lin_vel_x=0.5 \
+ --lin_vel_y=0.0 \
+ --ang_vel_z=0.0
+```
+
+The evaluator writes a JSON summary under `logs/rsl_rl/<experiment>/<run>/eval/` unless `--output` is provided.
+
+### Training Profiling
+
+Profiling is disabled by default. Enable the lightweight training profiler with one flag:
+
+```bash
+./isaaclab.sh \
+ -p scripts/reinforcement_learning/rsl_rl/train.py \
+ --task=Isaac-Velocity-Rough-Forrest-v0 \
+ --headless \
+ --num_envs=4096 \
+ --profile
+```
+
+The profiler writes `profile/profile_summary.json` inside the run directory with timing totals for environment
+stepping, physics substeps, tendon application, rewards, terminations, observations, policy action, PPO update,
+logging, and checkpoint saves.
 
 
 

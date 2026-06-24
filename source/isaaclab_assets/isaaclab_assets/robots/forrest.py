@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-import os
+from pathlib import Path
 
 import numpy as np
 
@@ -35,6 +35,19 @@ def _implicit_actuator_cfg(config: ActuatorParameters) -> ImplicitActuatorCfg:
     )
 
 
+def _resolve_asset_path(path: str) -> str:
+    asset_path = Path(path).expanduser()
+    if asset_path.is_absolute():
+        return asset_path.as_posix()
+
+    candidates = [Path.cwd() / asset_path]
+    candidates.extend(parent / asset_path for parent in Path(__file__).resolve().parents)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.as_posix()
+    return (Path.cwd() / asset_path).as_posix()
+
+
 def get_forrest_cfg(config: ForrestParameterConfig) -> ArticulationCfg:
     robot = config.robot
     physics = config.physics
@@ -44,7 +57,7 @@ def get_forrest_cfg(config: ForrestParameterConfig) -> ArticulationCfg:
     return ArticulationCfg(
         prim_path=robot.prim_path,
         spawn=sim_utils.UsdFileCfg(
-            usd_path=os.path.join(os.getcwd(), robot.usd_path),
+            usd_path=_resolve_asset_path(robot.usd_path),
             activate_contact_sensors=True,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=physics.rigid_body.disable_gravity,

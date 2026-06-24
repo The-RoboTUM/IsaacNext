@@ -103,7 +103,6 @@ args_cli.constraint_mode = args_cli.constraint_mode or FORREST_PARAMS.run.constr
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
-import cv2
 import torch
 
 import carb
@@ -132,6 +131,7 @@ VIRTUAL_GROUND_HEIGHT = FORREST_PARAMS.physics.virtual_ground_height
 SIM_DT = FORREST_PARAMS.physics.sim_dt
 CAMERA_EYE = (2.5, -8.0, 2.0)
 CAMERA_TARGET = (2.5, 0.0, 0.85)
+_CV2 = None
 
 
 # Enable this while hunting for autograd issues in the tendon model.
@@ -176,6 +176,21 @@ def append_jsonl(path: Path, data: dict):
         file.write(json.dumps(data) + "\n")
 
 
+def require_cv2():
+    """Import OpenCV only when video recording is requested."""
+    global _CV2
+    if _CV2 is None:
+        try:
+            import cv2 as cv2_module
+        except ImportError as exc:
+            raise RuntimeError(
+                "Video recording requires OpenCV. Install the repo environment from environment.yml "
+                "or add opencv-python to your active Python environment."
+            ) from exc
+        _CV2 = cv2_module
+    return _CV2
+
+
 def reset_debug_logs(output_dir: Path) -> tuple[Path, Path]:
     """Create empty debug log files and return their paths."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -191,6 +206,7 @@ def setup_video_writer(args, sim_cfg):
     if not args.record_video:
         return None, None
 
+    cv2 = require_cv2()
     import isaacsim.core.utils.prims as prim_utils
 
     prim_utils.create_prim("/World/Camera", "Xform")
@@ -296,7 +312,14 @@ def main():
     sim_cfg.dt = SIM_DT
     sim_cfg.physx.enable_external_forces_every_iteration = True
     sim_cfg.physx.min_velocity_iteration_count = max(1, int(sim_cfg.physx.min_velocity_iteration_count))
-    num_steps = int(args_cli.duration / sim_cfg.dt)
+    sim_cfg.physx.gpu_collision_stack_size = int(FORREST_PARAMS.physics.physx_gpu_collision_stack_size)
+    sim_cfg.physx.gpu_found_lost_aggregate_pairs_capacity = int(
+        FORREST_PARAMS.physics.physx_gpu_found_lost_aggregate_pairs_capacity
+    )
+    sim_cfg.physx.gpu_total_aggregate_pairs_capacity = int(
+        FORREST_PARAMS.physics.physx_gpu_total_aggregate_pairs_capacity
+    )
+    num_steps = max(1, int(args_cli.duration / sim_cfg.dt))
     print_startup_summary(args_cli, sim_cfg, num_steps)
 
     sim = SimulationContext(sim_cfg)
@@ -349,7 +372,8 @@ def main():
         tendon_data=TendonData(
             robot.num_instances,
             FORREST_PARAMS.to_tendon_randomization_ranges(),
-            tc=FORREST_PARAMS.to_tendon_constants(),
+            tc=FORREST_PARAMS.to_tendon_constants(device=robot.device),
+            device=robot.device,
         ),
         tendon_damping=FORREST_PARAMS.tendon_damping(),
     )
@@ -397,6 +421,7 @@ def main():
             robot.update(sim.get_physics_dt())
 
             if args_cli.record_video and camera is not None and video_writer is not None:
+                cv2 = require_cv2()
                 camera.update(sim.get_physics_dt())
                 rgb_image = camera.data.output["rgb"][0].cpu().numpy()
                 bgr_image = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)

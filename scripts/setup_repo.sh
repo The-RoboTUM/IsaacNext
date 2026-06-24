@@ -13,6 +13,7 @@ SKIP_CONDA=0
 SKIP_INSTALL=0
 SKIP_PRE_COMMIT=0
 SKIP_SYMLINK=0
+SKIP_USD_PATCH=0
 SKIP_IDE_PATHS=0
 
 usage() {
@@ -28,6 +29,7 @@ Options:
   --skip-install        Do not install Isaac Lab source extensions
   --skip-pre-commit     Do not install pre-commit hooks
   --skip-symlink        Do not create/update the Forrest USD symlink
+  --skip-usd-patch      Do not patch Forrest USD virtual visual reference targets
   --skip-ide-paths      Do not configure Isaac Sim paths for PyCharm/static analysis
   -h, --help            Show this help
 EOF
@@ -68,6 +70,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-symlink)
             SKIP_SYMLINK=1
+            shift
+            ;;
+        --skip-usd-patch)
+            SKIP_USD_PATCH=1
             shift
             ;;
         --skip-ide-paths)
@@ -144,6 +150,11 @@ setup_ide_paths() {
     "${REPO_ROOT}/scripts/setup_pycharm_isaacsim_paths.sh" "${ENV_NAME}"
 }
 
+patch_forrest_usd() {
+    log "Patching Forrest USD virtual visual references"
+    conda run -n "${ENV_NAME}" python "${REPO_ROOT}/scripts/tools/patch_forrest_usd.py"
+}
+
 cd "${REPO_ROOT}"
 
 if [[ "${SKIP_SYMLINK}" -eq 0 ]]; then
@@ -168,6 +179,12 @@ if [[ "${SKIP_PRE_COMMIT}" -eq 0 ]]; then
     install_pre_commit
 else
     log "Skipping pre-commit hook install"
+fi
+
+if [[ "${SKIP_USD_PATCH}" -eq 0 ]]; then
+    patch_forrest_usd
+else
+    log "Skipping Forrest USD patch"
 fi
 
 if [[ "${SKIP_IDE_PATHS}" -eq 0 ]]; then

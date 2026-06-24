@@ -80,7 +80,7 @@ class TendonActionTermHybrid(ActionTerm):
         self.robot = env.scene.articulations[cfg.asset_name]
         self._env = env
         forrest_params = load_forrest_parameter_config(cfg.parameters_file)
-        tendon_constants = forrest_params.to_tendon_constants()
+        tendon_constants = forrest_params.to_tendon_constants(device=env.device)
 
         self.tendon_manager = TendonManager(
             robot=self.robot,
@@ -88,6 +88,7 @@ class TendonActionTermHybrid(ActionTerm):
                 batch_size=env.num_envs,
                 randomization_ranges=cfg.randomization_ranges,
                 tc=tendon_constants,
+                device=env.device,
             ),
             tendon_damping=forrest_params.tendon_damping(),
         )
@@ -151,10 +152,17 @@ class TendonActionTermHybrid(ActionTerm):
             are delegated to ``TendonManager.apply_jit`` so the env integration
             matches the standalone JIT simulation path.
         """
-        self.tendon_manager.apply_jit(
-            virtual_ground_height=None,
-            dt=self._get_physics_dt(),
-        )
+        profiler = getattr(self._env, "_external_profiler", None)
+        self.tendon_manager._profile_external_profiler = profiler
+        if bool(getattr(profiler, "enabled", False)):
+            with profiler.scope("env/tendon/apply_jit"):
+                self.tendon_manager.apply_jit(
+                    virtual_ground_height=None,
+                    dt=self._get_physics_dt(),
+                )
+            return
+
+        self.tendon_manager.apply_jit(virtual_ground_height=None, dt=self._get_physics_dt())
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         """Reset tendon internal state.
@@ -193,7 +201,7 @@ class TendonActionTerm(ActionTerm):
         self.robot = env.scene.articulations[cfg.asset_name]
         self._env = env
         forrest_params = load_forrest_parameter_config(cfg.parameters_file)
-        tendon_constants = forrest_params.to_tendon_constants()
+        tendon_constants = forrest_params.to_tendon_constants(device=env.device)
 
         self.tendon_manager = TendonManager(
             robot=self.robot,
@@ -201,6 +209,7 @@ class TendonActionTerm(ActionTerm):
                 batch_size=env.num_envs,
                 randomization_ranges=cfg.randomization_ranges,
                 tc=tendon_constants,
+                device=env.device,
             ),
             tendon_damping=forrest_params.tendon_damping(),
         )
@@ -248,46 +257,39 @@ class TendonActionTerm(ActionTerm):
         Note:
             This is called at every simulation step by the manager.
         """
+        profiler = getattr(self._env, "_external_profiler", None)
+        self.tendon_manager._profile_external_profiler = profiler
+        if bool(getattr(profiler, "enabled", False)):
+            with profiler.scope("env/tendon/policy_controlled_apply"):
+                self._apply_policy_controlled_tendon_actions()
+            return
+
+        self._apply_policy_controlled_tendon_actions()
+
+    def _apply_policy_controlled_tendon_actions(self) -> None:
         (
             tendon_torques_left,
             tendon_torques_right,
         ) = self.tendon_manager.compute_torques_jit(dt=_get_physics_dt(self._env))  # pyright: ignore[reportAssignmentType]
 
         batch_size = self.robot.num_instances
-        # 4) apply torques around the local Y flexion axis to each link.
-        tendon_torques_full = torch.zeros((batch_size, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device)
-
-        # Fix coordinate system inversion for joint 3 and 4
-        tendon_torques_left[:, tids.I_Q_GST_3] *= -1.0
-        tendon_torques_right[:, tids.I_Q_GST_3] *= -1.0
-        tendon_torques_left[:, tids.I_Q_GST_4] *= -1.0
-        tendon_torques_right[:, tids.I_Q_GST_4] *= -1.0
-
-        # Apply GST torques
-        tendon_torques_full[:, : N_CHAIN_LINKS_PER_LEG - 1, JOINT_AXIS_IDX] = -tendon_torques_left
-        tendon_torques_full[:, 1:N_CHAIN_LINKS_PER_LEG, JOINT_AXIS_IDX] += tendon_torques_left
-        tendon_torques_full[
-            :, N_CHAIN_LINKS_PER_LEG : N_CHAIN_LINKS_PER_LEG * 2 - 1, JOINT_AXIS_IDX
-        ] = -tendon_torques_right
-        tendon_torques_full[:, N_CHAIN_LINKS_PER_LEG + 1 :, JOINT_AXIS_IDX] += tendon_torques_right
+        tendon_torques_full = self.tendon_manager.torque_mapper.joint_to_link_torques_jit(
+            tendon_torques_left,
+            tendon_torques_right,
+            batch_size=batch_size,
+        ).clone()
 
         # Apply knee motor torques from actions
+        tendon_torques_full[:, tids.I_CHAIN_LINK_23, JOINT_AXIS_IDX] += -self._processed_actions[:, 0]
+        tendon_torques_full[:, tids.I_CHAIN_LINK_34, JOINT_AXIS_IDX] += self._processed_actions[:, 0]
         tendon_torques_full[
             :,
-            self.link_indices_left_right[tids.I_CONNECTOR_LINK_GST_23],
+            tids.I_CHAIN_LINK_23 + N_CHAIN_LINKS_PER_LEG,
             JOINT_AXIS_IDX,
-        ] = -self._processed_actions[:, 0]
-        tendon_torques_full[:, self.link_indices_left_right[tids.I_LINK_34], JOINT_AXIS_IDX] += self._processed_actions[
-            :, 0
-        ]
+        ] += -self._processed_actions[:, 1]
         tendon_torques_full[
             :,
-            self.link_indices_left_right[tids.I_CONNECTOR_LINK_GST_23 + N_CHAIN_LINKS_PER_LEG],
-            JOINT_AXIS_IDX,
-        ] = -self._processed_actions[:, 1]
-        tendon_torques_full[
-            :,
-            self.link_indices_left_right[tids.I_LINK_34 + N_CHAIN_LINKS_PER_LEG],
+            tids.I_CHAIN_LINK_34 + N_CHAIN_LINKS_PER_LEG,
             JOINT_AXIS_IDX,
         ] += self._processed_actions[:, 1]
 

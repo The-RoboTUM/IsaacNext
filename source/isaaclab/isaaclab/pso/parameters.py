@@ -80,7 +80,7 @@ class ParameterSpace:
         values = self.vector_to_dict(physical)
         data: dict[str, Any] = {}
         if includes:
-            data["includes"] = list(includes)
+            data["includes"] = [_resolve_include_path(include) for include in includes]
         for name, value in values.items():
             _set_nested(data, name.split("."), value)
         run_data = data.setdefault("run", {})
@@ -105,3 +105,10 @@ def _set_nested(data: dict[str, Any], keys: list[str], value: float) -> None:
             raise ValueError(f"Cannot set nested parameter path through non-dict key: {'.'.join(keys)}")
         current = current[key]
     current[keys[-1]] = float(value)
+
+
+def _resolve_include_path(path: str | Path) -> str:
+    include_path = Path(path).expanduser()
+    if not include_path.is_absolute():
+        include_path = include_path.resolve()
+    return include_path.as_posix()

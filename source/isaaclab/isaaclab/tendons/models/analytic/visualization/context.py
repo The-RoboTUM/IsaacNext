@@ -21,8 +21,8 @@ DEFAULT_ALPHA_2 = np.deg2rad(280)
 
 # Keep these module-level objects so the split code behaves like the original script.
 _forrest_params = load_forrest_parameter_config()
-tc = _forrest_params.to_tendon_constants()
+tc = _forrest_params.to_tendon_constants(device="cpu")
 _randomization = _forrest_params.to_tendon_randomization_ranges()
-td = TendonData(1, _randomization, tc=tc)
+td = TendonData(1, _randomization, tc=tc, device="cpu")
 
 __all__ = ["DEFAULT_ALPHA_2", "tc", "td", "tids"]

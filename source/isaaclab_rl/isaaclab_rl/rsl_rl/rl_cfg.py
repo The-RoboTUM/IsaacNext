@@ -284,6 +284,21 @@ class RslRlBaseRunnerCfg:
     save_interval: int = MISSING
     """The number of iterations between saves."""
 
+    tracking_extra_metrics_interval: int = 1
+    """Iteration interval for extra experiment-tracking scalars. Set to 0 to disable extra scalars."""
+
+    tracking_raw_reward_interval: int = 10
+    """Iteration interval for raw per-step reward metrics. Set to 0 to disable."""
+
+    tracking_tendon_metrics_interval: int = 10
+    """Iteration interval for tendon safety metrics. Set to 0 to disable."""
+
+    tracking_checkpoint_alias_interval: int = 1
+    """Checkpoint-save interval for local latest/final aliases. Set to 0 to disable aliases."""
+
+    tracking_checkpoint_artifact_interval: int = 0
+    """Checkpoint-save interval for W&B checkpoint artifacts. Set to 0 to disable artifact uploads."""
+
     experiment_name: str = MISSING
     """The experiment name."""
 

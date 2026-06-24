@@ -13,7 +13,7 @@ import pytest
 from isaaclab.tendons.controllers.cpg import BirdBotCPGLeg, CPGParams
 
 
-def test_plot_cpg_angles_two_gait_cycles():
+def test_plot_cpg_angles_two_gait_cycles(tmp_path):
     """Plot all serial joint angles over two gait cycles and save the figure."""
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
@@ -22,7 +22,7 @@ def test_plot_cpg_angles_two_gait_cycles():
     params = CPGParams(
         f_hz=1.0,
         yaw_A_deg=8.0,
-        abd_A_deg=10.0,
+        roll_A_deg=10.0,
     )
     leg = BirdBotCPGLeg(params, include_knee=True)
 
@@ -42,9 +42,7 @@ def test_plot_cpg_angles_two_gait_cycles():
     fig.suptitle("BirdBot CPG Angles Over Two Gait Cycles")
     fig.tight_layout()
 
-    out_dir = Path(__file__).resolve().parents[4] / "outputs"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_file = out_dir / "cpg_angles_two_cycles.png"
+    out_file = Path(tmp_path) / "cpg_angles_two_cycles.png"
     output_path = out_file.as_posix()
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
