@@ -75,6 +75,9 @@ class TendonManager:
         self._profile_count = 0
         self._profile_totals = {"compute": 0.0, "map": 0.0, "forces": 0.0, "set": 0.0}
         self._profile_external_profiler = None
+        self._cached_link_torques = None
+        self._cached_forces = None
+        self._cached_body_ids = None
 
     def _compute_torques_from_energy(self, joint_angles: torch.Tensor, energy: torch.Tensor):
         if not torch.is_grad_enabled():
@@ -237,6 +240,30 @@ class TendonManager:
             profiler.record_elapsed("tendon/torque_mapping_jit", t2 - t1)
             profiler.record_elapsed("tendon/external_forces", t3 - t2)
             profiler.record_elapsed("tendon/set_wrenches", t4 - t3)
+        self._cached_link_torques = link_torques
+        self._cached_forces = forces
+        self._cached_body_ids = self.link_indices_left_right
+
+    def reapply_cached_jit(self) -> bool:
+        """Reapply the last JIT-computed tendon forces and torques.
+
+        Returns:
+            True when cached values were available and reapplied.
+        """
+        if self._cached_link_torques is None or self._cached_forces is None or self._cached_body_ids is None:
+            return False
+        profiler = self._external_profiler()
+        profile_active = bool(getattr(profiler, "enabled", False))
+        t0 = self._profile_time() if profile_active else 0.0
+        self.robot.permanent_wrench_composer.set_forces_and_torques(
+            forces=self._cached_forces,
+            torques=self._cached_link_torques,
+            body_ids=self._cached_body_ids,
+        )
+        t1 = self._profile_time() if profile_active else 0.0
+        if profile_active:
+            profiler.record_elapsed("tendon/reapply_cached_jit", t1 - t0)
+        return True
 
     def _store_delta_lengths(self, deltas: dict[str, torch.Tensor]):
         self._prev_delta_lengths = {name: delta.detach().clone() for name, delta in deltas.items()}

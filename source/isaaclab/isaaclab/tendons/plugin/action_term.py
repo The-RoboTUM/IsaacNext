@@ -92,6 +92,8 @@ class TendonActionTermHybrid(ActionTerm):
             ),
             tendon_damping=forrest_params.tendon_damping(),
         )
+        self._update_interval = max(1, int(cfg.update_interval))
+        self._apply_count = 0
 
         # Keep these tensors so the ActionManager/debug interface can query them.
         # Shape is (num_envs, 0) because this is passive-only.
@@ -154,6 +156,11 @@ class TendonActionTermHybrid(ActionTerm):
         """
         profiler = getattr(self._env, "_external_profiler", None)
         self.tendon_manager._profile_external_profiler = profiler
+        should_recompute = self._apply_count % self._update_interval == 0
+        self._apply_count += 1
+        if not should_recompute and self.tendon_manager.reapply_cached_jit():
+            return
+
         if bool(getattr(profiler, "enabled", False)):
             with profiler.scope("env/tendon/apply_jit"):
                 self.tendon_manager.apply_jit(
@@ -175,6 +182,7 @@ class TendonActionTermHybrid(ActionTerm):
         if hasattr(self.tendon_manager.tendon_data, "reset"):
             self.tendon_manager.tendon_data.reset(env_ids)
         self.tendon_manager.reset_damping_state(env_ids)
+        self._apply_count = 0
 
     def _get_physics_dt(self) -> float:
         """Best-effort physics dt lookup for manager-based envs.

@@ -478,6 +478,17 @@ The profiler writes `profile/profile_summary.json` inside the run directory with
 stepping, physics substeps, tendon application, rewards, terminations, observations, policy action, PPO update,
 logging, and checkpoint saves.
 
+For tendon performance experiments, adjust:
+
+```yaml
+training:
+  actions:
+    tendon_update_interval: 1
+```
+
+in `configs/forrest/default/train.yaml`. Try `2` or `4` to reuse cached passive tendon torques across physics
+substeps; `1` preserves the original behavior.
+
 
 
 ### Play Forrest:

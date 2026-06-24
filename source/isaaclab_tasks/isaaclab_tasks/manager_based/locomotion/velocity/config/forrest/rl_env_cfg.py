@@ -674,4 +674,5 @@ class ForrestActionsCfg:
         asset_name="robot",
         randomization_ranges=FORREST_TENDON_RANDOMIZATION,
         parameters_file=None,
+        update_interval=TRAINING_PARAMS.actions.tendon_update_interval,
     )

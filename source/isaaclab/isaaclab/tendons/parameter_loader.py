@@ -555,6 +555,7 @@ class ActionParameters:
         }
     )
     use_default_offset: bool = True
+    tendon_update_interval: int = 1
 
 
 @dataclass

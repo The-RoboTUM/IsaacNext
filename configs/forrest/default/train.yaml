@@ -13,6 +13,7 @@ training:
       ".*flexion": 60.0  # Max commanded hip flexion joint offset in degrees.
       ".*flexor": 90.0  # Max commanded knee flexor joint offset in degrees.
     use_default_offset: true  # Add action commands around the robot's default joint pose.
+    tendon_update_interval: 4  # Passive tendon recompute interval in physics substeps; 1 keeps current behavior.
   contacts:
     foot_body_names: [ "s45_digit_assy_1", "s45_digit_assy_2" ]  # Bodies treated as feet for foot rewards.
     foot_connector_body_names: [ "s34_foot_connector_assy_1", "s34_foot_connector_assy_2" ]  # Connector bodies penalized on contact.

@@ -170,3 +170,23 @@ tendon/apply_jit_total
 ```
 
 Use these fields to decide whether optimization should target PhysX stepping, tendon dynamics, reward/termination terms, observation construction, or reset logic. The `tendon/*` records split the passive tendon path into joint-state reads, JIT geometry/energy, damping, autograd torque computation, torque mapping, external force construction, and wrench submission.
+
+## Tendon Update Interval
+
+Forrest's passive tendon action can reuse the last computed tendon torques for several physics substeps. The default keeps the original behavior:
+
+```yaml
+training:
+  actions:
+    tendon_update_interval: 1
+```
+
+With environment decimation `4`, useful experiments are:
+
+```yaml
+tendon_update_interval: 1  # recompute every physics substep
+tendon_update_interval: 2  # recompute twice per RL step
+tendon_update_interval: 4  # recompute once per RL step
+```
+
+After changing this value, rerun with `--profile` and compare `env/tendon/apply_jit`, `tendon/reapply_cached_jit`, `env/physics/action_apply`, and task behavior. The value is reset-safe: after an environment reset, the next tendon apply recomputes instead of replaying stale cached torques.

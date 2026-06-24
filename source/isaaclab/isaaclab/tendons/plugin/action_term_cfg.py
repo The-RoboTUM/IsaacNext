@@ -35,6 +35,9 @@ class TendonActionTermHybridCfg(ActionTermCfg):
     parameters_file: str | None = None
     """Optional centralized Forrest YAML path used to build tendon constants at runtime."""
 
+    update_interval: int = 1
+    """Passive tendon recompute interval in physics substeps. One preserves the current behavior."""
+
 
 @configclass
 class TendonActionTermCfg(ActionTermCfg):
