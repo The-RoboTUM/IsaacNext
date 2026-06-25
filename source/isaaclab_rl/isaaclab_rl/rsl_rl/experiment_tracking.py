@@ -54,8 +54,9 @@ class ExperimentLogger:
 class TrackingOptions:
     """Frequency controls for optional experiment tracking work."""
 
+    log_interval: int = 1
     extra_metrics_interval: int = 1
-    raw_reward_interval: int = 10
+    raw_reward_interval: int = 0
     tendon_metrics_interval: int = 10
     checkpoint_alias_interval: int = 1
     checkpoint_artifact_interval: int = 0
@@ -253,7 +254,16 @@ def install_tracking_hooks(
     """Install logger and checkpoint hooks on an existing RSL-RL runner."""
 
     options = options or TrackingOptions()
-    if tracker.enabled and options.extra_metrics_interval > 0:
+    needs_extra_tracking = tracker.enabled and any(
+        interval > 0
+        for interval in (
+            options.extra_metrics_interval,
+            options.raw_reward_interval,
+            options.tendon_metrics_interval,
+        )
+    )
+    needs_logger_proxy = options.log_interval > 1 or needs_extra_tracking
+    if needs_logger_proxy:
         tracking_logger = TrackingLoggerProxy(
             wrapped=runner.logger,
             tracker=tracker,
@@ -340,6 +350,8 @@ class TrackingLoggerProxy:
     ) -> None:
         self._wrapped.process_env_step(rewards, dones, extras, intrinsic_rewards)
         self.env_steps += int(rewards.numel())
+        if not self._tracker.enabled or self._options.extra_metrics_interval <= 0:
+            return
         self._update_episode_buffers(rewards, dones, intrinsic_rewards)
         self._collect_episode_extras(extras)
 
@@ -358,26 +370,30 @@ class TrackingLoggerProxy:
         width: int = 80,
         pad: int = 40,
     ) -> None:
-        scalars = self._build_training_scalars(it, collect_time, learn_time, loss_dict, learning_rate)
-        self._wrapped.log(
-            it,
-            start_it,
-            total_it,
-            collect_time,
-            learn_time,
-            loss_dict,
-            learning_rate,
-            action_std,
-            rnd_weight,
-            print_minimal=print_minimal,
-            width=width,
-            pad=pad,
-        )
-        # RSL-RL's built-in W&B writer uses the learning iteration as the global step.
-        # Use the same step here so W&B does not reject later RSL-RL scalar logs as
-        # out-of-order. The actual environment-step count is still logged as
-        # ``train/env_steps``.
-        self._tracker.log_scalars(scalars, step=it)
+        if _should_run(self._options.log_interval, it):
+            self._wrapped.log(
+                it,
+                start_it,
+                total_it,
+                collect_time,
+                learn_time,
+                loss_dict,
+                learning_rate,
+                action_std,
+                rnd_weight,
+                print_minimal=print_minimal,
+                width=width,
+                pad=pad,
+            )
+        else:
+            self._advance_wrapped_logger_without_write(collect_time, learn_time)
+        if self._tracker.enabled and self._tracking_scalars_due(it):
+            scalars = self._build_training_scalars(it, collect_time, learn_time, loss_dict, learning_rate)
+            # RSL-RL's built-in W&B writer uses the learning iteration as the global step.
+            # Use the same step here so W&B does not reject later RSL-RL scalar logs as
+            # out-of-order. The actual environment-step count is still logged as
+            # ``train/env_steps``.
+            self._tracker.log_scalars(scalars, step=it)
         self._episode_scalars.clear()
 
     def save_model(self, path: str, it: int) -> None:
@@ -484,8 +500,7 @@ class TrackingLoggerProxy:
         if self._lengths:
             scalars["train/episode_length_mean"] = float(np.mean(self._lengths))
         scalars.update(_map_ppo_losses(loss_dict))
-        if _should_run(self._options.extra_metrics_interval, it):
-            scalars.update(self._map_episode_scalars())
+        scalars.update(self._map_episode_scalars())
         env = self._unwrap_env()
         if _should_run(self._options.raw_reward_interval, it):
             scalars.update(_extract_current_reward_scalars(env))
@@ -493,18 +508,36 @@ class TrackingLoggerProxy:
             scalars.update(_extract_tendon_scalars(env))
         return scalars
 
+    def _tracking_scalars_due(self, it: int) -> bool:
+        return any(
+            (
+                _should_run(self._options.extra_metrics_interval, it),
+                _should_run(self._options.raw_reward_interval, it),
+                _should_run(self._options.tendon_metrics_interval, it),
+            )
+        )
+
+    def _advance_wrapped_logger_without_write(self, collect_time: float, learn_time: float) -> None:
+        collection_size = int(
+            self._wrapped.cfg["num_steps_per_env"] * self._wrapped.num_envs * self._wrapped.gpu_world_size
+        )
+        if getattr(self._wrapped, "writer", None) is not None:
+            self._wrapped.tot_timesteps += collection_size
+            self._wrapped.tot_time += collect_time + learn_time
+        ep_extras = getattr(self._wrapped, "ep_extras", None)
+        if ep_extras is not None:
+            ep_extras.clear()
+
     def _map_episode_scalars(self) -> dict[str, float]:
         scalars = {}
         for key, values in self._episode_scalars.items():
             if not values:
                 continue
             value = float(np.mean(values))
-            if key.startswith("Episode_Reward/"):
-                term = key.split("/", 1)[1]
-                scalars[f"reward/weighted/{term}"] = value
-            elif key.startswith("Episode_Termination/"):
-                term = key.split("/", 1)[1]
-                scalars[f"termination/{term}"] = value
+            if key.startswith(("Episode_Reward/", "Episode_Termination/")):
+                continue
+            if key.startswith(("Metrics/", "Curriculum/")):
+                scalars[key] = value
         return scalars
 
     def _unwrap_env(self) -> Any:

@@ -3,15 +3,24 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+agent:
+  runner:
+    log_interval: 10  # RSL-RL logger write interval in learning iterations; 1 logs every iteration.
+    tracking_extra_metrics_interval: 10  # Extra W&B tracking scalar interval; 0 disables extra scalars.
+    tracking_raw_reward_interval: 0  # Raw per-step reward metric interval; 0 avoids duplicating RSL-RL reward logs.
+    tracking_tendon_metrics_interval: 0  # Tendon safety metric interval; 0 disables.
+    tracking_checkpoint_alias_interval: 0  # Local latest/final checkpoint alias interval; 0 disables aliases.
+    tracking_checkpoint_artifact_interval: 0  # W&B checkpoint artifact interval; 0 disables checkpoint uploads.
+
 training:
   episode_length_s: 4.0  # Training episode length override in seconds; null keeps parent env default.
   play_episode_length_s: 40.0  # Episode length used by play/evaluation config.
   actions:
     scale_deg:
-      ".*roll": 25.0  # Max commanded roll joint offset in degrees for matching joints.
-      ".*lateral": 15.0  # Max commanded lateral/yaw hip joint offset in degrees.
-      ".*flexion": 60.0  # Max commanded hip flexion joint offset in degrees.
-      ".*flexor": 90.0  # Max commanded knee flexor joint offset in degrees.
+      ".*roll": 50.0  # Max commanded roll joint offset in degrees for matching joints.
+      ".*lateral": 30.0  # Max commanded lateral/yaw hip joint offset in degrees.
+      ".*flexion": 90.0  # Max commanded hip flexion joint offset in degrees.
+      ".*flexor": 120.0  # Max commanded knee flexor joint offset in degrees.
     use_default_offset: true  # Add action commands around the robot's default joint pose.
     tendon_update_interval: 4  # Passive tendon recompute interval in physics substeps; 1 keeps current behavior.
   contacts:
@@ -21,18 +30,18 @@ training:
       - "s45_digit_assy_1"  # Right/left foot digit body.
       - "s45_digit_assy_2"  # Right/left foot digit body.
       - "base_assy_v2_1"  # Base body used for undesired contact/termination checks.
-      - "outside_hip_v2_assy_axial_left_1"  # Hip side body tracked for contact.
-      - "outside_hip_v2_assy_axial_1"  # Hip side body tracked for contact.
-      - "differential_cage_assy_small_motor_1"  # Base/hip drivetrain body tracked for contact.
-      - "differential_cage_assy_small_motor_2"  # Base/hip drivetrain body tracked for contact.
-      - "s34_foot_connector_assy_1"  # Foot connector body tracked for contact penalties.
-      - "s34_foot_connector_assy_2"  # Foot connector body tracked for contact penalties.
+    #      - "outside_hip_v2_assy_axial_left_1"  # Hip side body tracked for contact.
+    #      - "outside_hip_v2_assy_axial_1"  # Hip side body tracked for contact.
+    #      - "differential_cage_assy_small_motor_1"  # Base/hip drivetrain body tracked for contact.
+    #      - "differential_cage_assy_small_motor_2"  # Base/hip drivetrain body tracked for contact.
+    #      - "s34_foot_connector_assy_1"  # Foot connector body tracked for contact penalties.
+    #      - "s34_foot_connector_assy_2"  # Foot connector body tracked for contact penalties.
     base_termination_body_names: # Bodies that terminate the episode when they hit the ground.
       - "base_assy_v2_1"  # Main base body.
-      - "differential_cage_assy_small_motor_1"  # Drivetrain body near base.
-      - "differential_cage_assy_small_motor_2"  # Drivetrain body near base.
-      - "outside_hip_v2_assy_axial_1"  # Hip side body.
-      - "outside_hip_v2_assy_axial_left_1"  # Hip side body.
+    #      - "differential_cage_assy_small_motor_1"  # Drivetrain body near base.
+    #      - "differential_cage_assy_small_motor_2"  # Drivetrain body near base.
+    #      - "outside_hip_v2_assy_axial_1"  # Hip side body.
+    #      - "outside_hip_v2_assy_axial_left_1"  # Hip side body.
     update_period: 0.0  # Contact sensor update period; 0.0 means every physics step.
     history_length: 6  # Number of contact history frames kept by the sensor.
     debug_vis: false  # Show contact sensor debug visualization.
@@ -56,7 +65,7 @@ training:
       joint_deviation_l1: -0.1  # Penalty for joint positions away from nominal pose.
       hip_deviation_l1: -0.3  # Stronger penalty for hip deviation.
       gait_symmetry: -10.0  # Penalty for asymmetric foot placement/gait timing.
-      foot_connector_contact: -1.0  # Penalty when foot connector bodies contact the ground.
+      foot_connector_contact: -0.0  # Penalty when foot connector bodies contact the ground.
       lin_vel_z_l2: -0.3  # Penalty for vertical base velocity.
       flat_orientation_l2: -1.0  # Penalty for body tilt away from upright.
       action_rate_l2: -0.0025  # Penalty for rapidly changing actions.

@@ -49,14 +49,15 @@ If `wandb` is unavailable, training falls back to local files/TensorBoard instea
 Extra tracking work is frequency-gated so normal training stays close to the native RSL-RL path. The most useful knobs are:
 
 ```bash
+--log_interval=1
 --tracking_extra_metrics_interval=1
---tracking_raw_reward_interval=10
+--tracking_raw_reward_interval=0
 --tracking_tendon_metrics_interval=10
 --tracking_checkpoint_alias_interval=1
 --tracking_checkpoint_artifact_interval=0
 ```
 
-Set an interval to `0` to disable that feature. W&B checkpoint artifacts are disabled by default because uploading large checkpoint files can block training; local `latest.pt` and `final.pt` aliases remain enabled by default.
+Set an interval to `0` to disable that feature, except `log_interval`, which should stay at `1` or higher. `log_interval` controls RSL-RL's own logger writes; the `tracking_*` intervals control the extra tracking layer. Raw reward tracking is disabled by default because RSL-RL already logs `Episode_Reward/...` and `Episode_Termination/...`. W&B checkpoint artifacts are disabled by default because uploading large checkpoint files can block training; local `latest.pt` and `final.pt` aliases remain enabled by default. Forrest defaults are also editable in `configs/forrest/default/train.yaml` under `agent.runner`.
 
 ## Metrics
 
@@ -73,17 +74,13 @@ ppo/value_loss
 ppo/entropy
 ppo/learning_rate
 
-reward/raw/<reward_term>
-reward/weighted/<reward_term>
-termination/<termination_reason>
-
 tendon/tension_mean
 tendon/tension_p95
 tendon/tension_max
 tendon/slack_fraction
 ```
 
-RSL-RL 5.0.1 does not expose approximate KL or clip fraction in its public loss dictionary, so those metrics are not fabricated. Tendon saturation is also omitted unless a real saturation limit is added to the tendon model.
+RSL-RL already logs episode rewards and termination counts as `Episode_Reward/...` and `Episode_Termination/...`, so the extra tracking layer does not mirror those by default. RSL-RL 5.0.1 does not expose approximate KL or clip fraction in its public loss dictionary, so those metrics are not fabricated. Tendon saturation is also omitted unless a real saturation limit is added to the tendon model.
 
 ## Resume
 

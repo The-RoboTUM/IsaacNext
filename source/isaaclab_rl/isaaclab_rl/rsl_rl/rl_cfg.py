@@ -284,10 +284,13 @@ class RslRlBaseRunnerCfg:
     save_interval: int = MISSING
     """The number of iterations between saves."""
 
+    log_interval: int = 1
+    """The number of iterations between RSL-RL logger writes. Set to 1 to log every iteration."""
+
     tracking_extra_metrics_interval: int = 1
     """Iteration interval for extra experiment-tracking scalars. Set to 0 to disable extra scalars."""
 
-    tracking_raw_reward_interval: int = 10
+    tracking_raw_reward_interval: int = 0
     """Iteration interval for raw per-step reward metrics. Set to 0 to disable."""
 
     tracking_tendon_metrics_interval: int = 10

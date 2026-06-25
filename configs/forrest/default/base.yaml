@@ -54,8 +54,8 @@ physics:
     max_depenetration_velocity: 1.0  # Clamp for contact depenetration speed.
   articulation:
     enabled_self_collisions: true  # Enable collisions between links in the same articulation.
-    solver_position_iteration_count: 4  # PhysX solver position iterations; higher can improve constraint stability.
-    solver_velocity_iteration_count: 1  # PhysX solver velocity iterations; improves damping/contact accuracy.
+    solver_position_iteration_count: 2  # PhysX solver position iterations; higher can improve constraint stability.
+    solver_velocity_iteration_count: 0  # PhysX solver velocity iterations; improves damping/contact accuracy.
     selective_self_collision_body_names: # Only these body names remain self-colliding with each other.
       - "s23_assy_1"
       - "s34_foot_connector_assy_1"

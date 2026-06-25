@@ -422,10 +422,14 @@ wandb login
 Extra tracking metrics are throttled separately from RSL-RL's own logging. Useful knobs:
 
 ```bash
---tracking_raw_reward_interval=10
+--log_interval=1
+--tracking_extra_metrics_interval=1
+--tracking_raw_reward_interval=0
 --tracking_tendon_metrics_interval=10
 --tracking_checkpoint_artifact_interval=0
 ```
+
+For Forrest runs, the same defaults live in `configs/forrest/default/train.yaml` under `agent.runner`.
 
 Resume from the latest checkpoint in a run:
 

@@ -19,6 +19,12 @@ class ForrestRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = AGENT_PARAMS.runner.num_steps_per_env
     max_iterations = AGENT_PARAMS.runner.max_iterations
     save_interval = AGENT_PARAMS.runner.save_interval
+    log_interval = AGENT_PARAMS.runner.log_interval
+    tracking_extra_metrics_interval = AGENT_PARAMS.runner.tracking_extra_metrics_interval
+    tracking_raw_reward_interval = AGENT_PARAMS.runner.tracking_raw_reward_interval
+    tracking_tendon_metrics_interval = AGENT_PARAMS.runner.tracking_tendon_metrics_interval
+    tracking_checkpoint_alias_interval = AGENT_PARAMS.runner.tracking_checkpoint_alias_interval
+    tracking_checkpoint_artifact_interval = AGENT_PARAMS.runner.tracking_checkpoint_artifact_interval
     experiment_name = AGENT_PARAMS.runner.experiment_name
     run_name = AGENT_PARAMS.runner.run_name
     logger = AGENT_PARAMS.runner.logger

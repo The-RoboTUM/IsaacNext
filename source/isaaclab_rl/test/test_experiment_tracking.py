@@ -72,7 +72,7 @@ def test_noop_logger_accepts_tracking_calls(tmp_path):
 
 def test_tracking_logger_uses_iteration_step_for_wandb_compatibility():
     tracking = _load_tracking_module()
-    tracker = _FakeTracker()
+    tracker = _FakeTracker(enabled=True)
     wrapped = _FakeRslRlLogger()
     proxy = tracking.TrackingLoggerProxy(wrapped=wrapped, tracker=tracker, env=None, log_dir="logs/test")
     proxy.env_steps = 294912
@@ -91,6 +91,70 @@ def test_tracking_logger_uses_iteration_step_for_wandb_compatibility():
 
     assert tracker.logged_step == 3
     assert tracker.logged_scalars["train/env_steps"] == 294912
+
+
+def test_tracking_logger_interval_skips_wrapped_log_but_advances_state():
+    tracking = _load_tracking_module()
+    tracker = _FakeTracker(enabled=False)
+    wrapped = _FakeRslRlLogger()
+    proxy = tracking.TrackingLoggerProxy(
+        wrapped=wrapped,
+        tracker=tracker,
+        env=None,
+        log_dir="logs/test",
+        options=tracking.TrackingOptions(log_interval=10),
+    )
+    wrapped.ep_extras.append({"Episode_Reward/alive": 1.0})
+
+    proxy.log(
+        it=3,
+        start_it=0,
+        total_it=10,
+        collect_time=1.0,
+        learn_time=2.0,
+        loss_dict={},
+        learning_rate=0.001,
+        action_std=torch.ones(1),
+        rnd_weight=None,
+    )
+
+    assert wrapped.log_calls == 0
+    assert wrapped.tot_timesteps == 24 * 4096
+    assert wrapped.tot_time == 3.0
+    assert wrapped.ep_extras == []
+
+    proxy.log(
+        it=10,
+        start_it=0,
+        total_it=10,
+        collect_time=1.0,
+        learn_time=2.0,
+        loss_dict={},
+        learning_rate=0.001,
+        action_std=torch.ones(1),
+        rnd_weight=None,
+    )
+
+    assert wrapped.log_calls == 1
+
+
+def test_episode_reward_and_termination_are_not_mirrored():
+    tracking = _load_tracking_module()
+    proxy = tracking.TrackingLoggerProxy(
+        wrapped=_FakeRslRlLogger(),
+        tracker=_FakeTracker(enabled=True),
+        env=None,
+        log_dir="logs/test",
+    )
+    proxy._episode_scalars["Episode_Reward/alive"].append(1.0)
+    proxy._episode_scalars["Episode_Termination/base_contact"].append(1.0)
+    proxy._episode_scalars["Metrics/base_velocity/error_vel_xy"].append(0.5)
+
+    scalars = proxy._map_episode_scalars()
+
+    assert "reward/weighted/alive" not in scalars
+    assert "termination/base_contact" not in scalars
+    assert scalars["Metrics/base_velocity/error_vel_xy"] == 0.5
 
 
 def test_noop_tracking_uses_save_time_state_without_wrapping_logger(tmp_path):
@@ -131,9 +195,8 @@ def test_profiler_wraps_methods_and_writes_summary(tmp_path):
 
 
 class _FakeTracker:
-    enabled = False
-
-    def __init__(self):
+    def __init__(self, enabled=False):
+        self.enabled = enabled
         self.logged_scalars = None
         self.logged_step = None
 
@@ -149,8 +212,16 @@ class _FakeRslRlLogger:
     cfg = {"num_steps_per_env": 24}
     num_envs = 4096
     gpu_world_size = 1
+    writer = object()
+
+    def __init__(self):
+        self.log_calls = 0
+        self.tot_timesteps = 0
+        self.tot_time = 0.0
+        self.ep_extras = []
 
     def log(self, *args, **kwargs):
+        self.log_calls += 1
         return
 
     def process_env_step(self, *args, **kwargs):

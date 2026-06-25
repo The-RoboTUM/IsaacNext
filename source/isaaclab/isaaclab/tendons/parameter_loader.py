@@ -432,6 +432,12 @@ class AgentRunnerParameters:
     num_steps_per_env: int = 24
     max_iterations: int = 1500
     save_interval: int = 50
+    log_interval: int = 1
+    tracking_extra_metrics_interval: int = 1
+    tracking_raw_reward_interval: int = 0
+    tracking_tendon_metrics_interval: int = 10
+    tracking_checkpoint_alias_interval: int = 1
+    tracking_checkpoint_artifact_interval: int = 0
     experiment_name: str = "forrest_rough"
     flat_experiment_name: str = "forrest_flat"
     run_name: str = ""

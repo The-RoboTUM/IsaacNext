@@ -231,6 +231,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     tracker = create_experiment_logger(enabled=wandb_requested and agent_cfg.logger == "wandb")
     tracking_options = TrackingOptions(
+        log_interval=agent_cfg.log_interval,
         extra_metrics_interval=agent_cfg.tracking_extra_metrics_interval,
         raw_reward_interval=agent_cfg.tracking_raw_reward_interval,
         tendon_metrics_interval=agent_cfg.tracking_tendon_metrics_interval,

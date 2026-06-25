@@ -38,6 +38,12 @@ def add_rsl_rl_args(parser: argparse.ArgumentParser):
         "--log_project_name", type=str, default=None, help="Name of the logging project when using wandb or neptune."
     )
     arg_group.add_argument(
+        "--log_interval",
+        type=int,
+        default=None,
+        help="Iteration interval for RSL-RL logger writes. 1 logs every iteration.",
+    )
+    arg_group.add_argument(
         "--tracking_extra_metrics_interval",
         type=int,
         default=None,
@@ -120,6 +126,7 @@ def update_rsl_rl_cfg(agent_cfg: RslRlBaseRunnerCfg, args_cli: argparse.Namespac
         agent_cfg.wandb_project = args_cli.log_project_name
         agent_cfg.neptune_project = args_cli.log_project_name
     for name in (
+        "log_interval",
         "tracking_extra_metrics_interval",
         "tracking_raw_reward_interval",
         "tracking_tendon_metrics_interval",
