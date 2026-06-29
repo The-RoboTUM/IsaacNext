@@ -129,7 +129,7 @@ symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd
 After importing or re-importing the Forrest USD, patch the generated USD layers:
 
 ```bash
-conda activate sim
+conda activate next
 python scripts/tools/patch_forrest_usd.py
 ```
 
@@ -146,7 +146,7 @@ From the IsaacNext repository root:
 ```
 
 This script:
-- creates or updates the `sim` conda environment from `environment.yml`
+- creates or updates the `next` conda environment from `environment.yml`
 - installs the Isaac Lab source extensions with `./isaaclab.sh -i`
 - installs the Git pre-commit hooks
 - creates `symlinks/forrest_ws`
@@ -156,7 +156,7 @@ This script:
 After setup, activate the environment:
 
 ```bash
-conda activate sim
+conda activate next
 ```
 
 If PyCharm was open while running setup, use:
@@ -168,7 +168,7 @@ File -> Invalidate Caches / Restart -> Invalidate and Restart
 Useful setup variants:
 
 ```bash
-./scripts/setup_repo.sh --env-name sim
+./scripts/setup_repo.sh --env-name next
 ./scripts/setup_repo.sh --urdfheim-dir /path/to/urdfheim
 ./scripts/setup_repo.sh --skip-conda --skip-install --skip-pre-commit
 ./scripts/setup_repo.sh --skip-ide-paths

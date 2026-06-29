@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-ENV_NAME="sim"
+ENV_NAME="next"
 URDFHEIM_DIR=""
 SKIP_CONDA=0
 SKIP_INSTALL=0
@@ -23,7 +23,7 @@ Usage: $(basename "$0") [OPTIONS]
 Set up IsaacNext after cloning.
 
 Options:
-  --env-name NAME       Conda environment name. Default: sim
+  --env-name NAME       Conda environment name. Default: next
   --urdfheim-dir PATH   Path to urdfheim. Default: ../urdfheim relative to this repo
   --skip-conda          Do not create/update the conda environment
   --skip-install        Do not install Isaac Lab source extensions
@@ -137,7 +137,11 @@ setup_conda_env() {
 
 install_extensions() {
     log "Installing Isaac Lab source extensions into conda env: ${ENV_NAME}"
-    conda run -n "${ENV_NAME}" "${REPO_ROOT}/isaaclab.sh" -i
+    (
+        export OMNI_KIT_ACCEPT_EULA="${OMNI_KIT_ACCEPT_EULA:-YES}"
+        export ACCEPT_EULA="${ACCEPT_EULA:-Y}"
+        printf "Yes\n" | conda run --no-capture-output -n "${ENV_NAME}" "${REPO_ROOT}/isaaclab.sh" -i
+    )
 }
 
 install_pre_commit() {
