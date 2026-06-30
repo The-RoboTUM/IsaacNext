@@ -511,6 +511,12 @@ def configure_base_constraint(sim, params, constraint_mode: str) -> None:
     if constraint_mode == "static":
         add_fixed_world_joint(sim, params)
         return
+    if constraint_mode == "static_boom":
+        # This intentionally authors both constraints for diagnostics. The fixed joint fully locks the base,
+        # so the planar boom does not add motion freedom unless the fixed joint is later relaxed.
+        add_fixed_world_joint(sim, params)
+        add_planar_boom_joint(sim, params)
+        return
     raise ValueError(f"Unknown constraint_mode: {constraint_mode!r}")
 
 
@@ -527,6 +533,11 @@ def configure_scene_base_constraints(sim, params, constraint_mode: str, num_envs
         elif constraint_mode == "static":
             joint_path = f"{body_path}_fixed_joint"
             add_fixed_world_joint(sim, params, body_path=body_path, joint_path=joint_path)
+        elif constraint_mode == "static_boom":
+            fixed_joint_path = f"{body_path}_fixed_joint"
+            boom_joint_path = params.boom.joint_path_template.format(env_id=env_id)
+            add_fixed_world_joint(sim, params, body_path=body_path, joint_path=fixed_joint_path)
+            add_planar_boom_joint(sim, params, body_path=body_path, joint_path=boom_joint_path)
         else:
             raise ValueError(f"Unknown constraint_mode: {constraint_mode!r}")
 

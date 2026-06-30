@@ -30,12 +30,12 @@ training:
       - "s45_digit_assy_1"  # Right/left foot digit body.
       - "s45_digit_assy_2"  # Right/left foot digit body.
       - "base_assy_v2_1"  # Base body used for undesired contact/termination checks.
-    #      - "outside_hip_v2_assy_axial_left_1"  # Hip side body tracked for contact.
-    #      - "outside_hip_v2_assy_axial_1"  # Hip side body tracked for contact.
-    #      - "differential_cage_assy_small_motor_1"  # Base/hip drivetrain body tracked for contact.
-    #      - "differential_cage_assy_small_motor_2"  # Base/hip drivetrain body tracked for contact.
-    #      - "s34_foot_connector_assy_1"  # Foot connector body tracked for contact penalties.
-    #      - "s34_foot_connector_assy_2"  # Foot connector body tracked for contact penalties.
+      #      - "outside_hip_v2_assy_axial_left_1"  # Hip side body tracked for contact.
+      #      - "outside_hip_v2_assy_axial_1"  # Hip side body tracked for contact.
+      #      - "differential_cage_assy_small_motor_1"  # Base/hip drivetrain body tracked for contact.
+      #      - "differential_cage_assy_small_motor_2"  # Base/hip drivetrain body tracked for contact.
+      - "s34_foot_connector_assy_1"  # Foot connector body tracked for contact penalties.
+      - "s34_foot_connector_assy_2"  # Foot connector body tracked for contact penalties.
     base_termination_body_names: # Bodies that terminate the episode when they hit the ground.
       - "base_assy_v2_1"  # Main base body.
     #      - "differential_cage_assy_small_motor_1"  # Drivetrain body near base.

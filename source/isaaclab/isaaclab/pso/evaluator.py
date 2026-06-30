@@ -158,7 +158,7 @@ class ForrestPsoEvaluator:
         self.sim.set_camera_view([2.5, -8.0, 2.0], [2.5, 0.0, 0.85])
 
         replicate_physics = bool(objective_cfg.replicate_physics)
-        if objective_cfg.constraint_mode in ("boom", "static") and replicate_physics:
+        if objective_cfg.constraint_mode in ("boom", "static", "static_boom") and replicate_physics:
             print(
                 "[ForrestPsoEvaluator] Disabling replicate_physics because per-env base constraints are authored "
                 "before PhysX startup."

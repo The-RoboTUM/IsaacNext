@@ -9,7 +9,7 @@ run:
   startup_hold_enabled: true  # Hold initial measured joint targets before starting the gait controller.
   startup_hold_duration: 0.0  # Startup hold duration in seconds.
   controller: "sin"  # Default open-loop controller for scripts/tendons/run.py: "sin", "cpg", or "cpg_oscillator".
-  constraint_mode: "boom"  # Base constraint for scripts/tendons/run.py: "freefall", "boom", or "static".
+  constraint_mode: "boom"  # Base constraint: "freefall", "boom", "static", or "static_boom".
   cpg:
     f_hz: 1.5  # CPG cycle frequency in Hz.
     duty_factor: 0.60  # Fraction of the gait cycle spent in stance.

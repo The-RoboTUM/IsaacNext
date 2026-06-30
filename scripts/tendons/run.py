@@ -66,11 +66,11 @@ parser.add_argument(
 )
 parser.add_argument(
     "--constraint_mode",
-    choices=("freefall", "boom", "static"),
+    choices=("freefall", "boom", "static", "static_boom"),
     default=None,
     help=(
         "Base constraint mode: freefall creates no world constraint, boom locks motion with the configured sagittal "
-        "plane D6 joint, static creates the configured fixed-world joint."
+        "plane D6 joint, static creates the configured fixed-world joint, static_boom creates both."
     ),
 )
 parser.add_argument(
