@@ -23,8 +23,8 @@ The implementation order is:
 - [x] Use the `next` conda environment for IsaacNext.
 - [x] Use standalone `scripts/tendons/run.py` first, not `scripts/pso/run.py`.
 - [x] Keep `static_boom` available for debugging, but do not use it as the default data-collection mode.
-- [x] Prefer unconstrained 3D collection with `constraint_mode = freefall`.
-- [x] Use `constraint_mode = static` only as a fixed-base 3D fallback.
+- [x] Use fixed-base 3D collection with `constraint_mode = static` for the first production dataset.
+- [x] Keep `constraint_mode = freefall` as a later comparison once the fixed-base dataset works.
 - [x] Avoid `boom` and `static_boom` for production datasets because they encode a planar constraint.
 - [x] Record the left leg first.
 - [x] Keep the recorder design side-aware so both legs can be added later.
@@ -53,32 +53,32 @@ after the `sim_data` recorder and visualization pass are working.
 - [x] Confirm the Forrest USD/symlink setup exists.
 - [x] Run a short `scripts/tendons/run.py` smoke test before adding recording logic.
 - [x] Add `static_boom` constraint mode for fixed base plus authored sagittal boom constraint.
-- [ ] Re-run a short standalone 3D tendon smoke test:
-  `./isaaclab.sh -p scripts/tendons/run.py --constraint_mode freefall --duration 1.0`.
-- [ ] If freefall is too unstable for the first tiny dataset, try fixed-base 3D:
-  `./isaaclab.sh -p scripts/tendons/run.py --constraint_mode static --duration 1.0`.
+- [ ] Re-run a short standalone fixed-base 3D tendon smoke test:
+  `./isaaclab.sh -p scripts/tendons/run.py --constraint_mode static --controller sin --duration 1.0`.
+- [ ] Keep a later freefall comparison smoke test:
+  `./isaaclab.sh -p scripts/tendons/run.py --constraint_mode freefall --controller sin --duration 1.0`.
 
 ## 1. Define The 5-DOF State Contract
 
-- [ ] First-pass side policy: `left_only`.
-- [ ] Data-collection constraint mode: `static`.
-- [ ] Data-collection controller mode: `sin`.
-- [ ] Do not use `boom` or `static_boom` for the first production dataset.
-- [ ] First-pass left-leg 5-DOF chain order:
+- [x] First-pass side policy: `left_only`.
+- [x] Data-collection constraint mode: `static`.
+- [x] Data-collection controller mode: `sin`.
+- [x] Do not use `boom` or `static_boom` for the first production dataset.
+- [x] First-pass left-leg 5-DOF chain order:
     - `l3f_femorotibial_front`
     - `l4f_intertarsal_front`
     - `l5_metatarsophalangeal`
     - `l6_interphalangeal`
     - `l8_knee_flexor`
-- [ ] First-pass right-leg 5-DOF chain order for later:
+- [x] First-pass right-leg 5-DOF chain order for later:
     - `r3f_femorotibial_front`
     - `r4f_intertarsal_front`
     - `r5_metatarsophalangeal`
     - `r6_interphalangeal`
     - `r8_knee_flexor`
-- [ ] Validate selected joints against `robot.data.joint_names` at runtime.
-- [ ] Fail loudly if any selected joint is missing or duplicated.
-- [ ] Store the resolved mapping in metadata:
+- [x] Validate selected joints against `robot.data.joint_names` at runtime.
+- [x] Fail loudly if any selected joint is missing or duplicated.
+- [x] Store the resolved mapping in metadata:
     - `q_index`
     - joint name
     - side
@@ -86,18 +86,18 @@ after the `sim_data` recorder and visualization pass are working.
     - units
     - sign convention
     - offset convention
-- [ ] Do not include hip roll, hip lateral/yaw, pantograph, or fourbar helper joints in the first `sim_data` table.
-- [ ] Store omitted joint names in metadata so it is clear this is a reduced subsystem dataset.
-- [ ] Do not put root/base coordinates into the first `sim_data.q` table unless the Identix state contract is explicitly
+- [x] Do not include hip roll, hip lateral/yaw, pantograph, or fourbar helper joints in the first `sim_data` table.
+- [x] Store omitted joint names in metadata so it is clear this is a reduced subsystem dataset.
+- [x] Do not put root/base coordinates into the first `sim_data.q` table unless the Identix state contract is explicitly
   expanded to floating-base coordinates.
-- [ ] Record root/base and selected link 3D state as auxiliary spatial diagnostics.
+- [x] Record root/base and selected link 3D state as auxiliary spatial diagnostics.
 
 ## 2. Build The `sim_data` Recorder
 
-- [ ] Add `source/isaaclab/isaaclab/tendons/data_recording.py`.
-- [ ] Create a `DataRecording` class.
-- [ ] Keep recording logic independent from `scripts/tendons/run.py`.
-- [ ] Add a recorder config dataclass for:
+- [x] Add `source/isaaclab/isaaclab/tendons/data_recording.py`.
+- [x] Create a `DataRecording` class.
+- [x] Keep recording logic independent from `scripts/tendons/run.py`.
+- [x] Add a recorder config dataclass for:
     - output directory
     - SQLite filename
     - metadata filename
@@ -112,26 +112,26 @@ after the `sim_data` recorder and visualization pass are working.
     - constraint mode
     - `sim_data` tau source
     - overwrite policy
-- [ ] Resolve selected joints once after `sim.reset()` and `robot.update(0.0)`.
-- [ ] Resolve selected 3D bodies/links once after `sim.reset()` and `robot.update(0.0)`.
-- [ ] Record `q` from `robot.data.joint_pos[:, selected_joint_indices]`.
-- [ ] Record `dq` from `robot.data.joint_vel[:, selected_joint_indices]`.
-- [ ] Record `ddq` from `robot.data.joint_acc[:, selected_joint_indices]`.
-- [ ] Document that IsaacLab computes `joint_acc` by finite differences of `joint_vel`.
-- [ ] For the first `sim_data`, choose one documented `tau` channel:
+- [x] Resolve selected joints once after `sim.reset()` and `robot.update(0.0)`.
+- [x] Resolve selected 3D bodies/links once after `sim.reset()` and `robot.update(0.0)`.
+- [x] Record `q` from `robot.data.joint_pos[:, selected_joint_indices]`.
+- [x] Record `dq` from `robot.data.joint_vel[:, selected_joint_indices]`.
+- [x] Record `ddq` from `robot.data.joint_acc[:, selected_joint_indices]`.
+- [x] Document that IsaacLab computes `joint_acc` by finite differences of `joint_vel`.
+- [x] For the first `sim_data`, choose one documented `tau` channel:
     - likely first choice: `robot.data.applied_torque[:, selected_joint_indices]`
     - also inspect: `robot.data.computed_torque[:, selected_joint_indices]`
     - do not mix torque channels silently
-- [ ] If `tau` semantics are still unresolved, write a clearly documented placeholder only for shape/load testing, and
+- [x] If `tau` semantics are still unresolved, write a clearly documented placeholder only for shape/load testing, and
   do not train force-based objectives from that placeholder.
-- [ ] Record 3D spatial diagnostics in a separate table/file:
+- [x] Record 3D spatial diagnostics in a separate table/file:
     - root pose and velocity in world frame
     - selected body/link poses in world frame
     - selected body/link linear and angular velocities in world frame
     - selected body/link accelerations when available
-    - selected body/link incoming joint wrench when useful for force debugging
+    - incoming joint wrench is deferred to the force/dynamics recording pass
 - [ ] Store non-selected torque channels in diagnostics, not in the Identix `sim_data` table.
-- [ ] Write metadata with:
+- [x] Write metadata with:
     - selected joint names and indices
     - spatial body/link set
     - spatial frame convention
@@ -143,10 +143,10 @@ after the `sim_data` recorder and visualization pass are working.
     - startup hold settings
     - parameter file/profile
     - tau source used for `sim_data`
-    - candidate torque channels recorded
+    - available tau sources
     - row count
-- [ ] Use buffered batch inserts rather than one SQLite transaction per physics step.
-- [ ] Keep projection settings out of the recorder.
+- [x] Use buffered batch inserts rather than one SQLite transaction per physics step.
+- [x] Keep projection settings out of the recorder.
 
 ## 3. Wire Recorder Into `run.py`
 
@@ -166,9 +166,9 @@ after the `sim_data` recorder and visualization pass are working.
     - `--record_start_time`
     - `--record_overwrite`
 - [ ] First target command:
-  `./isaaclab.sh -p scripts/tendons/run.py --constraint_mode freefall --duration 3.0 --record_identix --record_side left --record_joint_set tendon_chain_5 --record_spatial_state`.
-- [ ] Fixed-base 3D fallback command:
   `./isaaclab.sh -p scripts/tendons/run.py --constraint_mode static --duration 3.0 --record_identix --record_side left --record_joint_set tendon_chain_5 --record_spatial_state`.
+- [ ] Later freefall comparison command:
+  `./isaaclab.sh -p scripts/tendons/run.py --constraint_mode freefall --duration 3.0 --record_identix --record_side left --record_joint_set tendon_chain_5 --record_spatial_state`.
 - [ ] Run without `--jit` first so the existing tendon debug path can provide diagnostics.
 - [ ] Once `sim_data` is correct, allow the same recorder to run with `--jit` for faster collection when debug channels
   are

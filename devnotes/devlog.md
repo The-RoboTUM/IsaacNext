@@ -1,5 +1,19 @@
 # devlog
 
+## 30.06
+
+- Started the Identix data-recording implementation for the Forrest tendon-chain dataset.
+- Added the first 5-DOF state contract for left-leg `sim_data`: `l3f_femorotibial_front`,
+  `l4f_intertarsal_front`, `l5_metatarsophalangeal`, `l6_interphalangeal`, and `l8_knee_flexor`.
+- Added `isaaclab.tendons.data_recording.DataRecording` and `DataRecordingConfig`.
+- The recorder writes Identix-compatible `sim_data` columns in positional order:
+  `q0..q4`, `dq0..dq4`, `ddq0..ddq4`, `tau0..tau4`.
+- Added separate `sample_context` rows for time/env/side and optional `spatial_data` rows for world-frame root/body
+  diagnostics, keeping projection out of the recorder.
+- Added metadata output with resolved joint/body mappings, omitted first-pass joints, sim settings, tau source, and row
+  count.
+- Verified the new recorder with `py_compile` and a fake-robot SQLite smoke test in the `next` conda environment.
+
 ## 24.06
 
 - Added a PSO workflow for tuning Forrest tendon and controller parameters, including `configs/pso.yaml`,
