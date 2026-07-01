@@ -150,11 +150,11 @@ after the `sim_data` recorder and visualization pass are working.
 
 ## 3. Wire Recorder Into `run.py`
 
-- [ ] Add recording CLI flags to `scripts/tendons/run.py`, or create `scripts/tendons/record_identix.py` if the run
+- [x] Add recording CLI flags to `scripts/tendons/run.py`, or create `scripts/tendons/record_identix.py` if the run
   script
   becomes cluttered.
-- [ ] Keep recording disabled by default.
-- [ ] Proposed CLI flags:
+- [x] Keep recording disabled by default.
+- [x] Proposed CLI flags:
     - `--record_identix`
     - `--record_output_dir`
     - `--record_side left`
@@ -165,37 +165,47 @@ after the `sim_data` recorder and visualization pass are working.
     - `--record_stride`
     - `--record_start_time`
     - `--record_overwrite`
-- [ ] First target command:
-  `./isaaclab.sh -p scripts/tendons/run.py --constraint_mode static --duration 3.0 --record_identix --record_side left --record_joint_set tendon_chain_5 --record_spatial_state`.
-- [ ] Later freefall comparison command:
-  `./isaaclab.sh -p scripts/tendons/run.py --constraint_mode freefall --duration 3.0 --record_identix --record_side left --record_joint_set tendon_chain_5 --record_spatial_state`.
-- [ ] Run without `--jit` first so the existing tendon debug path can provide diagnostics.
-- [ ] Once `sim_data` is correct, allow the same recorder to run with `--jit` for faster collection when debug channels
+- [ ] Change these flags to be parameters in `run.yaml`
+- [ ] Formatting of data output
+    - [ ] Add `.md` suffix to file
+    - [ ] Change name to have timestamp + more insightful name
+- [ ] Review sampling frequency of collected data
+- [x] First target command is available:
+  `./isaaclab.sh -p scripts/tendons/run.py --headless --constraint_mode static --controller sin --duration 1.0 --record_identix --record_output_dir outputs/identix_recording_tiny_static --record_overwrite --record_side left --record_joint_set tendon_chain_5 --record_spatial_state`.
+- [x] Later freefall comparison command is available:
+  `./isaaclab.sh -p scripts/tendons/run.py --headless --constraint_mode freefall --controller sin --duration 1.0 --record_identix --record_output_dir outputs/identix_recording_tiny_freefall --record_overwrite --record_side left --record_joint_set tendon_chain_5 --record_spatial_state`.
+- [x] Run without `--jit` first so the existing tendon debug path can provide diagnostics.
+- [x] Keep the same recorder path compatible with `--jit` for faster collection when debug channels
   are
   not needed.
-- [ ] Print database and metadata paths at the end of the run.
+- [ ] Validate the `--jit` recorder path after the non-JIT tiny dataset is correct.
+- [x] Print database and metadata paths at the end of the run.
 
 ## 4. Generate And Validate Tiny `sim_data`
 
-- [ ] Generate a tiny dataset first, for example 1-3 seconds.
-- [ ] Write `sim_data` to SQLite.
-- [ ] Write metadata to JSON or YAML next to the database.
-- [ ] Store output under an ignored local path.
-- [ ] Check the SQLite table exists and row count is nonzero.
-- [ ] Check columns are exactly in Identix order.
-- [ ] Check all recorded values are finite.
-- [ ] Check units:
+- [x] Add `scripts/tendons/validate_identix_recording.py` for post-run validation.
+- [x] Validate the validator itself with a deterministic fake SQLite recording.
+- [x] Generate a very short smoke dataset first.
+- [ ] Generate a tiny 1-3 second dataset after the smoke dataset.
+- [x] Write `sim_data` to SQLite.
+- [x] Write metadata to JSON or YAML next to the database.
+- [x] Store output under an ignored local path.
+- [x] Check the SQLite table exists and row count is nonzero.
+- [x] Check columns are exactly in Identix order.
+- [x] Check all recorded values are finite.
+- [x] Check units:
     - `q`: radians for joints.
     - `dq`: radians per second.
     - `ddq`: radians per second squared.
     - `tau`: documented generalized torque units.
-- [ ] Check `dq ~= finite_difference(q)`.
-- [ ] Check `ddq ~= finite_difference(dq)`.
-- [ ] Print min, max, mean, and standard deviation for each column.
-- [ ] Confirm all five chain joints have physically plausible ranges.
-- [ ] Confirm 3D root/body trajectories are recorded in world-frame coordinates.
-- [ ] Confirm no recorder step projects, zeros, or drops out-of-plane components.
-- [ ] Load the dataset through `identix.data_manager.SystemDataset` with `num_dofs = 5`.
+- [x] Check `dq ~= finite_difference(q)`.
+- [x] Check `ddq ~= finite_difference(dq)`.
+- [x] Print min, max, mean, and standard deviation for each column.
+- [x] Confirm all five chain joints have physically plausible ranges.
+- [x] Confirm 3D root/body trajectories are recorded in world-frame coordinates.
+- [x] Confirm no recorder step projects, zeros, or drops out-of-plane components.
+- [x] Add optional loading through `identix.data_manager.SystemDataset` with `num_dofs = 5`.
+- [x] Load the real tiny IsaacSim dataset through `identix.data_manager.SystemDataset` with `num_dofs = 5`.
 
 ## 5. Build The Visualization Tool
 

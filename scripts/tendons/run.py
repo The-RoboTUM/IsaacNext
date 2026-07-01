@@ -79,6 +79,55 @@ parser.add_argument(
     default=None,
     help="Path to a Forrest parameter YAML file or profile directory.",
 )
+parser.add_argument("--record_identix", action="store_true", help="Record Identix-compatible sim_data.")
+parser.add_argument(
+    "--record_output_dir",
+    type=str,
+    default=None,
+    help="Output directory for the Identix SQLite database and metadata.",
+)
+parser.add_argument(
+    "--record_side",
+    choices=("left", "right", "both"),
+    default="left",
+    help="Leg side to record. 'both' stores each side as separate 5-DOF samples.",
+)
+parser.add_argument(
+    "--record_joint_set",
+    choices=("tendon_chain_5",),
+    default="tendon_chain_5",
+    help="Joint set to store in sim_data.",
+)
+parser.add_argument(
+    "--record_spatial_state",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help="Record world-frame root/body spatial diagnostics next to sim_data.",
+)
+parser.add_argument(
+    "--record_body_set",
+    choices=("tendon_chain_links",),
+    default="tendon_chain_links",
+    help="Body/link set to store in spatial diagnostics.",
+)
+parser.add_argument(
+    "--record_tau_source",
+    choices=("applied_torque", "computed_torque", "zero"),
+    default="applied_torque",
+    help="Torque tensor used for tau0..tauN in sim_data.",
+)
+parser.add_argument("--record_stride", type=int, default=1, help="Record every N simulation steps.")
+parser.add_argument(
+    "--record_start_time",
+    type=float,
+    default=0.0,
+    help="Skip recording until this simulation time in seconds.",
+)
+parser.add_argument(
+    "--record_overwrite",
+    action="store_true",
+    help="Overwrite an existing Identix recording in the output directory.",
+)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -99,6 +148,7 @@ args_cli.startup_hold_duration = (
 )
 args_cli.controller = args_cli.controller or FORREST_PARAMS.run.controller
 args_cli.constraint_mode = args_cli.constraint_mode or FORREST_PARAMS.run.constraint_mode
+args_cli.record_output_dir = args_cli.record_output_dir or str(Path(args_cli.output_dir) / "identix_recording")
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -111,6 +161,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.sensors.camera import TiledCamera, TiledCameraCfg
 from isaaclab.sim import SimulationContext
+from isaaclab.tendons.data_recording import DataRecording, DataRecordingConfig
 from isaaclab.tendons.manager import TendonManager
 from isaaclab.tendons.models.analytic.constants import joint_names_left, joint_names_right
 from isaaclab.tendons.models.analytic.tendon_data import TendonData
@@ -258,6 +309,12 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
 
     print(f"Virtual ground:    {virtual_ground_str}")
     print(f"Video recording:   {'on' if args.record_video else 'off'}")
+    print(f"Identix recording: {'on' if args.record_identix else 'off'}")
+    if args.record_identix:
+        print(f"Recording output:  {args.record_output_dir}")
+        print(f"Recording side:    {args.record_side}")
+        print(f"Recording stride:  {args.record_stride}")
+        print(f"Recording tau:     {args.record_tau_source}")
 
     if args.jit:
         print("Diagnostics:       lightweight console status only")
@@ -302,6 +359,16 @@ def maybe_print_status(
         print(prefix + " | " + " | ".join(torque_stats))
     else:
         print(prefix)
+
+
+def record_side_policy(record_side: str) -> str:
+    if record_side == "left":
+        return "left_only"
+    if record_side == "right":
+        return "right_only"
+    if record_side == "both":
+        return "both_as_samples"
+    raise ValueError(f"Unsupported record side: {record_side}")
 
 
 def main():
@@ -379,6 +446,39 @@ def main():
     )
 
     mode_label = "jit" if args_cli.jit else "debug"
+    data_recorder = None
+    if args_cli.record_identix:
+        data_recorder = DataRecording(
+            DataRecordingConfig(
+                output_dir=args_cli.record_output_dir,
+                joint_set=args_cli.record_joint_set,
+                side_policy=record_side_policy(args_cli.record_side),
+                body_set=args_cli.record_body_set,
+                record_spatial_state=args_cli.record_spatial_state,
+                sampling_stride=args_cli.record_stride,
+                startup_skip_seconds=args_cli.record_start_time,
+                constraint_mode=args_cli.constraint_mode,
+                controller=args_cli.controller,
+                tau_source=args_cli.record_tau_source,
+                overwrite=args_cli.record_overwrite,
+                parameter_file=args_cli.parameters_file,
+            )
+        )
+        data_recorder.initialize(
+            robot,
+            sim_dt=sim.get_physics_dt(),
+            metadata={
+                "mode": mode_label,
+                "duration": float(args_cli.duration),
+                "num_steps": int(num_steps),
+                "startup_hold_enabled": bool(args_cli.startup_hold),
+                "startup_hold_duration": float(startup_hold_duration),
+                "device": args_cli.device,
+                "gravity": list(FORREST_PARAMS.physics.gravity),
+            },
+        )
+        print(f"Identix recorder initialized: {data_recorder.sqlite_path}")
+
     wall_start = time.perf_counter()
 
     try:
@@ -419,6 +519,15 @@ def main():
             robot.write_data_to_sim()
             sim.step()
             robot.update(sim.get_physics_dt())
+            recorded_time = (iteration + 1) * sim.get_physics_dt()
+
+            if data_recorder is not None:
+                data_recorder.record_step(
+                    step_index=iteration + 1,
+                    sim_time=recorded_time,
+                    robot=robot,
+                    extra_context={"controller_time": controller_t},
+                )
 
             if args_cli.record_video and camera is not None and video_writer is not None:
                 cv2 = require_cv2()
@@ -451,6 +560,10 @@ def main():
         carb.log_error(f"Simulation interrupted: {exc}")
         raise
     finally:
+        if data_recorder is not None:
+            data_recorder.close()
+            print(f"Identix database saved to: {data_recorder.sqlite_path}")
+            print(f"Identix metadata saved to: {data_recorder.metadata_path}")
         if video_writer is not None:
             video_writer.release()
             print(f"Video saved to {args_cli.video_output}")

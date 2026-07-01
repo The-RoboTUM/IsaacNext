@@ -367,6 +367,7 @@ class DataRecording:
             "sim_dt": self._sim_dt,
             "tau_source": self.cfg.tau_source,
             "available_tau_sources": ["applied_torque", "computed_torque", "zero"],
+            "sim_units": {"q": "rad", "dq": "rad/s", "ddq": "rad/s^2", "tau": "N*m"},
             "joint_mappings": self._joint_metadata(),
             "body_mappings": self._body_metadata(),
             "omitted_first_pass_joint_names": {

@@ -1,5 +1,12 @@
 # devlog
 
+## 01.07
+
+- *NOTE TO READER:* Roadmap of concrete todos to implement IsaacNext -> Identix data collection can be found in
+  `todos_for_data_recording.md`
+- Review implementation of points 1 to 4 (especially unchecked TODOs, since some of them are small fixes to current
+  bugs).
+
 ## 30.06
 
 - Started the Identix data-recording implementation for the Forrest tendon-chain dataset.
@@ -13,6 +20,25 @@
 - Added metadata output with resolved joint/body mappings, omitted first-pass joints, sim settings, tau source, and row
   count.
 - Verified the new recorder with `py_compile` and a fake-robot SQLite smoke test in the `next` conda environment.
+- Wired the recorder into `scripts/tendons/run.py` behind opt-in `--record_identix` flags. Recording remains disabled by
+  default, writes post-step state, and prints the SQLite/metadata paths at shutdown.
+- Added `scripts/tendons/validate_identix_recording.py` to check the tiny `sim_data` contract: exact column order,
+  nonempty rows, finite values, metadata consistency, units, finite-difference residuals, column statistics, spatial
+  diagnostics, and optional Identix `SystemDataset` loading.
+- Validated the validator with a deterministic fake recording under `/tmp/identix_recorder_validation`.
+- Next real IsaacNext smoke test:
+  `./isaaclab.sh -p scripts/tendons/run.py --headless --constraint_mode static --controller sin --duration 1.0 --record_identix --record_output_dir outputs/identix_recording_tiny_static --record_overwrite --record_side left --record_joint_set tendon_chain_5 --record_spatial_state`.
+- Validate the generated recording with:
+  `conda run --no-capture-output -n next python scripts/tendons/validate_identix_recording.py outputs/identix_recording_tiny_static`.
+- Optional Identix loader check, using an environment with Identix dependencies:
+  `conda run --no-capture-output -n test python scripts/tendons/validate_identix_recording.py outputs/identix_recording_tiny_static --check_identix`.
+- Ran a very short real IsaacSim smoke recording into `/tmp/identix_recording_real_smoke` with static base, left leg,
+  non-JIT debug mode, spatial diagnostics enabled, and `applied_torque` as the `sim_data.tau` source.
+- The smoke recording validated successfully: 20 `sim_data` rows, 20 `sample_context` rows, 120 `spatial_data` rows,
+  finite values, expected column order/units, and successful `SystemDataset(num_dofs=5)` loading from the `test` env.
+- The escalated IsaacSim process did not return cleanly through the tool session after the 0.05 s smoke run, so it was
+  terminated by matching the unique `/tmp/identix_recording_real_smoke` argument. The generated recording was complete
+  and validated.
 
 ## 24.06
 
