@@ -72,10 +72,9 @@ def controller_command_tensor(
     right_controller: LegControllerBase,
     actuated_dof_specs: list[ActuatedDofSpec],
     initial_joint_positions: torch.Tensor,
-    controller_zero: torch.Tensor,
     device,
 ) -> torch.Tensor:
-    """Compute one-env controller targets for the legacy eager controller path."""
+    """Compute one-env controller targets as offsets from the measured initial pose."""
 
     controllers = {
         "left": left_controller,
@@ -88,7 +87,7 @@ def controller_command_tensor(
         commands.append(spec.sign * q)
 
     controller_target = torch.tensor([commands], dtype=torch.float32, device=device)
-    return initial_joint_positions + controller_target - controller_zero
+    return initial_joint_positions + controller_target
 
 
 def make_cpg_legs(params) -> tuple[BirdBotCPGLeg, BirdBotCPGLeg]:
@@ -206,7 +205,7 @@ def sinusoidal_command_batch(
         commands.append(float(spec.sign) * q)
 
     controller_target = torch.stack(commands, dim=1)
-    return initial_joint_positions + controller_target - controller_zero
+    return initial_joint_positions + controller_target
 
 
 def _get_env_parameter(
@@ -219,6 +218,74 @@ def _get_env_parameter(
     if name in params_by_env:
         return params_by_env[name].to(device=reference.device, dtype=reference.dtype)
     return torch.full_like(reference, float(default))
+
+
+def cpg_command_batch(
+    *,
+    t: float | torch.Tensor,
+    params_by_env: dict[str, torch.Tensor],
+    actuated_dof_specs: list[ActuatedDofSpec],
+    initial_joint_positions: torch.Tensor,
+    controller_zero: torch.Tensor,
+) -> torch.Tensor:
+    """Vectorized basic BirdBot CPG joint target for PSO rollouts."""
+
+    device = initial_joint_positions.device
+    dtype = initial_joint_positions.dtype
+    num_envs = initial_joint_positions.shape[0]
+    reference = torch.ones(num_envs, device=device, dtype=dtype)
+    f_hz = _get_env_parameter(params_by_env, "run.cpg.f_hz", 1.0, reference=reference)
+    duty_factor = _get_env_parameter(params_by_env, "run.cpg.duty_factor", 0.60, reference=reference).clamp(0.05, 0.95)
+    hip_amplitude = torch.deg2rad(
+        _get_env_parameter(params_by_env, "run.cpg.hip_amplitude_deg", 20.0, reference=reference)
+    )
+    hip_offset = torch.deg2rad(_get_env_parameter(params_by_env, "run.cpg.hip_offset_deg", 8.0, reference=reference))
+    knee_amplitude = torch.deg2rad(
+        _get_env_parameter(params_by_env, "run.cpg.knee_amplitude_deg", 120.0, reference=reference)
+    )
+    swing_start = _get_env_parameter(params_by_env, "run.cpg.swing_start_offset", 0.02, reference=reference)
+    swing_end = _get_env_parameter(params_by_env, "run.cpg.swing_end_offset", 0.05, reference=reference)
+    combined_phase = _get_env_parameter(params_by_env, "run.cpg.combined_phase_offset_rad", 0.0, reference=reference)
+    left_phase = (
+        _get_env_parameter(params_by_env, "run.cpg.left_phase_offset_rad", -torch.pi / 2.0, reference=reference)
+        + combined_phase
+    )
+    right_phase = (
+        _get_env_parameter(params_by_env, "run.cpg.right_phase_offset_rad", torch.pi / 2.0, reference=reference)
+        + combined_phase
+    )
+
+    t_tensor = torch.as_tensor(t, device=device, dtype=dtype)
+    if t_tensor.ndim == 0:
+        t_tensor = t_tensor.expand_as(f_hz)
+    base_phase = 2.0 * torch.pi * f_hz * t_tensor
+
+    commands = []
+    for spec in actuated_dof_specs:
+        phase_offset = left_phase if spec.side == "left" else right_phase
+        phase = torch.remainder(base_phase + phase_offset, 2.0 * torch.pi)
+        stance_phase = phase / (2.0 * duty_factor)
+        swing_phase = phase / (2.0 * (1.0 - duty_factor)) + torch.pi * (1.0 - 2.0 * duty_factor) / (1.0 - duty_factor)
+        theta = torch.where(phase <= 2.0 * torch.pi * duty_factor, stance_phase, swing_phase)
+
+        if spec.dof == "hip_flexion":
+            q = hip_amplitude * torch.sin(theta + torch.pi / 2.0) + hip_offset
+        elif spec.dof == "knee_flexion":
+            lo = 2.0 * torch.pi * duty_factor + 2.0 * torch.pi * swing_start
+            hi = 2.0 * torch.pi - 2.0 * torch.pi * swing_end
+            denom = torch.clamp(hi - lo, min=1.0e-6)
+            swing_phase = (phase - lo) / denom
+            q = torch.where(
+                (phase >= lo) & (phase <= hi),
+                knee_amplitude * torch.sin(torch.pi * swing_phase),
+                torch.zeros_like(phase),
+            )
+        else:
+            q = torch.zeros_like(reference)
+        commands.append(float(spec.sign) * q)
+
+    controller_target = torch.stack(commands, dim=1)
+    return initial_joint_positions + controller_target
 
 
 def cpg_oscillator_command_batch(
@@ -331,7 +398,7 @@ def cpg_oscillator_command_batch(
         commands.append(float(spec.sign) * q)
 
     controller_target = torch.stack(commands, dim=1)
-    return initial_joint_positions + controller_target - controller_zero
+    return initial_joint_positions + controller_target
 
 
 def open_loop_command_batch(
@@ -346,6 +413,14 @@ def open_loop_command_batch(
 
     if any(name.startswith("run.cpg_oscillator.") for name in params_by_env):
         return cpg_oscillator_command_batch(
+            t=t,
+            params_by_env=params_by_env,
+            actuated_dof_specs=actuated_dof_specs,
+            initial_joint_positions=initial_joint_positions,
+            controller_zero=controller_zero,
+        )
+    if any(name.startswith("run.cpg.") for name in params_by_env):
+        return cpg_command_batch(
             t=t,
             params_by_env=params_by_env,
             actuated_dof_specs=actuated_dof_specs,
@@ -537,13 +612,13 @@ def set_tendon_lengths_by_env(
     *,
     env_ids: torch.Tensor | None = None,
 ) -> None:
-    """Overwrite optimized tendon length tensors in a batched ``TendonData`` object.
+    """Overwrite optimized tendon length/stiffness tensors in a batched ``TendonData`` object.
 
     ``TendonData`` stores all left-leg rows first and all right-leg rows second.
     A value tensor shaped ``(num_envs,)`` therefore maps to ``cat([values, values])``.
     """
 
-    length_attrs = {
+    tendon_attrs = {
         "tendons.baseline.lengths.gst_spring_rest": "gst_spring_rest_length",
         "tendons.baseline.lengths.upper_gst": "upper_gst_length",
         "tendons.baseline.lengths.lower_gst": "lower_gst_length",
@@ -551,8 +626,13 @@ def set_tendon_lengths_by_env(
         "tendons.baseline.lengths.edt1": "edt1_length",
         "tendons.baseline.lengths.edt2": "edt2_length",
         "tendons.baseline.lengths.kft": "kft_length",
+        "tendons.baseline.stiffness.gst": "gst_stiffness",
+        "tendons.baseline.stiffness.dft": "dft_stiffness",
+        "tendons.baseline.stiffness.edt1": "edt1_stiffness",
+        "tendons.baseline.stiffness.edt2": "edt2_stiffness",
+        "tendons.baseline.stiffness.kft": "kft_stiffness",
     }
-    for param_name, attr_name in length_attrs.items():
+    for param_name, attr_name in tendon_attrs.items():
         if param_name not in params_by_env:
             continue
         current = getattr(tendon_data, attr_name)

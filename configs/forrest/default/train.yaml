@@ -103,6 +103,10 @@ training:
     disable_push_robot: true  # Disable random external push disturbances during training.
     disable_add_base_mass: true  # Disable random base mass changes during training.
     randomize_initial_base_pose: true  # Apply reset_base_pose_range once at startup so cloned envs do not all face the same way.
+    foot_static_friction_range: [ 1.4, 1.4 ]  # Dry rubber foot static friction range for RL material randomization.
+    foot_dynamic_friction_range: [ 1.1, 1.1 ]  # Dry rubber foot dynamic friction range for RL material randomization.
+    foot_restitution_range: [ 0.0, 0.0 ]  # Rubber sole bounce; keep zero unless modeling compliant soles explicitly.
+    foot_material_num_buckets: 64  # Number of sampled material buckets for foot friction randomization.
     reset_robot_joint_position_range: [ 1.0, 1.0 ]  # Multiplicative reset range for default joint positions; fixed at 1.0 means no randomization.
     external_force_body_names: [ "base_assy_v2_1" ]  # Body names targeted by external force events.
     base_com_body_names: [ "base_assy_v2_1" ]  # Body names targeted by center-of-mass randomization.

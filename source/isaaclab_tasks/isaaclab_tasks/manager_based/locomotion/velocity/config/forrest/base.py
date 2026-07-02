@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+import isaaclab.sim as sim_utils
 from isaaclab.curriculums.command_bins_rl import BinnedVelocityCommandCfg, make_binned_velocity_curriculum_term
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg, TerminationTermCfg
@@ -35,6 +36,17 @@ def _disable_zero_weight_rewards(rewards_cfg, reward_weights: dict[str, float]) 
             setattr(rewards_cfg, reward_name, None)
 
 
+def _forrest_ground_material_cfg() -> sim_utils.RigidBodyMaterialCfg:
+    ground = FORREST_PARAMS.physics.ground
+    return sim_utils.RigidBodyMaterialCfg(
+        static_friction=ground.static_friction,
+        dynamic_friction=ground.dynamic_friction,
+        restitution=ground.restitution,
+        friction_combine_mode=ground.friction_combine_mode,
+        restitution_combine_mode=ground.restitution_combine_mode,
+    )
+
+
 @configclass
 class ForrestBaseEnvCfg(LocomotionVelocityRoughEnvCfg):
     """Shared Forrest locomotion environment configuration.
@@ -54,6 +66,8 @@ class ForrestBaseEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Scene
         self.scene.robot = get_forrest_cfg(FORREST_PARAMS).replace(prim_path=FORREST_PARAMS.robot.prim_path)
+        self.scene.terrain.physics_material = _forrest_ground_material_cfg()
+        self.sim.physics_material = self.scene.terrain.physics_material
         self.scene.height_scanner.prim_path = FORREST_PARAMS.robot.height_scanner_prim_path
         if (
             FORREST_PARAMS.physics.articulation.enabled_self_collisions
@@ -84,6 +98,16 @@ class ForrestBaseEnvCfg(LocomotionVelocityRoughEnvCfg):
             self.events.push_robot = None
         if TRAINING_PARAMS.events.disable_add_base_mass:
             self.events.add_base_mass = None
+        self.events.physics_material.params["asset_cfg"] = SceneEntityCfg(
+            "robot",
+            body_names=list(CONTACT_PARAMS.foot_body_names),
+        )
+        self.events.physics_material.params["static_friction_range"] = TRAINING_PARAMS.events.foot_static_friction_range
+        self.events.physics_material.params["dynamic_friction_range"] = (
+            TRAINING_PARAMS.events.foot_dynamic_friction_range
+        )
+        self.events.physics_material.params["restitution_range"] = TRAINING_PARAMS.events.foot_restitution_range
+        self.events.physics_material.params["num_buckets"] = TRAINING_PARAMS.events.foot_material_num_buckets
         self.events.reset_robot_joints.params["position_range"] = (
             TRAINING_PARAMS.events.reset_robot_joint_position_range
         )

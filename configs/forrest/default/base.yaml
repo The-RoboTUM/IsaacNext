@@ -32,18 +32,24 @@ boom:
   body_path_template: "/World/envs/env_{env_id}/forrest_isaac/base_assy_v2_1"  # Rigid body constrained by the boom.
   joint_path_template: "/World/envs/env_{env_id}/forrest_isaac/base_assy_v2_1_planar_boom_joint"  # Boom joint prim path.
   locked_axes: [ "transY", "rotX", "rotZ" ]  # D6 axes locked by the +X-front planar boom.
-  lock_x_angle: false  # Legacy flag; with +X front this also locks pitch about rotY.
+  lock_x_angle: true  # Keep sagittal pitch free; locking it blocks natural boom-assisted walking.
   body_anchor_pos: [ 0.0, 0.0, 0.0 ]  # Joint anchor position in the constrained body frame.
   body_anchor_rot_wxyz: [ 1.0, 0.0, 0.0, 0.0 ]  # Joint anchor orientation in the constrained body frame.
   debug: false  # Print created boom joints and locked axes.
 
 physics:
-  sim_dt: 0.0024  # Physics simulation timestep in seconds.
+  sim_dt: 0.005  # Physics simulation timestep in seconds.
   gravity: [ 0.0, 0.0, -9.81 ]  # World gravity vector in m/s^2.
   virtual_ground_height: null  # Optional debug ground plane height; null disables virtual ground forces.
   physx_gpu_collision_stack_size: 167772160  # PhysX GPU collision stack size for large contact-heavy env batches.
   physx_gpu_found_lost_aggregate_pairs_capacity: 134217728  # Broadphase found/lost aggregate pair buffer.
   physx_gpu_total_aggregate_pairs_capacity: 4194304  # Broadphase total aggregate pair buffer.
+  ground:
+    static_friction: 1.2  # Dry lab floor/concrete-like ground static friction coefficient for rubber feet.
+    dynamic_friction: 1.0  # Dry lab floor/concrete-like ground dynamic friction coefficient for rubber feet.
+    restitution: 0.0  # Ground bounciness; keep zero for walking/contact calibration.
+    friction_combine_mode: "max"  # Use the higher foot/ground friction instead of diluting it with USD defaults.
+    restitution_combine_mode: "average"  # PhysX combine mode for bounce.
   rigid_body:
     disable_gravity: false  # Disable gravity on robot rigid bodies when true.
     retain_accelerations: false  # Keep acceleration data available after simulation steps.
@@ -77,25 +83,25 @@ actuation:
     joint_names_expr: [ "r2_pseudo_acetabulofemoral_flexion", "l2_pseudo_acetabulofemoral_flexion" ]  # Hip flexion joints.
     effort_limit_sim: 100.0  # Sim effort limit for hip swing joints.
     velocity_limit_sim: 28.0  # Sim velocity limit for hip swing joints.
-    stiffness: 200.0  # PD stiffness for hip swing joints.
+    stiffness: 400.0  # PD stiffness for hip swing joints.
     damping: 2.0  # PD damping for hip swing joints.
   hip_roll:
     joint_names_expr: [ "r0_acetabulofemoral_roll", "l0_acetabulofemoral_roll" ]  # Hip roll joints.
     effort_limit_sim: 140.0  # Sim effort limit for hip roll joints.
     velocity_limit_sim: 13.0  # Sim velocity limit for hip roll joints.
-    stiffness: 200.0  # PD stiffness for hip roll joints.
+    stiffness: 400.0  # PD stiffness for hip roll joints.
     damping: 2.0  # PD damping for hip roll joints.
   hip_lateral:
     joint_names_expr: [ "r1_acetabulofemoral_lateral", "l1_acetabulofemoral_lateral" ]  # Hip lateral/yaw joints.
     effort_limit_sim: 100.0  # Sim effort limit for hip lateral joints.
     velocity_limit_sim: 28.0  # Sim velocity limit for hip lateral joints.
-    stiffness: 200.0  # PD stiffness for hip lateral joints.
+    stiffness: 400.0  # PD stiffness for hip lateral joints.
     damping: 2.0  # PD damping for hip lateral joints.
   knee_flex:
     joint_names_expr: [ "r8_knee_flexor", "l8_knee_flexor" ]  # Knee flexor joints.
     effort_limit_sim: 140.0  # Sim effort limit for knee flexor joints.
     velocity_limit_sim: 13.0  # Sim velocity limit for knee flexor joints.
-    stiffness: 200.0  # PD stiffness for knee flexor joints.
+    stiffness: 400.0  # PD stiffness for knee flexor joints.
     damping: 2.0  # PD damping for knee flexor joints.
   passive_tendon_chain:
     joint_names_expr: # Passive leg-chain joints damped to reduce tendon-driven ringing.
@@ -121,16 +127,16 @@ actuation:
 tendons:
   baseline:
     stiffness:
-      gst: 30000.0  # Gastrocnemius spring stiffness.
+      gst: 38100.0  # Gastrocnemius spring stiffness.
       #      gst: 0.0  # Gastrocnemius spring stiffness.
       #      dft: 300000.0  # Deep flexor tendon stiffness.
       #      edt1: 400000.0  # Extensor tendon 1 stiffness.
       #      edt2: 400000.0  # Extensor tendon 2 stiffness.
       #      kft: 500000.0  # Knee flexor tendon stiffness.
-      dft: 100000.0  # Deep flexor tendon stiffness.
-      edt1: 100000.0  # Extensor tendon 1 stiffness.
-      edt2: 100000.0  # Extensor tendon 2 stiffness.
-      kft: 100000.0  # Knee flexor tendon stiffness.
+      dft: 200000.0  # Deep flexor tendon stiffness.
+      edt1: 200000.0  # Extensor tendon 1 stiffness.
+      edt2: 200000.0  # Extensor tendon 2 stiffness.
+      kft: 200000.0  # Knee flexor tendon stiffness.
     #    lengths:
     #      gst_spring_rest: 0.06  # GST spring rest length.
     #      upper_gst: 0.6217  # Upper GST path nominal length.
@@ -140,13 +146,18 @@ tendons:
     #      edt2: 0.63  # EDT2 nominal tendon length.
     #      kft: 0.452  # KFT nominal tendon length.
     lengths:
-      gst_spring_rest: 0.03748328611254692
-      upper_gst: 0.6318330764770508
-      lower_gst: 0.6646434664726257
-      dft: 0.4480332136154175
-      edt1: 0.606323778629303
-      edt2: 0.7338646650314331
-      kft: 0.44287678599357605
+      #      gst_spring_rest: 0.03748
+      gst_spring_rest: 0.03521357476711273
+      #      upper_gst: 0.6318330764770508
+      upper_gst: 0.56264  # Upper GST path nominal length.
+      lower_gst: 0.66464
+      #      dft: 0.39651
+      dft: 0.42252081632614136
+      #      edt1: 0.57146
+      edt1: 0.5972980856895447
+      #      edt2: 0.70451
+      edt2: 0.6965698599815369
+      kft: 0.44288
     joint_offsets_theta_deg:
       j3: 225.066  # Joint 3 angular offset used by tendon geometry.
       j4: 224.484  # Joint 4 angular offset used by tendon geometry.

@@ -34,11 +34,11 @@ objective:
   # Parallel simulation slots. These are recycled until rollouts_per_iteration is complete.
   num_envs: 512
   #  num_envs: 768
-  duration: 4.0
+  duration: 5.0
   # Matches the Forrest RL parent env default. The tendon debug runner profile uses 0.0024.
   # Keeping this here makes PSO about 2x cheaper per simulated second.
-  sim_dt: 0.01
-  startup_hold_duration: 0.5
+  sim_dt: 0.005
+  startup_hold_duration: 0.0
   constraint_mode: "boom"
   env_spacing: 3.0
   status_interval: 10
@@ -74,33 +74,33 @@ objective:
   # Used only when use_command_curriculum is false.
   command: [ 1.0, 0.0, 0.0 ]
   terminations:
-    base_too_low_height: 0.9
+    base_too_low_height: 0.75
     terminate_on_unphysical: true
     unphysical_penalty: 12.0
-    terminate_on_backward_progress: true
+    terminate_on_backward_progress: false
     # Backward motion is penalized in the score, but not used as an early termination while searching for boom gaits.
-    backward_termination_grace_s: 1.0
-    max_backward_displacement: 0.25
+    backward_termination_grace_s: 2.0
+    max_backward_displacement: 0.50
     # These reject obvious optimizer exploits such as skating/teleport-like motion.
     max_forward_speed: 20.0
-    max_lateral_speed: 3.0
+    max_lateral_speed: 10.5
     max_vertical_speed: 20.0
-    max_root_angular_speed: 30.0
-    max_height: 2.6
+    max_root_angular_speed: 25.0
+    max_height: 3.6
     # Empty undesired_contact_body_names means all contact-sensor bodies except the two digit foot bodies.
     # This terminates sprawled/skating candidates where the shin, hip, base, or foot connector touches the ground.
     terminate_on_undesired_contact: true
-    undesired_contact_grace_s: 0.10
-    undesired_contact_consecutive_steps: 2
-    undesired_contact_force_threshold: 1.0
+    undesired_contact_grace_s: 0.50
+    undesired_contact_consecutive_steps: 12
+    undesired_contact_force_threshold: 20.0
     undesired_contact_body_names: [ ]
     # Terminate unstable candidates whose lower-chain joints enter high-frequency ringing.
     # J8/KFT disc joints are intentionally not included.
     terminate_on_joint_vibration: true
-    joint_vibration_grace_s: 0.15
-    joint_vibration_consecutive_steps: 2
-    max_joint_vibration_velocity: 60.0
-    max_joint_vibration_acceleration: 6000.0
+    joint_vibration_grace_s: 0.35
+    joint_vibration_consecutive_steps: 6
+    max_joint_vibration_velocity: 300.0
+    max_joint_vibration_acceleration: 20000.0
     joint_vibration_joint_names:
       - "l5_metatarsophalangeal"
       - "l6_interphalangeal"
@@ -112,24 +112,24 @@ objective:
     # Command-tracking mode:
     #   set command to the desired velocity, set track_lin_vel_xy_exp/track_ang_vel_z_exp > 0,
     #   and usually set forward_vel_x to 0.
-    alive: 0.1
-    termination_penalty: -5.0
-    unphysical_termination_penalty: -10.0
+    alive: 0.05
+    termination_penalty: -2.0
+    unphysical_termination_penalty: -4.0
     track_base_height_exp: 0.0
     track_lin_vel_xy_exp: 0.0
-    forward_vel_x: 1.0
+    forward_vel_x: 8.0
     track_ang_vel_z_exp: 0.0
     feet_crossing: -0.0
     feet_parallel_contact: -0.0
     feet_air_time: 0.0
-    feet_slide: 0.0
+    feet_slide: -0.05
     joint_deviation_l1: -0.00
     hip_deviation_l1: -0.0
     gait_symmetry: -0.0
-    foot_connector_contact: -0.5
-    lin_vel_z_l2: -0.0
-    flat_orientation_l2: -0.0
-    action_rate_l2: -0.00005
+    foot_connector_contact: -0.25
+    lin_vel_z_l2: -0.05
+    flat_orientation_l2: -0.10
+    action_rate_l2: -0.00010
     dof_acc_l2: 0.0
     dof_torques_l2: 0.0
 
@@ -140,92 +140,92 @@ output:
 
 parameters:
   - name: "tendons.baseline.lengths.gst_spring_rest"
-    min: 0.035
-    max: 0.090
-    initial: 0.060
+    min: 0.03373
+    max: 0.04123
+    initial: 0.03748
   # Tendon path lengths are still kept moderate compared with the CPG search:
   # enough to escape calibration bias, not enough to freely redesign routing.
-  - name: "tendons.baseline.lengths.upper_gst"
-    min: 0.560
-    max: 0.700
-    initial: 0.6217
-  - name: "tendons.baseline.lengths.lower_gst"
-    min: 0.570
-    max: 0.710
-    initial: 0.6314
+  #  - name: "tendons.baseline.lengths.upper_gst"
+  #    min: 0.50638
+  #    max: 0.61890
+  #    initial: 0.56264
+  #  - name: "tendons.baseline.lengths.lower_gst"
+  #    min: 0.59818
+  #    max: 0.73110
+  #    initial: 0.66464
   - name: "tendons.baseline.lengths.dft"
-    min: 0.320
-    max: 0.460
-    initial: 0.384
+    min: 0.35686
+    max: 0.43616
+    initial: 0.39651
   - name: "tendons.baseline.lengths.edt1"
-    min: 0.450
-    max: 0.630
-    initial: 0.540
+    min: 0.51431
+    max: 0.62861
+    initial: 0.57146
   - name: "tendons.baseline.lengths.edt2"
-    min: 0.520
-    max: 0.740
-    initial: 0.630
-  - name: "tendons.baseline.lengths.kft"
-    min: 0.410
-    max: 0.495
-    initial: 0.452
-  - name: "run.cpg_oscillator.f_hz"
-    min: 0.20
-    max: 3.50
-    initial: 0.80
-  - name: "run.cpg_oscillator.duty_factor"
-    min: 0.20
-    max: 0.80
+    min: 0.63406
+    max: 0.77496
+    initial: 0.70451
+  #  - name: "tendons.baseline.lengths.kft"
+  #    min: 0.39859
+  #    max: 0.48717
+  #    initial: 0.44288
+  #  - name: "tendons.baseline.stiffness.gst"
+  #    min: 25000.0
+  #    max: 55000.0
+  #    initial: 38100.0
+  #  - name: "tendons.baseline.stiffness.dft"
+  #    min: 150000.0
+  #    max: 250000.0
+  #    initial: 200000.0
+  #  - name: "tendons.baseline.stiffness.edt1"
+  #    min: 150000.0
+  #    max: 250000.0
+  #    initial: 200000.0
+  #  - name: "tendons.baseline.stiffness.edt2"
+  #    min: 150000.0
+  #    max: 250000.0
+  #    initial: 200000.0
+  #  - name: "tendons.baseline.stiffness.kft"
+  #    min: 150000.0
+  #    max: 250000.0
+  #    initial: 200000.0
+  - name: "run.cpg.f_hz"
+    min: 0.80
+    max: 1.20
+    initial: 1.00
+  - name: "run.cpg.duty_factor"
+    min: 0.50
+    max: 0.70
     initial: 0.60
-  - name: "run.cpg_oscillator.hip_flexion_amplitude_deg"
+  - name: "run.cpg.hip_amplitude_deg"
+    min: 20.0
+    max: 42.0
+    initial: 30.45
+  - name: "run.cpg.hip_offset_deg"
     min: 0.0
-    max: 100.0
-    initial: 24.0
-  - name: "run.cpg_oscillator.hip_flexion_offset_deg"
-    min: -60.0
-    max: 60.0
+    max: 16.0
     initial: 8.0
-  - name: "run.cpg_oscillator.hip_flexion_phase_rad"
-    min: 0.0
-    max: 6.283185307179586
-    initial: 0.0
-  - name: "run.cpg_oscillator.knee_flexion_amplitude_deg"
-    min: 0.0
-    max: 130.0
-    initial: 34.0
-  - name: "run.cpg_oscillator.knee_flexion_offset_deg"
-    min: -60.0
-    max: 60.0
-    initial: 0.0
-  - name: "run.cpg_oscillator.knee_flexion_phase_rad"
-    min: 0.0
-    max: 6.283185307179586
-    initial: 1.5707963267948966
-  - name: "run.cpg_oscillator.knee_swing_power"
-    min: 0.20
-    max: 6.00
-    initial: 1.5
-  - name: "run.cpg_oscillator.hip_roll_amplitude_deg"
-    min: 0.0
-    max: 45.0
-    initial: 0.0
-  - name: "run.cpg_oscillator.hip_roll_offset_deg"
-    min: -30.0
-    max: 30.0
-    initial: 0.0
-  - name: "run.cpg_oscillator.hip_roll_phase_rad"
-    min: 0.0
-    max: 6.283185307179586
-    initial: 0.0
-  - name: "run.cpg_oscillator.hip_yaw_amplitude_deg"
-    min: 0.0
-    max: 45.0
-    initial: 0.0
-  - name: "run.cpg_oscillator.hip_yaw_offset_deg"
-    min: -30.0
-    max: 30.0
-    initial: 0.0
-  - name: "run.cpg_oscillator.hip_yaw_phase_rad"
-    min: 0.0
-    max: 6.283185307179586
-    initial: 0.0
+  - name: "run.cpg.knee_amplitude_deg"
+    min: 140.0
+    max: 205.0
+    initial: 172.5
+  - name: "run.cpg.swing_start_offset"
+    min: 0.00
+    max: 0.06
+    initial: 0.02
+  - name: "run.cpg.swing_end_offset"
+    min: 0.01
+    max: 0.10
+    initial: 0.05
+  - name: "run.cpg.combined_phase_offset_rad"
+    min: 0.7854
+    max: 2.3562
+    initial: 1.5708
+  - name: "run.cpg.left_phase_offset_rad"
+    min: -2.3562
+    max: -0.7854
+    initial: -1.5708
+  - name: "run.cpg.right_phase_offset_rad"
+    min: 0.7854
+    max: 2.3562
+    initial: 1.5708

@@ -121,4 +121,4 @@ def cpg_oscillator_command_kernel(
             q = knee_flexion_offset_rad + knee_flexion_amplitude_rad * torch.pow(swing, knee_power)
         commands[:, joint_index] = joint_signs[joint_index] * q
 
-    return initial_joint_positions + commands - controller_zero
+    return initial_joint_positions + commands

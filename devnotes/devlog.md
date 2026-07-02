@@ -1,5 +1,23 @@
 # devlog
 
+## 02.07
+
+- Added a live Forrest tendon calibration mode to `scripts/tendons/run.py` with `--calibration`, including docked
+  Kit UI controls, controller/tendon/baseline parameter tabs, live range editing, reset/pause/stop controls, and
+  live plots for controller commands and tendon torques.
+- Added a viewport tendon overlay for calibration runs. The overlay reuses the analytic tendon visualization path
+  construction, draws each tendon in a distinct color, and highlights active tendons with brighter/thicker lines.
+- Kept calibration physics aligned with normal replay: the calibration controller bridge now uses the same open-loop
+  controller classes as the non-calibration runner, respects `include_knee`, and avoids extra active-loop Kit ticks.
+- Promoted the latest PSO-selected CPG and tendon-length parameters into the default Forrest profile while keeping
+  previous values commented in the YAML for reference.
+- Moved ground and foot material settings into the Forrest parameter profile and wired them into standalone replay,
+  PSO, and RL training so rubber-foot friction is configured consistently across workflows.
+- Extended Forrest parameter loading/export to cover training material settings and tendon stiffness parameters.
+- Updated PSO to support the simpler CPG controller search, replayable `best.yaml` exports, raw/terminated velocity
+  diagnostics, more tolerant unphysical terminations, and safer contact-sensor body handling.
+- Added or extended focused tests around Forrest parameter loading, curriculum behavior, and CPG/replay consistency.
+
 ## 24.06
 
 - Added a PSO workflow for tuning Forrest tendon and controller parameters, including `configs/pso.yaml`,

@@ -67,6 +67,7 @@ class EvaluationResult:
     mean_survival_time: float
     mean_rollout_forward_speed: float
     max_rollout_forward_speed: float
+    raw_mean_rollout_forward_speed: float
     raw_max_rollout_forward_speed: float
 
 
@@ -76,17 +77,30 @@ def make_forrest_pso_scene_cfg(
     num_envs: int,
     env_spacing: float,
     replicate_physics: bool,
+    contact_sensor_body_names: tuple[str, ...] | None = None,
     enable_contact_sensor: bool = True,
 ):
     """Create an InteractiveScene config for cloned Forrest evaluation envs."""
 
     robot_cfg = get_forrest_cfg(params).replace(prim_path="{ENV_REGEX_NS}/forrest_isaac")
     contact_params = params.training.contacts
-    contact_body_regex = "(" + "|".join(contact_params.contact_sensor_body_names) + ")"
+    if contact_sensor_body_names is None:
+        contact_sensor_body_names = tuple(contact_params.contact_sensor_body_names)
+    contact_body_regex = "(" + "|".join(contact_sensor_body_names) + ")"
+    ground_material = params.physics.ground
+    ground_cfg = sim_utils.GroundPlaneCfg(
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            static_friction=ground_material.static_friction,
+            dynamic_friction=ground_material.dynamic_friction,
+            restitution=ground_material.restitution,
+            friction_combine_mode=ground_material.friction_combine_mode,
+            restitution_combine_mode=ground_material.restitution_combine_mode,
+        )
+    )
 
     @configclass
     class ForrestPsoSceneCfg(InteractiveSceneCfg):
-        ground = AssetBaseCfg(prim_path="/World/defaultGroundPlane", spawn=sim_utils.GroundPlaneCfg())
+        ground = AssetBaseCfg(prim_path="/World/defaultGroundPlane", spawn=ground_cfg)
         dome_light = AssetBaseCfg(
             prim_path="/World/Light", spawn=sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75))
         )
@@ -128,6 +142,11 @@ class ForrestPsoEvaluator:
         self.rollouts_per_iteration = max(int(rollouts_per_iteration), int(num_particles))
         self.reward_weights = self._reward_weights()
         self.enabled_reward_terms = {name for name, weight in self.reward_weights.items() if float(weight) != 0.0}
+        contact_sensor_body_names = list(forrest_params.training.contacts.contact_sensor_body_names)
+        if "foot_connector_contact" in self.enabled_reward_terms:
+            for name in forrest_params.training.contacts.foot_connector_body_names:
+                if name not in contact_sensor_body_names:
+                    contact_sensor_body_names.append(name)
         self.enable_contact_sensor = bool(
             (
                 {
@@ -170,6 +189,7 @@ class ForrestPsoEvaluator:
             num_envs=self.num_envs,
             env_spacing=float(objective_cfg.env_spacing),
             replicate_physics=replicate_physics,
+            contact_sensor_body_names=tuple(contact_sensor_body_names),
             enable_contact_sensor=self.enable_contact_sensor,
         )
         self.scene = InteractiveScene(scene_cfg)
@@ -201,9 +221,11 @@ class ForrestPsoEvaluator:
             dtype=torch.float32,
             device=self.robot.device,
         )
-        self.uses_cpg_oscillator = (
-            any(name.startswith("run.cpg_oscillator.") for name in parameter_space.names)
-            or forrest_params.run.controller == "cpg_oscillator"
+        has_optimized_open_loop_controller = any(
+            name.startswith(("run.cpg.", "run.cpg_oscillator.", "run.sinusoidal.")) for name in parameter_space.names
+        )
+        self.uses_cpg_oscillator = any(name.startswith("run.cpg_oscillator.") for name in parameter_space.names) or (
+            not has_optimized_open_loop_controller and forrest_params.run.controller == "cpg_oscillator"
         )
 
         self.tendon_data = TendonData(
@@ -235,17 +257,26 @@ class ForrestPsoEvaluator:
             self.contact_foot_body_indices = [
                 self.contact_sensor.body_names.index(name) for name in self.foot_body_names
             ]
-            self.contact_foot_connector_body_indices = [
-                self.contact_sensor.body_names.index(name) for name in self.foot_connector_body_names
-            ]
+            if "foot_connector_contact" in self.enabled_reward_terms:
+                missing_connectors = [
+                    name for name in self.foot_connector_body_names if name not in self.contact_sensor.body_names
+                ]
+                if missing_connectors:
+                    raise ValueError(
+                        "PSO foot_connector_contact reward is enabled, but these connector bodies are not in the "
+                        "contact sensor: " + ", ".join(missing_connectors)
+                    )
+                self.contact_foot_connector_body_indices = [
+                    self.contact_sensor.body_names.index(name) for name in self.foot_connector_body_names
+                ]
+            else:
+                self.contact_foot_connector_body_indices = []
             termination_cfg = self.cfg.terminations
             if termination_cfg.undesired_contact_body_names:
                 undesired_body_names = tuple(termination_cfg.undesired_contact_body_names)
             else:
                 foot_names = set(contacts.foot_body_names)
-                undesired_body_names = tuple(
-                    name for name in contacts.contact_sensor_body_names if name not in foot_names
-                )
+                undesired_body_names = tuple(name for name in self.contact_sensor.body_names if name not in foot_names)
             missing_undesired = [name for name in undesired_body_names if name not in self.contact_sensor.body_names]
             if missing_undesired:
                 raise ValueError(
@@ -570,7 +601,6 @@ class ForrestPsoEvaluator:
         start_root_pos = torch.zeros((self.num_envs, 3), device=device)
         start_heading = torch.zeros(self.num_envs, device=device)
         initial_joint_positions = self.robot.data.default_joint_pos[:, self.actuated_joint_indices].clone()
-        controller_zero = torch.zeros((self.num_envs, len(self.actuated_joint_indices)), device=device)
         rl_reward_integral = torch.zeros(self.num_envs, device=device)
         previous_action = torch.zeros((self.num_envs, len(self.actuated_joint_indices)), device=device)
         current_action = torch.zeros_like(previous_action)
@@ -596,6 +626,7 @@ class ForrestPsoEvaluator:
         terminated_count = torch.zeros(self.num_particles, device=device)
         rollout_forward_speed_sum = torch.zeros((), device=device)
         rollout_forward_speed_max = torch.tensor(-torch.inf, device=device)
+        raw_rollout_forward_speed_sum = torch.zeros((), device=device)
         raw_rollout_forward_speed_max = torch.tensor(-torch.inf, device=device)
 
         current_params_by_env = {
@@ -604,7 +635,7 @@ class ForrestPsoEvaluator:
         tendon_params_by_env = {
             name: torch.zeros(self.num_envs, dtype=torch.float32, device=device)
             for name in self.parameter_space.names
-            if name.startswith("tendons.baseline.lengths.")
+            if name.startswith(("tendons.baseline.lengths.", "tendons.baseline.stiffness."))
         }
         cpg_params = self.forrest_params.run.cpg_oscillator
         cpg_tensors = {
@@ -670,7 +701,8 @@ class ForrestPsoEvaluator:
         }
 
         def reset_report_accumulators() -> None:
-            nonlocal rollout_forward_speed_sum, rollout_forward_speed_max, raw_rollout_forward_speed_max
+            nonlocal rollout_forward_speed_sum, rollout_forward_speed_max
+            nonlocal raw_rollout_forward_speed_sum, raw_rollout_forward_speed_max
             score_sum.zero_()
             rollout_count.zero_()
             forward_speed_sum.zero_()
@@ -684,6 +716,7 @@ class ForrestPsoEvaluator:
             terminated_count.zero_()
             rollout_forward_speed_sum = torch.zeros((), device=device)
             rollout_forward_speed_max = torch.tensor(-torch.inf, device=device)
+            raw_rollout_forward_speed_sum = torch.zeros((), device=device)
             raw_rollout_forward_speed_max = torch.tensor(-torch.inf, device=device)
 
         def build_result(completed_rollouts: int) -> EvaluationResult:
@@ -711,6 +744,7 @@ class ForrestPsoEvaluator:
                 mean_survival_time=mean_survival_time,
                 mean_rollout_forward_speed=float((rollout_forward_speed_sum / completed).detach().cpu()),
                 max_rollout_forward_speed=float(rollout_forward_speed_max.detach().cpu()),
+                raw_mean_rollout_forward_speed=float((raw_rollout_forward_speed_sum / completed).detach().cpu()),
                 raw_max_rollout_forward_speed=float(raw_rollout_forward_speed_max.detach().cpu()),
             )
 
@@ -718,7 +752,6 @@ class ForrestPsoEvaluator:
             *,
             t: float | torch.Tensor,
             initial_positions: torch.Tensor,
-            zero: torch.Tensor,
         ) -> torch.Tensor:
             if self.uses_cpg_oscillator:
                 t_tensor = torch.as_tensor(t, device=device, dtype=dtype)
@@ -727,7 +760,7 @@ class ForrestPsoEvaluator:
                 return cpg_oscillator_command_kernel(
                     t_tensor,
                     initial_positions,
-                    zero,
+                    torch.zeros_like(initial_positions),
                     self.joint_side_ids,
                     self.joint_dof_ids,
                     self.joint_signs,
@@ -754,7 +787,7 @@ class ForrestPsoEvaluator:
                 params_by_env=current_params_by_env,
                 actuated_dof_specs=self.actuated_dof_specs,
                 initial_joint_positions=initial_positions,
-                controller_zero=zero,
+                controller_zero=torch.zeros_like(initial_positions),
             )
 
         def choose_particles(count: int) -> torch.Tensor:
@@ -818,13 +851,6 @@ class ForrestPsoEvaluator:
             initial_joint_positions[assign_env_ids] = self.robot.data.default_joint_pos[assign_env_ids][
                 :, self.actuated_joint_indices
             ]
-            zero_joint_positions = torch.zeros_like(initial_joint_positions)
-            all_controller_zero = controller_command(
-                t=0.0,
-                initial_positions=zero_joint_positions,
-                zero=zero_joint_positions,
-            )
-            controller_zero[assign_env_ids] = all_controller_zero[assign_env_ids]
             rl_reward_integral[assign_env_ids] = 0.0
             previous_action[assign_env_ids] = 0.0
             current_action[assign_env_ids] = 0.0
@@ -852,7 +878,7 @@ class ForrestPsoEvaluator:
             terminal: torch.Tensor,
         ) -> bool:
             nonlocal total_completed, report_completed, rollout_forward_speed_sum, rollout_forward_speed_max
-            nonlocal raw_rollout_forward_speed_max, improved_since_report
+            nonlocal raw_rollout_forward_speed_sum, raw_rollout_forward_speed_max, improved_since_report
             if env_ids.numel() == 0:
                 return False
 
@@ -922,6 +948,14 @@ class ForrestPsoEvaluator:
                     torch.zeros_like(reported_forward_speed),
                 ).sum()
             )
+            raw_rollout_forward_speed_sum = (
+                raw_rollout_forward_speed_sum
+                + torch.where(
+                    torch.isfinite(raw_forward_speed),
+                    raw_forward_speed,
+                    torch.zeros_like(raw_forward_speed),
+                ).sum()
+            )
             rollout_forward_speed_max = torch.maximum(rollout_forward_speed_max, finite_forward_speed.max())
             raw_rollout_forward_speed_max = torch.maximum(
                 raw_rollout_forward_speed_max,
@@ -961,7 +995,6 @@ class ForrestPsoEvaluator:
             active_commanded = controller_command(
                 t=controller_t,
                 initial_positions=initial_joint_positions,
-                zero=controller_zero,
             )
             hold_mask = (rollout_t < float(self.cfg.startup_hold_duration)).unsqueeze(1)
             commanded_positions = torch.where(hold_mask, initial_joint_positions, active_commanded)
@@ -1127,6 +1160,7 @@ class ForrestPsoEvaluator:
         terminated_count = torch.zeros(self.num_particles, device=device)
         rollout_forward_speed_sum = torch.zeros((), device=device)
         rollout_forward_speed_max = torch.tensor(-torch.inf, device=device)
+        raw_rollout_forward_speed_sum = torch.zeros((), device=device)
         raw_rollout_forward_speed_max = torch.tensor(-torch.inf, device=device)
 
         env_active = torch.zeros(self.num_envs, dtype=torch.bool, device=device)
@@ -1136,7 +1170,6 @@ class ForrestPsoEvaluator:
         start_root_pos = torch.zeros((self.num_envs, 3), device=device)
         start_heading = torch.zeros(self.num_envs, device=device)
         initial_joint_positions = self.robot.data.default_joint_pos[:, self.actuated_joint_indices].clone()
-        controller_zero = torch.zeros((self.num_envs, len(self.actuated_joint_indices)), device=device)
         rl_reward_integral = torch.zeros(self.num_envs, device=device)
         previous_action = torch.zeros((self.num_envs, len(self.actuated_joint_indices)), device=device)
         current_action = torch.zeros_like(previous_action)
@@ -1155,7 +1188,7 @@ class ForrestPsoEvaluator:
         tendon_params_by_env = {
             name: torch.zeros(self.num_envs, dtype=torch.float32, device=device)
             for name in self.parameter_space.names
-            if name.startswith("tendons.baseline.lengths.")
+            if name.startswith(("tendons.baseline.lengths.", "tendons.baseline.stiffness."))
         }
         cpg_params = self.forrest_params.run.cpg_oscillator
         cpg_tensors = {
@@ -1224,7 +1257,6 @@ class ForrestPsoEvaluator:
             *,
             t: float | torch.Tensor,
             initial_positions: torch.Tensor,
-            zero: torch.Tensor,
         ) -> torch.Tensor:
             if self.uses_cpg_oscillator:
                 t_tensor = torch.as_tensor(t, device=device, dtype=dtype)
@@ -1233,7 +1265,7 @@ class ForrestPsoEvaluator:
                 return cpg_oscillator_command_kernel(
                     t_tensor,
                     initial_positions,
-                    zero,
+                    torch.zeros_like(initial_positions),
                     self.joint_side_ids,
                     self.joint_dof_ids,
                     self.joint_signs,
@@ -1260,7 +1292,7 @@ class ForrestPsoEvaluator:
                 params_by_env=current_params_by_env,
                 actuated_dof_specs=self.actuated_dof_specs,
                 initial_joint_positions=initial_positions,
-                controller_zero=zero,
+                controller_zero=torch.zeros_like(initial_positions),
             )
 
         def assign_rollouts(env_ids: torch.Tensor) -> None:
@@ -1280,7 +1312,6 @@ class ForrestPsoEvaluator:
                     initial_joint_positions[env_ids] = self.robot.data.default_joint_pos[env_ids][
                         :, self.actuated_joint_indices
                     ]
-                    controller_zero[env_ids] = 0.0
                     rl_reward_integral[env_ids] = 0.0
                     previous_action[env_ids] = 0.0
                     current_action[env_ids] = 0.0
@@ -1322,13 +1353,6 @@ class ForrestPsoEvaluator:
             initial_joint_positions[assign_env_ids] = self.robot.data.default_joint_pos[assign_env_ids][
                 :, self.actuated_joint_indices
             ]
-            zero_joint_positions = torch.zeros_like(initial_joint_positions)
-            all_controller_zero = controller_command(
-                t=0.0,
-                initial_positions=zero_joint_positions,
-                zero=zero_joint_positions,
-            )
-            controller_zero[assign_env_ids] = all_controller_zero[assign_env_ids]
             rl_reward_integral[assign_env_ids] = 0.0
             previous_action[assign_env_ids] = 0.0
             current_action[assign_env_ids] = 0.0
@@ -1356,7 +1380,7 @@ class ForrestPsoEvaluator:
             terminal: torch.Tensor,
         ) -> None:
             nonlocal completed_rollouts, rollout_forward_speed_sum, rollout_forward_speed_max
-            nonlocal raw_rollout_forward_speed_max
+            nonlocal raw_rollout_forward_speed_sum, raw_rollout_forward_speed_max
             if env_ids.numel() == 0:
                 return
 
@@ -1416,6 +1440,14 @@ class ForrestPsoEvaluator:
                     torch.zeros_like(reported_forward_speed),
                 ).sum()
             )
+            raw_rollout_forward_speed_sum = (
+                raw_rollout_forward_speed_sum
+                + torch.where(
+                    torch.isfinite(raw_forward_speed),
+                    raw_forward_speed,
+                    torch.zeros_like(raw_forward_speed),
+                ).sum()
+            )
             rollout_forward_speed_max = torch.maximum(rollout_forward_speed_max, finite_forward_speed.max())
             raw_rollout_forward_speed_max = torch.maximum(
                 raw_rollout_forward_speed_max,
@@ -1453,7 +1485,6 @@ class ForrestPsoEvaluator:
             active_commanded = controller_command(
                 t=controller_t,
                 initial_positions=initial_joint_positions,
-                zero=controller_zero,
             )
             hold_mask = (rollout_t < float(self.cfg.startup_hold_duration)).unsqueeze(1)
             commanded_positions = torch.where(hold_mask, initial_joint_positions, active_commanded)
@@ -1598,5 +1629,6 @@ class ForrestPsoEvaluator:
             mean_survival_time=mean_survival_time,
             mean_rollout_forward_speed=float((rollout_forward_speed_sum / completed).detach().cpu()),
             max_rollout_forward_speed=float(rollout_forward_speed_max.detach().cpu()),
+            raw_mean_rollout_forward_speed=float((raw_rollout_forward_speed_sum / completed).detach().cpu()),
             raw_max_rollout_forward_speed=float(raw_rollout_forward_speed_max.detach().cpu()),
         )

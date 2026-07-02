@@ -132,6 +132,15 @@ class ArticulationPhysicsParameters:
 
 
 @dataclass
+class GroundMaterialParameters:
+    static_friction: float = 1.2
+    dynamic_friction: float = 1.0
+    restitution: float = 0.0
+    friction_combine_mode: str = "max"
+    restitution_combine_mode: str = "average"
+
+
+@dataclass
 class PhysicsParameters:
     sim_dt: float = 0.0024
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
@@ -139,6 +148,7 @@ class PhysicsParameters:
     physx_gpu_collision_stack_size: int = 160 * 1024 * 1024
     physx_gpu_found_lost_aggregate_pairs_capacity: int = 2**27
     physx_gpu_total_aggregate_pairs_capacity: int = 2**22
+    ground: GroundMaterialParameters = field(default_factory=GroundMaterialParameters)
     rigid_body: RigidBodyPhysicsParameters = field(default_factory=RigidBodyPhysicsParameters)
     articulation: ArticulationPhysicsParameters = field(default_factory=ArticulationPhysicsParameters)
 
@@ -601,6 +611,10 @@ class EventParameters:
     disable_push_robot: bool = True
     disable_add_base_mass: bool = True
     randomize_initial_base_pose: bool = True
+    foot_static_friction_range: tuple[float, float] = (1.4, 1.4)
+    foot_dynamic_friction_range: tuple[float, float] = (1.1, 1.1)
+    foot_restitution_range: tuple[float, float] = (0.0, 0.0)
+    foot_material_num_buckets: int = 64
     reset_robot_joint_position_range: tuple[float, float] = (1.0, 1.0)
     external_force_body_names: tuple[str, ...] = ("base_assy_v2_1",)
     base_com_body_names: tuple[str, ...] = ("base_assy_v2_1",)

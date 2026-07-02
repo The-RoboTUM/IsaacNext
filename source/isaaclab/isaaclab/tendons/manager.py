@@ -243,6 +243,7 @@ class TendonManager:
         self._cached_link_torques = link_torques
         self._cached_forces = forces
         self._cached_body_ids = self.link_indices_left_right
+        return left, right
 
     def reapply_cached_jit(self) -> bool:
         """Reapply the last JIT-computed tendon forces and torques.
@@ -264,6 +265,19 @@ class TendonManager:
         if profile_active:
             profiler.record_elapsed("tendon/reapply_cached_jit", t1 - t0)
         return True
+
+    def set_tendon_data(self, tendon_data: TendonData) -> None:
+        """Replace tendon model constants after a live calibration rebuild."""
+
+        self.tendon_data = tendon_data
+        if isinstance(self.model, AnalyticTendonEnergyModel):
+            self.model = AnalyticTendonEnergyModel(tendon_data)
+        elif hasattr(self.model, "tendon_data"):
+            self.model.tendon_data = tendon_data
+        self.reset_damping_state()
+        self._cached_link_torques = None
+        self._cached_forces = None
+        self._cached_body_ids = None
 
     def _store_delta_lengths(self, deltas: dict[str, torch.Tensor]):
         self._prev_delta_lengths = {name: delta.detach().clone() for name, delta in deltas.items()}
@@ -299,6 +313,15 @@ class TendonManager:
             "tendon/tension_p95": float(torch.quantile(tension_values, 0.95).cpu().item()),
             "tendon/tension_max": float(tension_values.max().cpu().item()),
             "tendon/slack_fraction": float(slack_fraction.cpu().item()),
+        }
+
+    def get_tendon_activity(self) -> dict[str, bool]:
+        """Return whether each tendon is currently active, i.e. not slack."""
+
+        if not self._prev_delta_lengths:
+            return {}
+        return {
+            name: bool((delta.detach() <= 0.0).any().cpu().item()) for name, delta in self._prev_delta_lengths.items()
         }
 
     def reset_damping_state(self, env_ids=None):

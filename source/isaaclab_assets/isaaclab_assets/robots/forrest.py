@@ -38,14 +38,34 @@ def _implicit_actuator_cfg(config: ActuatorParameters) -> ImplicitActuatorCfg:
 def _resolve_asset_path(path: str) -> str:
     asset_path = Path(path).expanduser()
     if asset_path.is_absolute():
+        _raise_if_lfs_pointer(asset_path)
         return asset_path.as_posix()
 
     candidates = [Path.cwd() / asset_path]
     candidates.extend(parent / asset_path for parent in Path(__file__).resolve().parents)
     for candidate in candidates:
         if candidate.exists():
+            _raise_if_lfs_pointer(candidate)
             return candidate.as_posix()
     return (Path.cwd() / asset_path).as_posix()
+
+
+def _raise_if_lfs_pointer(path: Path) -> None:
+    """Fail early when the robot USD exists only as a Git LFS pointer."""
+
+    if path.suffix.lower() != ".usd" or not path.is_file() or path.stat().st_size > 512:
+        return
+    try:
+        header = path.read_text(encoding="utf-8", errors="ignore")[:128]
+    except OSError:
+        return
+    if "https://git-lfs.github.com/spec/v1" not in header:
+        return
+    raise RuntimeError(
+        "Forrest USD asset is a Git LFS pointer, not a checked-out USD file: "
+        f"{path}. Run `git -C symlinks/forrest_ws lfs pull` from the IsaacNext repository root, "
+        "then rerun the simulation."
+    )
 
 
 def get_forrest_cfg(config: ForrestParameterConfig) -> ArticulationCfg:
