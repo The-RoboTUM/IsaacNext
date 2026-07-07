@@ -13,15 +13,19 @@
   - [Joints Parameter Settings](#joints-parameter-settings)
   - [Joints Limits](#joints-limits)
   - [Collision Parameter Settings](#collision-parameter-settings)
+  - [Forrest Tendon Calibration and PSO](#forrest-tendon-calibration-and-pso)
   - [🚀 Reinforcement Learning Pipeline](#-reinforcement-learning-pipeline)
     - [Train Forrest](#train-forrest)
+    - [Experiment Tracking](#experiment-tracking)
+    - [Deterministic Evaluation](#deterministic-evaluation)
+    - [Training Profiling](#training-profiling)
     - [Play Forrest](#play-forrest)
 
 
 
 ## 🤝 Contributing
 
-We welcome contributions from all RoboTUM Humanoid Project members!  
+We welcome contributions from all RoboTUM Humanoid Project members!
 Before you start working on a new feature, please read our [Contribution Guidelines](./CONTRIBUTING.md).
 
 ---
@@ -44,10 +48,10 @@ Before installing Isaac Sim and Isaac Lab, please make sure your system meets th
 | **Storage** | 50 GB free space | 100 GB+ SSD/NVMe                              |
 | **OS** | Ubuntu 24.04 LTS| Ubuntu 24.04 LTS|
 
-> ⚠️ **Notes:**  
-> - Isaac Sim officially supports **Linux + NVIDIA GPU + proprietary driver**.  
-> - Running large-scale RL (`--num_envs > 2048`) requires a high-end GPU and sufficient RAM.  
-> - If you encounter `Exit Code 137 (SIGKILL)`, it usually indicates **insufficient memory**.  
+> ⚠️ **Notes:**
+> - Isaac Sim officially supports **Linux + NVIDIA GPU + proprietary driver**.
+> - Running large-scale RL (`--num_envs > 2048`) requires a high-end GPU and sufficient RAM.
+> - If you encounter `Exit Code 137 (SIGKILL)`, it usually indicates **insufficient memory**.
 > - Windows and AMD GPUs are **not recommended** for full Isaac Lab compatibility.
 
 #### ⚙️ Software Requirements
@@ -59,7 +63,7 @@ Before installing Isaac Sim and Isaac Lab, please make sure your system meets th
 | **Conda / Mamba** | Latest | `conda --version` |
 | **Git** | ≥ 2.30 | `git --version` |
 
-#### ✅ Example (Our Verified Workstation at RoboTUM Oly office)
+#### ✅ Example (Our Verified Workstation at RoboTUM office)
 | Component | Specification |
 |------------|---------------|
 | **CPU** | AMD Ryzen (16 cores) |
@@ -72,82 +76,109 @@ Before installing Isaac Sim and Isaac Lab, please make sure your system meets th
 | **Status** | ✅ Fully compatible and tested for both Isaac Sim and Isaac Lab RL training |
 
 
-### Install Isaac Sim and Isaac Lab (please make sure to use pip for the installation).
-
-You can download them from the official NVIDIA link below: \
-https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html
-
-It also includes instructions on how to create a conda virtual environment.
-
-
 ### Clone the repositories
-Step 1: Clone the IsaacNext workspace
+
+Step 1: Clone the IsaacNext workspace.
+
 ```bash
-# You can clone it anywhere on your machine
+mkdir -p humanoid_workspace
+cd humanoid_workspace
 git clone https://github.com/The-RoboTUM/IsaacNext.git
 ```
-This repository is your main working environment.
 
-Step 2: Clone the URDF source repository
+Step 2: Clone the URDF source repository next to IsaacNext.
+
 ```bash
-# You can clone it anywhere on your machine
 git clone https://github.com/The-RoboTUM/urdfheim.git
 ```
 
-Inside that repo, you will find Forrest’s URDF file at:
+The setup script assumes this layout:
+
 ```bash
-urdfheim/complex/Forrest_URDF_description/urdf/
+humanoid_workspace/
+├── IsaacNext/
+└── urdfheim/
 ```
 
 ### Convert URDF to USD in Isaac Sim
 
-In Isaacsim, we need to USD file, so we need to convert URDF file to USD file.
+Forrest is loaded from a USD file, so the URDF in `urdfheim` must be converted before training or playing.
 
-Nest, let's go through the operation steps in detail:
-
-- Launch Isaacsim.
+- Launch Isaac Sim.
 ```bash
-cd path/to/IsaacNext 
+cd path/to/IsaacNext
 isaacsim
 ```
-- Use the URDF Importer to import the Forrest URDF file, **but before importing, please change the following settings**:
+- Use the URDF Importer to import Forrest from:
+```bash
+symlinks/forrest_ws/urdf/
+```
+- Before importing, use these settings:
 ![See the screenshot](images/urdf_import_setting.png)
   - Choose `Moveable Base`
   - Create `Collisions From Visuals`
   - Choose `Convex Decomposition`
-- after you finish doing above steps, Isaacsim will generate a folder: `Forrest_URDF`, at the same place of the urdf file.
-
-### (First-Time Setup) Create the symlinks Folder
-Go back to your IsaacNext repo:
-
+- The generated USD folder must be:
 ```bash
-cd path/to/IsaacNext
-mkdir -p symlinks
+symlinks/forrest_ws/urdf/forrest_isaac/
 ```
-The symlinks folder will store shortcuts (symbolic links) to external robot asset directories —
-this way, you don’t need to move or copy large generated files.
-
-
-Create a Symbolic Link to Forrest’s Generated USD Folder
-Now link the generated Forrest_URDF folder into IsaacNext/symlinks/.
-
+- The expected USD file is:
 ```bash
-cd IsaacNext/symlinks
-ln -s /absolute/path/to/urdfheim/complex/Forrest_URDF_description/urdf/Forrest_URDF Forrest_URDF
-
+symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd
 ```
 
+After importing or re-importing the Forrest USD, patch the generated USD layers:
 
-Your structure should now look like:
 ```bash
-IsaacNext/
-├── symlinks/
-│   └── Forrest_URDF -> /absolute/path/to/.../Forrest_URDF
+conda activate next
+python scripts/tools/patch_forrest_usd.py
+```
+
+This must be done because the URDF importer can leave stale references to the virtual anchor visual prims
+`/visuals/s23_assy_1_virtual` and `/visuals/s23_assy_2_virtual`. Without the patch, Isaac Sim prints repeated
+`omni.usd` unresolved reference warnings once per cloned RL environment.
+
+### Run the Automatic Setup
+
+From the IsaacNext repository root:
+
+```bash
+./scripts/setup_repo.sh
+```
+
+This script:
+- creates or updates the `next` conda environment from `environment.yml`
+- installs the Isaac Lab source extensions with `./isaaclab.sh -i`
+- installs the Git pre-commit hooks
+- creates `symlinks/forrest_ws`
+- patches the generated Forrest USD virtual visual references
+- configures Isaac Sim extension paths for PyCharm/static analysis
+
+After setup, activate the environment:
+
+```bash
+conda activate next
+```
+
+If PyCharm was open while running setup, use:
+
+```text
+File -> Invalidate Caches / Restart -> Invalidate and Restart
+```
+
+Useful setup variants:
+
+```bash
+./scripts/setup_repo.sh --env-name next
+./scripts/setup_repo.sh --urdfheim-dir /path/to/urdfheim
+./scripts/setup_repo.sh --skip-conda --skip-install --skip-pre-commit
+./scripts/setup_repo.sh --skip-ide-paths
+./scripts/setup_repo.sh --skip-usd-patch
 ```
 
 ## Joints Parameter Settings
-- In Isaacsim, open `/IsaacNext/symlinks/Forrest_URDF/Forrest_URDF.usd`, *pay attention to the suffix of this file, this is a `.usd` file.*
-- After you open the `Forrest_URDF.usd` file, then on the right-hand Stage panel in IsaacSim, find the joints folder:
+- In Isaac Sim, open `/IsaacNext/symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd`.
+- After opening the USD file, find the joints folder in the right-hand Stage panel:
 ![See the joits folder in the screenshot](images/joints%20folder%20in%20the%20IsaacSim.png)
 
   - For all set stiffness to 100 and damping to 1
@@ -157,7 +188,7 @@ IsaacNext/
 ![Anchor joints exclude them from articulation](images/anchor_joints_exclude_them_from_articulation.png)
   - For anchor joints set max force to 1000, stiffness to 1000 and damping to 10
   - For passive pantograph joints (r3b, r4f, r4b, l3b, l4f, l4b) set the stiffness to 0
-  - Set the offsets of all the joints to the list bellow (the **Joints limits** part)
+  - Set the offsets of all the joints to the list below (the **Joints limits** part)
 - Use stage search for 'collisions' and for all disable instantiable flag
 - Use stage search for 'mesh', for the active items, look all the bodies of the pantograph and the inner gears of the hip and disable collisions for them
 - Testing set a ground and simulate, check collisions
@@ -171,7 +202,7 @@ IsaacNext/
 - `l4b_intertarsal_back` = [-180, 35]
 - `l3f_femorotibial_front` = [-76, 18]
 - `l4f_intertarsal_front` = [-180, 180]
-- `Virtual_S23_Assyv18_mirror_1_anchor` = [-0.0573, 0.0573]
+- `virtual_s23_assy_2_anchor` = [-0.0573, 0.0573]
 - `l5_metatarsophalangeal` = [-20, 40]
 - `l6_interphalangeal` = [-100, 90]
 - `l4p_intertarsal_pulley` = [-180, 180]
@@ -186,7 +217,7 @@ IsaacNext/
 - `r3f_femorotibial_front` = [-76, 18]
 - `r4f_intertarsal_front` = [-180, 180]
 - `r4p_intertarsal_pulley` = [-180, 180]
-- `Virtual_S23_Assyv18_1_anchor` = [-0.0573, 0.0573]
+- `virtual_s23_assy_1_anchor` = [-0.0573, 0.0573]
 - `r5_metatarsophalangeal` = [-20, 40]
 - `r6_interphalangeal` = [-100, 90]
 - `r2p_acetabulofemoral_pulley` = [-180, 180]
@@ -202,20 +233,20 @@ After you have set the stiffness and motion range for each joint of the Forrest'
 First, go to the Stage panel on the right side, locate the corresponding link, and click the ➕, Then, find `Collision`, open it, and locate the corresponding item. Click the ➕, then select `mesh`. In the Property panel below, go to `Extra Properties`, find `Collision Enabled`, and following the instructions below, choose whether to activate or deactivate it.
 
 There is an example that illustrates the operation steps more vividly:
-- `base_link`:
+- `base_assy_v2_1`:
   - `Collision`
     - `Base_Assy_V2v18_1`
       - `mesh`: Collision Enabled ✅️
         ![](images/Collision%20Setting_base_link.png)
 
 
-- `Differential_Cage_Assyv7_mirror_1`: 
+- `Differential_Cage_Assyv7_mirror_1`:
   - `Collision`
     - `Differential_Cage_Assyv7_mirror_1`
       - `mesh`: Collision Enabled ✅️
-    - `Pulley_Linkage_10mm_Bearingv1_mirror_10`: 
+    - `Pulley_Linkage_10mm_Bearingv1_mirror_10`:
       - `mesh`: Collision Disabled ❌️
-    - `Pulley_Linkage_10mm_Bearingv1_mirror_3`: 
+    - `Pulley_Linkage_10mm_Bearingv1_mirror_3`:
       - `mesh`: Collision Disabled ❌️
 
 - `Differential_Cube_Assy_V2v4_mirror_1`:
@@ -225,55 +256,55 @@ There is an example that illustrates the operation steps more vividly:
     - `Outside_Hip_V2_Assyv28_mirror_1`
       - `mesh`: Collision Disabled ❌️
 
-- `Knee_Assyv9_mirror_1`: 
+- `Knee_Assyv9_mirror_1`:
   - `Collision`
     - `Knee_Assyv9_mirror_1`
       - `mesh`: Collision Enabled ✅️
 
-- `S12p_Pantograph_Spring_Assy_Topv2_mirror_1`: 
+- `S12p_Pantograph_Spring_Assy_Topv2_mirror_1`:
   - `Collision`
     - `S12p_Pantograph_Spring_Assy_Topv2_mirror_1`
       - `mesh`: Collision Disabled ❌️
     - `S12p_Pantograph_Spring_Assy_Botv1_mirror_1`
       - `mesh`: Collision Disabled ❌️
 
-- `S23_Assyv18_mirror_1_virtual`: 
+- `S23_Assyv18_mirror_1_virtual`:
   - `Collision`
     - `S23_Assyv18_mirror_1`
-      - `mesh`: Collision Disabled ❌️ 
+      - `mesh`: Collision Disabled ❌️
 
-- `S12_Front_Assyv6_mirror_1`: 
+- `S12_Front_Assyv6_mirror_1`:
   - `Collision`
     - `S12_Front_Assyv6_mirror_1`
       - `mesh`: Collision Disabled ❌️
 
-- `S23_Assyv18_mirror_1`: 
+- `S23_Assyv18_mirror_1`:
   - `Collision`
     - `S23_Assyv18_mirror_1`
       - `mesh`: Collision Enabled ✅️
 
-- `S34_Foot_Connector_Assy_mirror_1`: 
+- `S34_Foot_Connector_Assy_mirror_1`:
   - `Collision`
     - `S34_Foot_Connector_Assy_mirror_1`
       - `mesh`: Collision Enabled ✅️
 
-- `S45_Digit_Assyv2_mirror_1`: 
+- `S45_Digit_Assyv2_mirror_1`:
   - `Collision`
     - `S45_Digit_Assyv2_mirror_1`
       - `mesh`: Collision Enabled ✅️
-- `Main_GST_Pully_Assyv4_mirror_1`: 
+- `Main_GST_Pully_Assyv4_mirror_1`:
   - `Collision`
     - `Main_GST_Pully_Assyv4_mirror_1`
       - `mesh`: Collision Disabled ❌️
-- `Inner_Gear_Assy_V2v13_mirror_1`: 
+- `Inner_Gear_Assy_V2v13_mirror_1`:
   - `Collision`
     - `Inner_Gear_Assy_V2v13_mirror_1`
       - `mesh`: Collision Disabled ❌️
-- `Cable_Gear_Motor_V2v8_mirror_1`: 
+- `Cable_Gear_Motor_V2v8_mirror_1`:
   - `Collision`
     - `Cable_Gear_Motor_V2v8_mirror_1`
       - `mesh`: Collision Disabled ❌️
-- `Cable_Gear_Motor_V2v8_mirror_2`: 
+- `Cable_Gear_Motor_V2v8_mirror_2`:
   - `Collision`
     - `Cable_Gear_Motor_V2v8_mirror_2`
       - `mesh`: Collision Disabled ❌️
@@ -283,8 +314,8 @@ Now, the collision parameters for one leg are set. THe other leg, being fully sy
 
 
 
-<!-- 
-More to come ... 
+<!--
+More to come ...
 
 
 The following instructions are still a work in progress.
@@ -304,6 +335,77 @@ pip install -r requirements.txt
 
 ```
 -->
+
+
+## Forrest Tendon Calibration and PSO
+
+The central Forrest parameter profile lives in `configs/forrest/default/`. It is shared by the standalone tendon
+runner, PSO, and RL task configuration so replayed PSO results can be promoted into training without manually copying
+physics settings.
+
+### Standalone Tendon Replay
+
+Run the current default Forrest tendon profile:
+
+```bash
+./isaaclab.sh -p scripts/tendons/run.py --duration 120 --jit
+```
+
+Useful options:
+
+- `--parameters_file <path>` loads a profile directory or YAML override, for example a PSO `best.yaml`.
+- `--controller cpg|sin|cpg_oscillator` selects the open-loop controller.
+- `--constraint_mode static|boom|freefall` controls the base constraint for replay.
+- `--startup_hold` enables the configured startup hold before the controller starts.
+
+The runner prints the active ground and foot friction values at startup. Ground material settings are under
+`configs/forrest/default/base.yaml` in `physics.ground`; foot material settings used by RL randomization are under
+`configs/forrest/default/train.yaml` in `training.events`.
+
+### Live Calibration UI
+
+Open the live calibration windows with:
+
+```bash
+./isaaclab.sh -p scripts/tendons/run.py --calibration --duration 120 --jit
+```
+
+Calibration mode adds docked Isaac UI windows for:
+
+- tendon length and stiffness sliders, with editable min/max ranges;
+- baseline geometry parameters;
+- controller parameters for the selected controller;
+- reset, pause, and reset-and-stop controls;
+- live controller/tendon plots and a colored tendon overlay in the viewport.
+
+With no slider changes, `--calibration` is intended to match the normal replay physics. The UI path uses the same
+controller classes as non-calibration replay and only changes tendon/controller values when the live state is edited.
+
+### PSO Search
+
+Run the current PSO search:
+
+```bash
+./isaaclab.sh -p scripts/pso/run.py --headless --jit --iterations 1000
+```
+
+Outputs are written under `outputs/pso/<timestamp>/`:
+
+```text
+best.yaml
+best_info.yaml
+checkpoint.pt
+checkpoint_final.pt
+```
+
+Replay a PSO result:
+
+```bash
+./isaaclab.sh -p scripts/tendons/run.py --jit --parameters_file outputs/pso/<timestamp>/best.yaml --duration 20
+```
+
+The default profile currently contains the latest promoted PSO CPG/tendon values. Previous YAML values are left
+commented next to the active values for quick rollback while testing RL transfer.
 
 
 ## 🚀 Reinforcement Learning Pipeline
@@ -334,7 +436,7 @@ Selects the training task environment.
 
   - `Forrest`: the name of our robot.
 
-  - `-v0`: indicates the version number of this environment. 
+  - `-v0`: indicates the version number of this environment.
   - Alternatively, you can choose the `Flat` scenario (flat terrain), which is useful for training in obstacle-free environments.
 
 - `--headless`
@@ -344,14 +446,124 @@ Runs in headless mode (no rendering). This is recommended when training on serve
 Sets the maximum number of training iterations, here 10,000 iterations.
 In each iteration, data is collected from multiple environments and used to update the policy.
 
-- `--num_envs=4096` Specifies the number of parallel environments, here 4096 environments (or robots) running simultaneously. 
-  - The more environments, the faster the data sampling, but the higher the demand on GPU/CPU resources. 
-  - With our cerrent setup (RTX 5080 GPU AND 64 GB of RAM), 4096 environments is the upper limit. Therefore, please choose an appropriate numer of environments when running training.
+- `--num_envs=4096` Specifies the number of parallel environments, here 4096 environments (or robots) running simultaneously.
+  - The more environments, the faster the data sampling, but the higher the demand on GPU/CPU resources.
+  - With our current setup (RTX 5080 GPU AND 64 GB of RAM), 4096 environments is the upper limit. Therefore, please choose an appropriate number of environments when running training.
   - These 4096 robots are independent. If you enable rendering, you may sometimes see them visually overlapping, but their trajectories and training batches remain unaffected.
 
 - `--resume`
 Continues training from a previously saved checkpoint instead of starting from scratch.
 
+
+### Experiment Tracking
+
+Training now writes reproducibility metadata and checkpoint aliases into each run directory:
+
+```text
+logs/rsl_rl/<experiment>/<run>/
+├── latest.pt
+├── final.pt
+├── params/
+└── tracking/run_metadata.json
+```
+
+Run normally with tracking disabled:
+
+```bash
+./isaaclab.sh \
+ -p scripts/reinforcement_learning/rsl_rl/train.py \
+ --task=Isaac-Velocity-Rough-Forrest-v0 \
+ --headless \
+ --num_envs=4096
+```
+
+Enable Weights & Biases:
+
+```bash
+wandb login
+
+./isaaclab.sh \
+ -p scripts/reinforcement_learning/rsl_rl/train.py \
+ --task=Isaac-Velocity-Rough-Forrest-v0 \
+ --headless \
+ --num_envs=4096 \
+ --logger=wandb \
+ --log_project_name=isaacnext-forrest
+```
+
+Extra tracking metrics are throttled separately from RSL-RL's own logging. Useful knobs:
+
+```bash
+--log_interval=1
+--tracking_extra_metrics_interval=1
+--tracking_raw_reward_interval=0
+--tracking_tendon_metrics_interval=10
+--tracking_checkpoint_artifact_interval=0
+```
+
+For Forrest runs, the same defaults live in `configs/forrest/default/train.yaml` under `agent.runner`.
+
+Resume from the latest checkpoint in a run:
+
+```bash
+./isaaclab.sh \
+ -p scripts/reinforcement_learning/rsl_rl/train.py \
+ --task=Isaac-Velocity-Rough-Forrest-v0 \
+ --headless \
+ --resume \
+ --load_run=<run-folder-name> \
+ --checkpoint=latest.pt
+```
+
+See [RL experiment tracking](docs/source/rl_experiment_tracking.md) for the metric namespaces and file layout.
+
+
+### Deterministic Evaluation
+
+Use the standalone evaluator to compare checkpoints without changing training state:
+
+```bash
+./isaaclab.sh \
+ -p scripts/reinforcement_learning/rsl_rl/evaluate.py \
+ --task=Isaac-Velocity-Flat-Forrest-Play-v0 \
+ --num_envs=64 \
+ --episodes=128 \
+ --load_run=<run-folder-name> \
+ --checkpoint=latest.pt \
+ --lin_vel_x=0.5 \
+ --lin_vel_y=0.0 \
+ --ang_vel_z=0.0
+```
+
+The evaluator writes a JSON summary under `logs/rsl_rl/<experiment>/<run>/eval/` unless `--output` is provided.
+
+### Training Profiling
+
+Profiling is disabled by default. Enable the lightweight training profiler with one flag:
+
+```bash
+./isaaclab.sh \
+ -p scripts/reinforcement_learning/rsl_rl/train.py \
+ --task=Isaac-Velocity-Rough-Forrest-v0 \
+ --headless \
+ --num_envs=4096 \
+ --profile
+```
+
+The profiler writes `profile/profile_summary.json` inside the run directory with timing totals for environment
+stepping, physics substeps, tendon application, rewards, terminations, observations, policy action, PPO update,
+logging, and checkpoint saves.
+
+For tendon performance experiments, adjust:
+
+```yaml
+training:
+  actions:
+    tendon_update_interval: 1
+```
+
+in `configs/forrest/default/train.yaml`. Try `2` or `4` to reuse cached passive tendon torques across physics
+substeps; `1` preserves the original behavior.
 
 
 
@@ -385,10 +597,10 @@ Selects the task environment to run.
 Specifies the number of parallel environments, here 10 robots running simultaneously.
 This smaller number is convenient for testing and visualization, allowing you to observe the performance of multiple robots at once.
 
-More to come ... 
+More to come ...
 
 
 ---
 
-📫 Maintained by **RoboTUM Humanoid Project Team**  
+📫 Maintained by **RoboTUM Humanoid Project Team**
 If you have any questions, feel free to open an [issue](https://github.com/The-RoboTUM/IsaacNext/issues) or contact the maintainers on our Slack channel.

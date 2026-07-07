@@ -1,0 +1,231 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+# First-pass Forrest PSO configuration.
+#
+# The search runs in normalized [0, 1] coordinates internally. Bounds below are
+# physical values and the exported best.yaml is a Forrest parameter override that
+# can be replayed with scripts/tendons/run.py --parameters_file <best.yaml>.
+
+swarm:
+  num_particles: 128
+  rollouts_per_iteration: 128
+  iterations: 1000
+  async_update: true
+  inertia: 0.70
+  inertia_start: 0.90
+  inertia_end: 0.40
+  cognitive: 1.50
+  social: 1.50
+  velocity_clamp: 0.25
+  topology: "ring"
+  neighborhood_size: 5
+  initialization: "sobol"
+  restart_after_iterations: 10
+  restart_fraction: 0.25
+  reset_personal_best_on_restart: true
+  best_reevaluate_interval: 0
+  best_reevaluate_blend: 0.00
+  seed: 42
+
+objective:
+  # Parallel simulation slots. These are recycled until rollouts_per_iteration is complete.
+  num_envs: 512
+  #  num_envs: 768
+  duration: 5.0
+  # Matches the Forrest RL parent env default. The tendon debug runner profile uses 0.0024.
+  # Keeping this here makes PSO about 2x cheaper per simulated second.
+  sim_dt: 0.005
+  startup_hold_duration: 0.0
+  constraint_mode: "boom"
+  env_spacing: 3.0
+  status_interval: 10
+  eval_after_startup_hold: true
+  # Existing Forrest boom environments author per-env USD joints and disable replicated physics.
+  replicate_physics: false
+  use_command_curriculum: false
+  command_curriculum:
+    enabled: false
+    command_name: "base_velocity"
+    initial_unlocked_bin: 0
+    successes_to_unlock: 8
+    min_attempts_to_unlock: 16
+    min_success_rate_to_unlock: 0.5
+    max_attempts_to_track: 256
+    success_velocity_tolerance: 0.30
+    success_yaw_rate_tolerance: 0.45
+    success_min_survival_fraction: 0.95
+    sample_only_frontier: false
+    reset_counts_on_unlock: false
+    include_stand_bin: true
+    lin_vel_x_min: 0.0
+    lin_vel_x_max: 2.0
+    lin_vel_x_bin_width: 0.1
+    lin_vel_y: 0.0
+    ang_vel_z: 0.0
+  # PSO-only sampling bias. RL samples all unlocked command bins uniformly.
+  # With this enabled, older/slower bins become less likely as harder bins unlock.
+  prefer_newer_command_bins: true
+  older_command_bin_probability_decay: 0.35
+  # PSO evaluates the same reward math as the Forrest RL env. When the command
+  # curriculum is enabled, commands are sampled from train.yaml command bins.
+  # Used only when use_command_curriculum is false.
+  command: [ 1.0, 0.0, 0.0 ]
+  terminations:
+    base_too_low_height: 0.75
+    terminate_on_unphysical: true
+    unphysical_penalty: 12.0
+    terminate_on_backward_progress: false
+    # Backward motion is penalized in the score, but not used as an early termination while searching for boom gaits.
+    backward_termination_grace_s: 2.0
+    max_backward_displacement: 0.50
+    # These reject obvious optimizer exploits such as skating/teleport-like motion.
+    max_forward_speed: 20.0
+    max_lateral_speed: 10.5
+    max_vertical_speed: 20.0
+    max_root_angular_speed: 25.0
+    max_height: 3.6
+    # Empty undesired_contact_body_names means all contact-sensor bodies except the two digit foot bodies.
+    # This terminates sprawled/skating candidates where the shin, hip, base, or foot connector touches the ground.
+    terminate_on_undesired_contact: true
+    undesired_contact_grace_s: 0.50
+    undesired_contact_consecutive_steps: 12
+    undesired_contact_force_threshold: 20.0
+    undesired_contact_body_names: [ ]
+    # Terminate unstable candidates whose lower-chain joints enter high-frequency ringing.
+    # J8/KFT disc joints are intentionally not included.
+    terminate_on_joint_vibration: true
+    joint_vibration_grace_s: 0.35
+    joint_vibration_consecutive_steps: 6
+    max_joint_vibration_velocity: 300.0
+    max_joint_vibration_acceleration: 20000.0
+    joint_vibration_joint_names:
+      - "l5_metatarsophalangeal"
+      - "l6_interphalangeal"
+      - "r5_metatarsophalangeal"
+      - "r6_interphalangeal"
+  reward_weights:
+    # Max-forward mode:
+    #   command can stay at [1.0, 0.0, 0.0], track_* weights at 0, forward_vel_x > 0.
+    # Command-tracking mode:
+    #   set command to the desired velocity, set track_lin_vel_xy_exp/track_ang_vel_z_exp > 0,
+    #   and usually set forward_vel_x to 0.
+    alive: 0.05
+    termination_penalty: -2.0
+    unphysical_termination_penalty: -4.0
+    track_base_height_exp: 0.0
+    track_lin_vel_xy_exp: 0.0
+    forward_vel_x: 8.0
+    track_ang_vel_z_exp: 0.0
+    feet_crossing: -0.0
+    feet_parallel_contact: -0.0
+    feet_air_time: 0.0
+    feet_slide: -0.05
+    joint_deviation_l1: -0.00
+    hip_deviation_l1: -0.0
+    gait_symmetry: -0.0
+    foot_connector_contact: -0.25
+    lin_vel_z_l2: -0.05
+    flat_orientation_l2: -0.10
+    action_rate_l2: -0.00010
+    dof_acc_l2: 0.0
+    dof_torques_l2: 0.0
+
+output:
+  directory: "outputs/pso"
+  save_every: 10
+  best_checkpoint_interval: 10
+
+parameters:
+  - name: "tendons.baseline.lengths.gst_spring_rest"
+    min: 0.03373
+    max: 0.04123
+    initial: 0.03748
+  # Tendon path lengths are still kept moderate compared with the CPG search:
+  # enough to escape calibration bias, not enough to freely redesign routing.
+  #  - name: "tendons.baseline.lengths.upper_gst"
+  #    min: 0.50638
+  #    max: 0.61890
+  #    initial: 0.56264
+  #  - name: "tendons.baseline.lengths.lower_gst"
+  #    min: 0.59818
+  #    max: 0.73110
+  #    initial: 0.66464
+  - name: "tendons.baseline.lengths.dft"
+    min: 0.35686
+    max: 0.43616
+    initial: 0.39651
+  - name: "tendons.baseline.lengths.edt1"
+    min: 0.51431
+    max: 0.62861
+    initial: 0.57146
+  - name: "tendons.baseline.lengths.edt2"
+    min: 0.63406
+    max: 0.77496
+    initial: 0.70451
+  #  - name: "tendons.baseline.lengths.kft"
+  #    min: 0.39859
+  #    max: 0.48717
+  #    initial: 0.44288
+  #  - name: "tendons.baseline.stiffness.gst"
+  #    min: 25000.0
+  #    max: 55000.0
+  #    initial: 38100.0
+  #  - name: "tendons.baseline.stiffness.dft"
+  #    min: 150000.0
+  #    max: 250000.0
+  #    initial: 200000.0
+  #  - name: "tendons.baseline.stiffness.edt1"
+  #    min: 150000.0
+  #    max: 250000.0
+  #    initial: 200000.0
+  #  - name: "tendons.baseline.stiffness.edt2"
+  #    min: 150000.0
+  #    max: 250000.0
+  #    initial: 200000.0
+  #  - name: "tendons.baseline.stiffness.kft"
+  #    min: 150000.0
+  #    max: 250000.0
+  #    initial: 200000.0
+  - name: "run.cpg.f_hz"
+    min: 0.80
+    max: 1.20
+    initial: 1.00
+  - name: "run.cpg.duty_factor"
+    min: 0.50
+    max: 0.70
+    initial: 0.60
+  - name: "run.cpg.hip_amplitude_deg"
+    min: 20.0
+    max: 42.0
+    initial: 30.45
+  - name: "run.cpg.hip_offset_deg"
+    min: 0.0
+    max: 16.0
+    initial: 8.0
+  - name: "run.cpg.knee_amplitude_deg"
+    min: 140.0
+    max: 205.0
+    initial: 172.5
+  - name: "run.cpg.swing_start_offset"
+    min: 0.00
+    max: 0.06
+    initial: 0.02
+  - name: "run.cpg.swing_end_offset"
+    min: 0.01
+    max: 0.10
+    initial: 0.05
+  - name: "run.cpg.combined_phase_offset_rad"
+    min: 0.7854
+    max: 2.3562
+    initial: 1.5708
+  - name: "run.cpg.left_phase_offset_rad"
+    min: -2.3562
+    max: -0.7854
+    initial: -1.5708
+  - name: "run.cpg.right_phase_offset_rad"
+    min: 0.7854
+    max: 2.3562
+    initial: 1.5708

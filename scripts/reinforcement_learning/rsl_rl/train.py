@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -31,6 +31,15 @@ parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
 )
 parser.add_argument("--export_io_descriptors", action="store_true", default=False, help="Export IO descriptors.")
+parser.add_argument(
+    "--ray-proc-id", "-rid", type=int, default=None, help="Automatically configured by Ray integration, otherwise None."
+)
+parser.add_argument(
+    "--profile",
+    action="store_true",
+    default=False,
+    help="Write a lightweight training phase timing summary to the run directory.",
+)
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -72,12 +81,13 @@ if version.parse(installed_version) < version.parse(RSL_RL_VERSION):
 
 """Rest everything follows."""
 
-import gymnasium as gym
+import logging
 import os
-import torch
+import time
 from datetime import datetime
 
-import omni
+import gymnasium as gym
+import torch
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
 from isaaclab.envs import (
@@ -88,13 +98,28 @@ from isaaclab.envs import (
     multi_agent_to_single_agent,
 )
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.io import dump_pickle, dump_yaml
+from isaaclab.utils.io import dump_yaml
 
-from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
+from isaaclab_rl.rsl_rl import (
+    RslRlBaseRunnerCfg,
+    RslRlVecEnvWrapper,
+    TrackingOptions,
+    create_experiment_logger,
+    finalize_training_checkpoint,
+    handle_deprecated_rsl_rl_cfg,
+    install_tracking_hooks,
+    install_training_profiler,
+    restore_checkpoint_infos,
+    wandb_available,
+    write_run_metadata,
+)
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
+
+# import logger
+logger = logging.getLogger(__name__)
 
 # PLACEHOLDER: Extension template (do not remove this comment)
 
@@ -114,10 +139,23 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg.max_iterations
     )
 
+    # handle deprecated configurations
+    agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, installed_version)
+    wandb_requested = agent_cfg.logger == "wandb"
+    if wandb_requested and not wandb_available():
+        logger.warning("W&B was requested but the wandb package is not installed. Falling back to TensorBoard.")
+        agent_cfg.logger = "tensorboard"
+
     # set the environment seed
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = agent_cfg.seed
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
+    # check for invalid combination of CPU device with distributed training
+    if args_cli.distributed and args_cli.device is not None and "cpu" in args_cli.device:
+        raise ValueError(
+            "Distributed training is not supported when using CPU device. "
+            "Please use GPU device (e.g., --device cuda) for distributed training."
+        )
 
     # multi-gpu training configuration
     if args_cli.distributed:
@@ -135,20 +173,23 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
     # specify directory for logging runs: {time-stamp}_{run_name}
     log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    # The Ray Tune workflow extracts experiment name using the logging line below, hence, do not change it (see PR #2346, comment-2819298849)
+    # The Ray Tune workflow extracts experiment name using the logging line below, hence, do not
+    # change it (see PR #2346, comment-2819298849)
     print(f"Exact experiment name requested from command line: {log_dir}")
     if agent_cfg.run_name:
         log_dir += f"_{agent_cfg.run_name}"
     log_dir = os.path.join(log_root_path, log_dir)
 
-    # set the IO descriptors output directory if requested
+    # set the IO descriptors export flag if requested
     if isinstance(env_cfg, ManagerBasedRLEnvCfg):
         env_cfg.export_io_descriptors = args_cli.export_io_descriptors
-        env_cfg.io_descriptors_output_dir = log_dir
     else:
-        omni.log.warn(
+        logger.warning(
             "IO descriptors are only supported for manager based RL environments. No IO descriptors will be exported."
         )
+
+    # set the log directory for the environment (works for all environment types)
+    env_cfg.log_dir = log_dir
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
@@ -173,6 +214,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print_dict(video_kwargs, nesting=4)
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
+    start_time = time.time()
+
     # wrap around environment for rsl-rl
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
@@ -185,20 +228,53 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
     # write git state to logs
     runner.add_git_repo_to_log(__file__)
+
+    tracker = create_experiment_logger(enabled=wandb_requested and agent_cfg.logger == "wandb")
+    tracking_options = TrackingOptions(
+        log_interval=agent_cfg.log_interval,
+        extra_metrics_interval=agent_cfg.tracking_extra_metrics_interval,
+        raw_reward_interval=agent_cfg.tracking_raw_reward_interval,
+        tendon_metrics_interval=agent_cfg.tracking_tendon_metrics_interval,
+        checkpoint_alias_interval=agent_cfg.tracking_checkpoint_alias_interval,
+        checkpoint_artifact_interval=agent_cfg.tracking_checkpoint_artifact_interval,
+    )
+    tracking_logger = install_tracking_hooks(
+        runner=runner,
+        tracker=tracker,
+        log_dir=log_dir,
+        options=tracking_options,
+    )
+    profiler = install_training_profiler(runner, log_dir=log_dir, enabled=args_cli.profile)
+
     # load the checkpoint
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
-        runner.load(resume_path)
+        resume_infos = runner.load(resume_path)
+        tracking_logger.env_steps = restore_checkpoint_infos(resume_infos)
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
-    dump_pickle(os.path.join(log_dir, "params", "env.pkl"), env_cfg)
-    dump_pickle(os.path.join(log_dir, "params", "agent.pkl"), agent_cfg)
+    write_run_metadata(
+        log_dir=log_dir,
+        env_cfg=env_cfg,
+        agent_cfg=agent_cfg,
+        seed=agent_cfg.seed,
+        task=args_cli.task,
+        tracker=tracker,
+    )
 
     # run training
-    runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
+    try:
+        runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
+    finally:
+        finalize_training_checkpoint(runner)
+        profile_path = profiler.write_summary()
+        if profile_path is not None:
+            print(f"[INFO] Training profile summary written to: {profile_path}")
+
+    print(f"Training time: {round(time.time() - start_time, 2)} seconds")
 
     # close the simulator
     env.close()

@@ -1,0 +1,153 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+agent:
+  runner:
+    log_interval: 10  # RSL-RL logger write interval in learning iterations; 1 logs every iteration.
+    tracking_extra_metrics_interval: 10  # Extra W&B tracking scalar interval; 0 disables extra scalars.
+    tracking_raw_reward_interval: 0  # Raw per-step reward metric interval; 0 avoids duplicating RSL-RL reward logs.
+    tracking_tendon_metrics_interval: 0  # Tendon safety metric interval; 0 disables.
+    tracking_checkpoint_alias_interval: 0  # Local latest/final checkpoint alias interval; 0 disables aliases.
+    tracking_checkpoint_artifact_interval: 0  # W&B checkpoint artifact interval; 0 disables checkpoint uploads.
+
+training:
+  episode_length_s: 8.0  # Training episode length override in seconds; null keeps parent env default.
+  play_episode_length_s: 40.0  # Episode length used by play/evaluation config.
+  actions:
+    scale_deg:
+      ".*roll": 15.0  # Max commanded roll joint offset in degrees for matching joints.
+      ".*lateral": 10.0  # Max commanded lateral/yaw hip joint offset in degrees.
+      ".*flexion": 45.0  # Max commanded hip flexion joint offset in degrees.
+      ".*flexor": 203.0  # Max commanded knee flexor joint offset in degrees.
+    use_default_offset: true  # Add action commands around the robot's default joint pose.
+    tendon_update_interval: 4  # Passive tendon recompute interval in physics substeps; 1 keeps current behavior.
+  contacts:
+    foot_body_names: [ "s45_digit_assy_1", "s45_digit_assy_2" ]  # Bodies treated as feet for foot rewards.
+    foot_connector_body_names: [ "s34_foot_connector_assy_1", "s34_foot_connector_assy_2" ]  # Connector bodies penalized on contact.
+    contact_sensor_body_names: # Bodies included in the contact sensor pattern.
+      - "s45_digit_assy_1"  # Right/left foot digit body.
+      - "s45_digit_assy_2"  # Right/left foot digit body.
+      - "base_assy_v2_1"  # Base body used for undesired contact/termination checks.
+    #      - "outside_hip_v2_assy_axial_left_1"  # Hip side body tracked for contact.
+    #      - "outside_hip_v2_assy_axial_1"  # Hip side body tracked for contact.
+    #      - "differential_cage_assy_small_motor_1"  # Base/hip drivetrain body tracked for contact.
+    #      - "differential_cage_assy_small_motor_2"  # Base/hip drivetrain body tracked for contact.
+    #      - "s34_foot_connector_assy_1"  # Foot connector body tracked for contact penalties.
+    #      - "s34_foot_connector_assy_2"  # Foot connector body tracked for contact penalties.
+    base_termination_body_names: # Bodies that terminate the episode when they hit the ground.
+      - "base_assy_v2_1"  # Main base body.
+    #      - "differential_cage_assy_small_motor_1"  # Drivetrain body near base.
+    #      - "differential_cage_assy_small_motor_2"  # Drivetrain body near base.
+    #      - "outside_hip_v2_assy_axial_1"  # Hip side body.
+    #      - "outside_hip_v2_assy_axial_left_1"  # Hip side body.
+    update_period: 0.0  # Contact sensor update period; 0.0 means every physics step.
+    history_length: 6  # Number of contact history frames kept by the sensor.
+    debug_vis: false  # Show contact sensor debug visualization.
+    track_air_time: true  # Track foot air time for gait rewards.
+    right_foot_index: 0  # Index of the right foot within foot_body_names/contact tensors.
+    left_foot_index: 1  # Index of the left foot within foot_body_names/contact tensors.
+    forward_dir_b: [ 1.0, 0.0, 0.0 ]  # Robot forward direction expressed in base frame.
+    lateral_dir_b: [ 0.0, 1.0, 0.0 ]  # Robot lateral direction expressed in base frame.
+  rewards:
+    weights:
+      alive: 0.0  # Constant survival reward per step.
+      termination_penalty: -100.0  # Penalty applied when an episode terminates early.
+      track_base_height_exp: 2.0  # Weight for tracking target base height.
+      track_lin_vel_xy_exp: 4.0  # Weight for commanded horizontal velocity tracking.
+      forward_vel_x: 0.0  # Reward positive world-frame +X base velocity.
+      track_ang_vel_z_exp: 0.1  # Weight for commanded yaw-rate tracking.
+      feet_crossing: -0.0  # Penalty for feet crossing laterally.
+      feet_parallel_contact: -0.0  # Penalty for invalid/parallel foot contact orientation.
+      feet_air_time: 0.0  # Reward for foot swing air time.
+      feet_slide: 0.0  # Penalty for sliding feet while in contact.
+      joint_deviation_l1: -0.1  # Penalty for joint positions away from nominal pose.
+      hip_deviation_l1: -0.3  # Stronger penalty for hip deviation.
+      gait_symmetry: -0.0  # Penalty for asymmetric foot placement/gait timing.
+      foot_connector_contact: -0.0  # Penalty when foot connector bodies contact the ground.
+      lin_vel_z_l2: -0.3  # Penalty for vertical base velocity.
+      flat_orientation_l2: -1.0  # Penalty for body tilt away from upright.
+      action_rate_l2: -0.005  # Penalty for rapidly changing actions.
+      dof_acc_l2: -1.25e-8  # Penalty for large joint accelerations.
+      dof_torques_l2: -1.5e-8  # Penalty for large actuator torques.
+    feet_crossing:
+      min_lateral_separation: 0.10  # Desired minimum lateral spacing between feet in meters.
+      expected_foot0_lateral_order: -1.0  # Sign convention for which foot should be on which side.
+      side_margin: 0.02  # Deadband margin before crossing penalty starts.
+      max_crossing_error: 0.25  # Error value where crossing penalty saturates.
+      debug: false  # Print/debug this reward term.
+      debug_every: 10  # Debug print interval in steps.
+      debug_env_id: 0  # Environment index used for debug output.
+    feet_parallel_contact:
+      contact_threshold: 1.0  # Contact force threshold used to decide whether a foot is grounded.
+      sole_normal_axis: [ 0.0, 0.0, 1.0 ]  # Foot sole normal axis in the foot/body frame.
+      ground_normal_w: [ 0.0, 0.0, 1.0 ]  # World-frame ground normal.
+      debug: false  # Print/debug this reward term.
+      debug_every: 100  # Debug print interval in steps.
+      debug_env_id: 0  # Environment index used for debug output.
+    track_base_height:
+      target_height: 1.4  # Desired base height in meters.
+      std: 0.3  # Exponential reward width for height tracking.
+    track_velocity:
+      lin_vel_xy_std: 0.50  # Exponential reward width for linear velocity tracking.
+      ang_vel_z_std: 0.50  # Exponential reward width for yaw-rate tracking.
+    feet_air_time_threshold: 0.4  # Air-time threshold in seconds before reward is credited.
+    gait_symmetry:
+      alpha: 0.001  # EMA update rate for measuring how often each foot is ahead.
+      debug: false  # Print/debug this reward term.
+      debug_every: 10  # Debug print interval in steps.
+      debug_env_id: 0  # Environment index used for debug output.
+    undesired_contact_threshold: 1.0  # Contact force threshold for undesired contact penalties.
+  events:
+    disable_push_robot: true  # Disable random external push disturbances during training.
+    disable_add_base_mass: true  # Disable random base mass changes during training.
+    randomize_initial_base_pose: true  # Apply reset_base_pose_range once at startup so cloned envs do not all face the same way.
+    foot_static_friction_range: [ 1.4, 1.4 ]  # Dry rubber foot static friction range for RL material randomization.
+    foot_dynamic_friction_range: [ 1.1, 1.1 ]  # Dry rubber foot dynamic friction range for RL material randomization.
+    foot_restitution_range: [ 0.0, 0.0 ]  # Rubber sole bounce; keep zero unless modeling compliant soles explicitly.
+    foot_material_num_buckets: 64  # Number of sampled material buckets for foot friction randomization.
+    reset_robot_joint_position_range: [ 1.0, 1.0 ]  # Multiplicative reset range for default joint positions; fixed at 1.0 means no randomization.
+    external_force_body_names: [ "base_assy_v2_1" ]  # Body names targeted by external force events.
+    base_com_body_names: [ "base_assy_v2_1" ]  # Body names targeted by center-of-mass randomization.
+    reset_base_pose_range:
+      x: [ -0.5, 0.5 ]  # Reset range for base x position in meters.
+      y: [ -0.5, 0.5 ]  # Reset range for base y position in meters.
+      yaw: [ -3.14, 3.14 ]  # Reset range for base yaw angle in radians.
+    reset_base_velocity_range:
+      x: [ 0.0, 0.0 ]  # Reset range for base x velocity in m/s.
+      y: [ 0.0, 0.0 ]  # Reset range for base y velocity in m/s.
+      z: [ 0.0, 0.0 ]  # Reset range for base z velocity in m/s.
+      roll: [ 0.0, 0.0 ]  # Reset range for base roll angular velocity in rad/s.
+      pitch: [ 0.0, 0.0 ]  # Reset range for base pitch angular velocity in rad/s.
+      yaw: [ 0.0, 0.0 ]  # Reset range for base yaw angular velocity in rad/s.
+  commands:
+    lin_vel_x: [ 3.2, 3.2 ]  # Commanded forward velocity sampling range in m/s.
+    lin_vel_y: [ -0.0, 0.0 ]  # Lateral velocity range; sampled independently when x curriculum is enabled.
+    ang_vel_z: [ -0.5, 0.5 ]  # Yaw-rate range; sampled independently when x curriculum is enabled.
+  command_curriculum:
+    enabled: false
+    command_name: "base_velocity"
+    initial_unlocked_bin: 0
+    successes_to_unlock: 1024
+    min_attempts_to_unlock: 2048
+    min_success_rate_to_unlock: 0.1
+    max_attempts_to_track: 8192
+    success_velocity_tolerance: 0.20  # PSO/tolerance fallback: absolute x/y velocity tolerance in m/s.
+    success_yaw_rate_tolerance: 0.20  # PSO/tolerance fallback: absolute yaw-rate tolerance in rad/s.
+    success_check_lin_vel_y: false  # The curriculum advances only on forward speed; y is sampled from commands.
+    success_check_ang_vel_z: false  # The curriculum advances only on forward speed; yaw is sampled from commands.
+    success_tracking_reward_threshold: 0.50  # RL unlocks when mean raw speed-tracking reward is at least this value.
+    success_tracking_reward_std: 0.50  # Same exponential width as rewards.track_velocity.lin_vel_xy_std.
+    success_min_survival_fraction: 0.5
+    sample_only_frontier: false
+    sample_lookahead_lin_vel_x: 0.5  # Sample up to this many m/s ahead of the currently unlocked x bin.
+    reset_counts_on_unlock: false
+    include_stand_bin: true
+    lin_vel_x_min: 0.0
+    lin_vel_x_max: 4.0
+    lin_vel_x_bin_width: 0.1
+    lin_vel_y: 0.0
+    ang_vel_z: 0.0
+  terminations:
+    base_too_low_height: 0.5  # Terminate when base height falls below this value in meters.

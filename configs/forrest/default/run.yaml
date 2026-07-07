@@ -1,0 +1,74 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+run:
+  duration: 15.0  # Standalone tendon simulation duration in seconds when --duration is not passed.
+  status_interval: 100  # Print one progress line every N simulation steps.
+  startup_hold_enabled: false  # Hold initial measured joint targets before starting the gait controller.
+  startup_hold_duration: 0.0  # Startup hold duration in seconds.
+  controller: "cpg"  # Default open-loop controller for scripts/tendons/run.py: "sin", "cpg", or "cpg_oscillator".
+  constraint_mode: "boom"  # Base constraint for scripts/tendons/run.py: "freefall", "boom", or "static".
+  cpg:
+    #    f_hz: 1.0  # CPG cycle frequency in Hz.
+    f_hz: 0.8878628015518188  # CPG cycle frequency in Hz.
+    #    duty_factor: 0.60  # Fraction of the gait cycle spent in stance.
+    duty_factor: 0.6988030672073364  # Fraction of the gait cycle spent in stance.
+    #    hip_amplitude_deg: 30.45  # Hip flexion sinusoid amplitude.
+    hip_amplitude_deg: 40.16638946533203  # Hip flexion sinusoid amplitude.
+    #    hip_offset_deg: 8.0  # Hip flexion offset.
+    hip_offset_deg: 12.276679039001465  # Hip flexion offset.
+    #    knee_amplitude_deg: 172.5  # Knee flexion swing amplitude.
+    knee_amplitude_deg: 202.67916870117188  # Knee flexion swing amplitude.
+    #    swing_start_offset: 0.02  # Phase offset after stance before knee swing starts.
+    swing_start_offset: 0.0532335601747036  # Phase offset after stance before knee swing starts.
+    #    swing_end_offset: 0.05  # Phase offset before cycle end where knee swing stops.
+    swing_end_offset: 0.05132079869508743  # Phase offset before cycle end where knee swing stops.
+    #    combined_phase_offset_rad: 1.5708  # Common phase offset added to both legs.
+    combined_phase_offset_rad: 1.5085276365280151  # Common phase offset added to both legs.
+    #    left_phase_offset_rad: -1.5708  # Left leg phase offset before common offset.
+    left_phase_offset_rad: -2.221369743347168  # Left leg phase offset before common offset.
+    #    right_phase_offset_rad: 1.5708  # Right leg phase offset before common offset.
+    right_phase_offset_rad: 0.9110506772994995  # Right leg phase offset before common offset.
+    include_knee: true  # Include knee flexion command in the CPG controller.
+  cpg_oscillator:
+    f_hz: 0.0  # Oscillator cycle frequency in Hz.
+    duty_factor: 0.0  # Fraction of gait cycle spent in stance before phase warping.
+    left_phase_rad: 0.0  # Left leg oscillator phase offset.
+    right_phase_rad: 3.141592653589793  # Right leg oscillator phase offset.
+    hip_flexion_amplitude_deg: 0.0
+    hip_flexion_offset_deg: 0.0
+    hip_flexion_phase_rad: 0.0
+    knee_flexion_amplitude_deg: 0.0
+    knee_flexion_offset_deg: 0.0
+    knee_flexion_phase_rad: 0.0
+    knee_swing_power: 0.0  # Higher values concentrate knee flexion into mid-swing.
+    hip_roll_amplitude_deg: 0.0
+    hip_roll_offset_deg: 0.0
+    hip_roll_phase_rad: 0.0
+    hip_yaw_amplitude_deg: 0.0
+    hip_yaw_offset_deg: 0.0
+    hip_yaw_phase_rad: 0.0
+  sinusoidal:
+    f_hz: 0.0  # Sinusoidal controller frequency in Hz.
+    left_phi0_rad: 0.0  # Left leg base phase offset.
+    right_phi0_rad: 3.141592653589793  # Right leg base phase offset.
+    amplitude_deg:
+      hip_roll: 0.0
+      hip_yaw: 0.0
+      hip_flexion: 0.0
+      knee_flexion: 0.0
+    offset_deg:
+      hip_roll: 0.0
+      hip_yaw: 0.0
+      hip_flexion: 8.0
+      knee_flexion: 0.0
+    left_phase_rad:
+      hip_flexion: 0.0
+      knee_flexion: 0.0
+    right_phase_rad:
+      hip_flexion: 0.0
+      knee_flexion: 0.0
+  output_dir: "outputs"  # Directory for debug JSONL logs and generated artifacts.
+  video_output: "outputs/simulation.mp4"  # Default MP4 path when video recording is enabled.

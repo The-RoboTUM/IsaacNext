@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -36,6 +36,42 @@ def add_rsl_rl_args(parser: argparse.ArgumentParser):
     )
     arg_group.add_argument(
         "--log_project_name", type=str, default=None, help="Name of the logging project when using wandb or neptune."
+    )
+    arg_group.add_argument(
+        "--log_interval",
+        type=int,
+        default=None,
+        help="Iteration interval for RSL-RL logger writes. 1 logs every iteration.",
+    )
+    arg_group.add_argument(
+        "--tracking_extra_metrics_interval",
+        type=int,
+        default=None,
+        help="Iteration interval for extra experiment-tracking metrics. 0 disables them.",
+    )
+    arg_group.add_argument(
+        "--tracking_raw_reward_interval",
+        type=int,
+        default=None,
+        help="Iteration interval for raw per-step reward metrics. 0 disables them.",
+    )
+    arg_group.add_argument(
+        "--tracking_tendon_metrics_interval",
+        type=int,
+        default=None,
+        help="Iteration interval for tendon safety metrics. 0 disables them.",
+    )
+    arg_group.add_argument(
+        "--tracking_checkpoint_alias_interval",
+        type=int,
+        default=None,
+        help="Checkpoint-save interval for local latest/final aliases. 0 disables them.",
+    )
+    arg_group.add_argument(
+        "--tracking_checkpoint_artifact_interval",
+        type=int,
+        default=None,
+        help="Checkpoint-save interval for W&B artifacts. 0 disables checkpoint artifact uploads.",
     )
 
 
@@ -79,6 +115,8 @@ def update_rsl_rl_cfg(agent_cfg: RslRlBaseRunnerCfg, args_cli: argparse.Namespac
         agent_cfg.load_run = args_cli.load_run
     if args_cli.checkpoint is not None:
         agent_cfg.load_checkpoint = args_cli.checkpoint
+    if args_cli.experiment_name is not None:
+        agent_cfg.experiment_name = args_cli.experiment_name
     if args_cli.run_name is not None:
         agent_cfg.run_name = args_cli.run_name
     if args_cli.logger is not None:
@@ -87,5 +125,15 @@ def update_rsl_rl_cfg(agent_cfg: RslRlBaseRunnerCfg, args_cli: argparse.Namespac
     if agent_cfg.logger in {"wandb", "neptune"} and args_cli.log_project_name:
         agent_cfg.wandb_project = args_cli.log_project_name
         agent_cfg.neptune_project = args_cli.log_project_name
+    for name in (
+        "log_interval",
+        "tracking_extra_metrics_interval",
+        "tracking_raw_reward_interval",
+        "tracking_tendon_metrics_interval",
+        "tracking_checkpoint_alias_interval",
+        "tracking_checkpoint_artifact_interval",
+    ):
+        if hasattr(args_cli, name) and getattr(args_cli, name) is not None:
+            setattr(agent_cfg, name, getattr(args_cli, name))
 
     return agent_cfg

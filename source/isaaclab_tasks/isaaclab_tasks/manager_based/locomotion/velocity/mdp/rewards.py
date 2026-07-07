@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -11,8 +11,9 @@ specify the reward function and its parameters.
 
 from __future__ import annotations
 
-import torch
 from typing import TYPE_CHECKING
+
+import torch
 
 from isaaclab.envs import mdp
 from isaaclab.managers import SceneEntityCfg
@@ -87,14 +88,31 @@ def feet_slide(env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = Scen
 def track_lin_vel_xy_yaw_frame_exp(
     env, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
-    """Reward tracking of linear velocity commands (xy axes) in the gravity aligned robot frame using exponential kernel."""
+    """Reward tracking of linear velocity commands (xy axes) in the gravity aligned
+    robot frame using an exponential kernel.
+
+    For positive forward commands, gate the tracking reward by actual positive
+    world-frame forward speed. This prevents near-stationary policies from
+    collecting high tracking reward on low-speed curriculum bins without
+    advancing.
+    """
     # extract the used quantities (to enable type-hinting)
     asset = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
     vel_yaw = quat_apply_inverse(yaw_quat(asset.data.root_quat_w), asset.data.root_lin_vel_w[:, :3])
-    lin_vel_error = torch.sum(
-        torch.square(env.command_manager.get_command(command_name)[:, :2] - vel_yaw[:, :2]), dim=1
-    )
-    return torch.exp(-lin_vel_error / std**2)
+    lin_vel_error = torch.sum(torch.square(command[:, :2] - vel_yaw[:, :2]), dim=1)
+    reward = torch.exp(-lin_vel_error / std**2)
+    positive_forward_command = command[:, 0] > 0.05
+    command_x = torch.clamp(command[:, 0], min=0.05)
+    forward_progress_scale = torch.clamp(asset.data.root_lin_vel_w[:, 0] / command_x, 0.0, 1.0)
+    return torch.where(positive_forward_command, reward * forward_progress_scale, reward)
+
+
+def forward_vel_x_world(env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Reward positive world-frame +X base velocity."""
+
+    asset = env.scene[asset_cfg.name]
+    return torch.clamp(asset.data.root_lin_vel_w[:, 0], min=0.0)
 
 
 def track_ang_vel_z_world_exp(
