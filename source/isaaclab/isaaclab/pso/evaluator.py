@@ -524,6 +524,8 @@ class ForrestPsoEvaluator:
             max_attempts_to_track=int(override_params.max_attempts_to_track),
             success_velocity_tolerance=float(override_params.success_velocity_tolerance),
             success_yaw_rate_tolerance=float(override_params.success_yaw_rate_tolerance),
+            success_check_lin_vel_y=bool(override_params.success_check_lin_vel_y),
+            success_check_ang_vel_z=bool(override_params.success_check_ang_vel_z),
             success_min_survival_fraction=float(override_params.success_min_survival_fraction),
             sample_only_frontier=bool(override_params.sample_only_frontier),
             reset_counts_on_unlock=bool(override_params.reset_counts_on_unlock),
@@ -913,6 +915,8 @@ class ForrestPsoEvaluator:
                     float(self.command_curriculum.params.success_min_survival_fraction) * score_horizon_time,
                     float(self.command_curriculum.params.success_velocity_tolerance),
                     float(self.command_curriculum.params.success_yaw_rate_tolerance),
+                    bool(self.command_curriculum.params.success_check_lin_vel_y),
+                    bool(self.command_curriculum.params.success_check_ang_vel_z),
                 )
                 self.command_curriculum.update(command_bin_by_env[env_ids], success_mask)
 
@@ -1415,6 +1419,8 @@ class ForrestPsoEvaluator:
                     float(self.command_curriculum.params.success_min_survival_fraction) * score_horizon_time,
                     float(self.command_curriculum.params.success_velocity_tolerance),
                     float(self.command_curriculum.params.success_yaw_rate_tolerance),
+                    bool(self.command_curriculum.params.success_check_lin_vel_y),
+                    bool(self.command_curriculum.params.success_check_ang_vel_z),
                 )
                 self.command_curriculum.update(command_bin_by_env[env_ids], success_mask)
 

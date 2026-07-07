@@ -20,6 +20,7 @@ schema_version: 1  # Config schema version used to guard future migrations.
 robot:
   prim_path: "{ENV_REGEX_NS}/forrest_isaac"  # Prim path pattern for the robot inside each env namespace.
   usd_path: "symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd"  # USD asset loaded for Forrest.
+  use_height_scanner: true  # Keep terrain height scan observations enabled; set false to remove scanner observations.
   height_scanner_prim_path: "{ENV_REGEX_NS}/forrest_isaac/base_assy_v2_1"  # Prim followed by the terrain height scanner.
   initial_base_position: [ 0.0, 0.0, 1.32 ]  # Initial robot root position in meters.
   soft_joint_pos_limit_factor: 0.9  # Scale applied to USD joint limits to keep actions away from hard stops.
@@ -133,10 +134,10 @@ tendons:
       #      edt1: 400000.0  # Extensor tendon 1 stiffness.
       #      edt2: 400000.0  # Extensor tendon 2 stiffness.
       #      kft: 500000.0  # Knee flexor tendon stiffness.
-      dft: 200000.0  # Deep flexor tendon stiffness.
-      edt1: 200000.0  # Extensor tendon 1 stiffness.
-      edt2: 200000.0  # Extensor tendon 2 stiffness.
-      kft: 200000.0  # Knee flexor tendon stiffness.
+      dft: 100000.0  # Deep flexor tendon stiffness.
+      edt1: 100000.0  # Extensor tendon 1 stiffness.
+      edt2: 100000.0  # Extensor tendon 2 stiffness.
+      kft: 100000.0  # Knee flexor tendon stiffness.
     #    lengths:
     #      gst_spring_rest: 0.06  # GST spring rest length.
     #      upper_gst: 0.6217  # Upper GST path nominal length.

@@ -82,6 +82,7 @@ class RobotAssetParameters:
 
     prim_path: str = "{ENV_REGEX_NS}/forrest_isaac"
     usd_path: str = "symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd"
+    use_height_scanner: bool = True
     height_scanner_prim_path: str = "{ENV_REGEX_NS}/forrest_isaac/base_assy_v2_1"
     initial_base_position: tuple[float, float, float] = (0.0, 0.0, 1.45)
     soft_joint_pos_limit_factor: float = 0.9

@@ -9,7 +9,12 @@ import math
 
 import torch
 
-from isaaclab.curriculums.command_bins import command_tracking_success
+from isaaclab.curriculums.command_bins import (
+    CommandBinCurriculumParameters,
+    CommandBinCurriculumState,
+    command_tracking_reward_success,
+    command_tracking_success,
+)
 from isaaclab.pso.config import PsoConfig
 from isaaclab.pso.kernels import cpg_oscillator_command_kernel
 from isaaclab.pso.parameters import ParameterSpace
@@ -361,6 +366,65 @@ def test_command_tracking_success_checks_yaw_and_termination():
         0.5,
         0.05,
         0.05,
+        True,
+        True,
     )
 
     assert success.tolist() == [True, True, False, False]
+
+    x_only_success = command_tracking_success(
+        command,
+        displacement_xy,
+        heading_delta,
+        duration,
+        terminated,
+        0.5,
+        0.05,
+        0.05,
+        True,
+        False,
+    )
+
+    assert x_only_success.tolist() == [True, True, True, False]
+
+
+def test_command_tracking_reward_success_uses_reward_threshold_and_survival():
+    tracking_reward = torch.tensor([0.85, 0.79, 0.90, 0.95], dtype=torch.float32)
+    duration = torch.tensor([6.0, 6.0, 5.9, 6.0], dtype=torch.float32)
+    terminated = torch.tensor([False, False, False, True])
+
+    success = command_tracking_reward_success(
+        tracking_reward,
+        duration,
+        terminated,
+        6.0,
+        0.8,
+    )
+
+    assert success.tolist() == [True, False, False, False]
+
+
+def test_command_curriculum_samples_lookahead_window_without_poisoning_future_bins():
+    params = CommandBinCurriculumParameters(
+        include_stand_bin=True,
+        lin_vel_x_min=0.0,
+        lin_vel_x_max=1.0,
+        lin_vel_x_bin_width=0.1,
+        initial_unlocked_bin=2,
+        sample_lookahead_lin_vel_x=0.5,
+    )
+    state = CommandBinCurriculumState(params, device="cpu")
+
+    commands, bin_ids = state.sample(512)
+
+    assert int(bin_ids.min()) >= 2
+    assert int(bin_ids.max()) <= 7
+    assert torch.all(commands[:, 0] >= 0.1)
+    assert torch.all(commands[:, 0] <= 0.7)
+
+    state.update(torch.tensor([2, 3, 7], dtype=torch.long), torch.tensor([True, True, True]))
+
+    assert state.attempts[2].item() == 1.0
+    assert state.successes[2].item() == 1.0
+    assert state.attempts[3].item() == 0.0
+    assert state.attempts[7].item() == 0.0
