@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -69,7 +69,6 @@ class TronRewards(RewardsCfg):
     )
 
 
-
 @configclass
 class TronRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     rewards: TronRewards = TronRewards()
@@ -105,13 +104,9 @@ class TronRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.flat_orientation_l2.weight = -1.0
         self.rewards.action_rate_l2.weight = -0.005
         self.rewards.dof_acc_l2.weight = -1.25e-7
-        self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg(
-            "robot", joint_names=["hip_.*", "knee.*"]
-        )
+        self.rewards.dof_acc_l2.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=["hip_.*", "knee.*"])
         self.rewards.dof_torques_l2.weight = -1.5e-7
-        self.rewards.dof_torques_l2.params["asset_cfg"] = SceneEntityCfg(
-            "robot", joint_names=["hip_.*", "knee.*"]
-        )
+        self.rewards.dof_torques_l2.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=["hip_.*", "knee.*"])
 
         # Commands
         self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.0)

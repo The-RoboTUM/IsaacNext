@@ -1,0 +1,49 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+agent:
+  runner:
+    seed: 42  # Random seed used by the RSL-RL runner.
+    device: "cuda:0"  # Device used for RL tensors and policy inference/training.
+    num_steps_per_env: 24  # Rollout horizon per env before each policy update.
+    max_iterations: 1500  # Number of PPO updates during training.
+    save_interval: 50  # Save a checkpoint every N training iterations.
+    experiment_name: "forrest_rough"  # Log/checkpoint experiment name for the rough terrain task.
+    flat_experiment_name: "forrest_flat"  # Experiment name used by the flat terrain variant.
+    run_name: ""  # Optional run suffix; empty lets Isaac Lab/RSL-RL generate one.
+    logger: "tensorboard"  # Logger backend: commonly tensorboard, wandb, or neptune.
+    neptune_project: "isaaclab"  # Neptune project name when logger is neptune.
+    wandb_project: "isaaclab"  # Weights & Biases project name when logger is wandb.
+    empirical_normalization: false  # Track running observation normalization in the runner.
+    obs_groups: null  # Optional observation groups override; null keeps the default task groups.
+    clip_actions: null  # Optional action clipping limit; null keeps the RSL-RL default.
+    check_for_nan: true  # Stop early if NaNs are detected in training tensors.
+    resume: false  # Resume training from an existing checkpoint when true.
+    load_run: ".*"  # Regex/name of run to load when resuming or playing.
+    load_checkpoint: "model_.*.pt"  # Regex/name of checkpoint to load.
+  policy:
+    init_noise_std: 1.6  # Initial policy action distribution standard deviation.
+    noise_std_type: "scalar"  # Noise parameterization used by RSL-RL.
+    state_dependent_std: false  # Use state-dependent exploration std if supported.
+    actor_obs_normalization: false  # Normalize actor observations inside the policy network.
+    critic_obs_normalization: false  # Normalize critic observations inside the policy network.
+    actor_hidden_dims: [512, 256, 128]  # Actor MLP layer widths.
+    critic_hidden_dims: [512, 256, 128]  # Critic MLP layer widths.
+    activation: "elu"  # Activation function for actor and critic networks.
+  algorithm:
+    value_loss_coef: 1.0  # Weight of critic value loss in PPO objective.
+    use_clipped_value_loss: true  # Clip value target updates, matching clipped PPO behavior.
+    clip_param: 0.2  # PPO policy ratio clipping epsilon.
+    entropy_coef: 0.008  # Entropy bonus weight; higher encourages exploration.
+    num_learning_epochs: 5  # Optimization passes over each rollout batch.
+    num_mini_batches: 4  # Number of mini-batches per PPO update.
+    learning_rate: 1.0e-4  # Optimizer step size.
+    schedule: "adaptive"  # Learning-rate schedule, usually adaptive based on KL.
+    gamma: 0.99  # Discount factor for future rewards.
+    lam: 0.95  # GAE lambda for advantage estimation.
+    desired_kl: 0.01  # Target KL used by adaptive schedule.
+    max_grad_norm: 1.0  # Gradient clipping norm.
+    optimizer: "adam"  # Optimizer used by RSL-RL.
+    normalize_advantage_per_mini_batch: false  # Normalize advantages per mini-batch instead of full batch.
