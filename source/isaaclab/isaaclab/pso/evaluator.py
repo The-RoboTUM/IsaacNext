@@ -951,10 +951,7 @@ class ForrestPsoEvaluator:
         while total_completed < total_rollouts and active_env_count > 0:
             active_ids = torch.nonzero(env_active, as_tuple=False).flatten()
 
-            self.tendon_manager.apply_jit(
-                virtual_ground_height=self.forrest_params.physics.virtual_ground_height,
-                dt=self.sim_dt,
-            )
+            self.tendon_manager.apply_jit(dt=self.sim_dt)
 
             rollout_t = rollout_step.to(dtype=torch.float32) * self.sim_dt
             controller_t = torch.clamp(rollout_t - float(self.cfg.startup_hold_duration), min=0.0)
@@ -1443,10 +1440,7 @@ class ForrestPsoEvaluator:
         while completed_rollouts < total_rollouts and active_env_count > 0:
             active_ids = torch.nonzero(env_active, as_tuple=False).flatten()
 
-            self.tendon_manager.apply_jit(
-                virtual_ground_height=self.forrest_params.physics.virtual_ground_height,
-                dt=self.sim_dt,
-            )
+            self.tendon_manager.apply_jit(dt=self.sim_dt)
 
             rollout_t = rollout_step.to(dtype=torch.float32) * self.sim_dt
             controller_t = torch.clamp(rollout_t - float(self.cfg.startup_hold_duration), min=0.0)

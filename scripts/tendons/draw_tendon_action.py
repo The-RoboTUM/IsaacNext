@@ -37,7 +37,16 @@ def parse_args() -> argparse.Namespace:
         "--data",
         type=Path,
         default=Path("outputs/gst_data_left.jsonl"),
-        help="JSONL tendon debug data file (default: outputs/gst_data_left.jsonl).",
+        help=(
+            "JSONL tendon debug data, forrest_tendons.db, forrest_kinematics.db, or a recording directory "
+            "(default: outputs/gst_data_left.jsonl)."
+        ),
+    )
+    parser.add_argument(
+        "--side",
+        choices=("left", "right"),
+        default="left",
+        help="Side to load from database recordings (default: left).",
     )
     parser.add_argument(
         "--save",
@@ -115,14 +124,20 @@ def main() -> None:
 
     from isaaclab.tendons.models.analytic.visualization import (
         KinematicChainAnimator,
+        TrajectoryOnlyAnimator,
         configure_plot_style,
         load_jsonl,
+        load_recording,
     )
     from isaaclab.tendons.models.analytic.visualization.style import log
 
     configure_plot_style()
 
-    all_data = load_jsonl(args.data)
+    if args.data.suffix == ".jsonl":
+        all_data = load_jsonl(args.data)
+        data_mode = "tendon"
+    else:
+        all_data, data_mode = load_recording(args.data, side=args.side)
     if not all_data:
         raise ValueError(f"No frames found in {args.data}")
 
@@ -133,17 +148,26 @@ def main() -> None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         save_path = str(outputs_dir / f"draw_tendon_actuation_{timestamp}.mp4")
 
-    animator = KinematicChainAnimator(
-        all_data,
-        math.radians(args.alpha_2_deg),
-        real_time=args.real_time and not save_path,
-        data_fps=args.data_fps,
-        verbose=args.verbose,
-        single_plot=args.single_plot,
-        show_debug_geometry=args.show_debug_geometry,
-        show_debug_text=args.show_debug_text,
-        validate_geometry=not args.no_validate,
-    )
+    if data_mode == "tendon":
+        animator = KinematicChainAnimator(
+            all_data,
+            math.radians(args.alpha_2_deg),
+            real_time=args.real_time and not save_path,
+            data_fps=args.data_fps,
+            verbose=args.verbose,
+            single_plot=args.single_plot,
+            show_debug_geometry=args.show_debug_geometry,
+            show_debug_text=args.show_debug_text,
+            validate_geometry=not args.no_validate,
+        )
+    else:
+        animator = TrajectoryOnlyAnimator(
+            all_data,
+            math.radians(args.alpha_2_deg),
+            real_time=args.real_time and not save_path,
+            data_fps=args.data_fps,
+            verbose=args.verbose,
+        )
 
     if save_path:
         from matplotlib.animation import FFMpegWriter

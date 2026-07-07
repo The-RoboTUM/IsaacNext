@@ -12,7 +12,6 @@ import json
 import math
 import sqlite3
 import sys
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +55,18 @@ def expected_sim_columns(num_dofs: int) -> list[str]:
     )
 
 
+def expected_dynamics_columns(num_dofs: int) -> list[str]:
+    return (
+        ["sample_id", "step_index", "time", "env_id", "side"]
+        + [f"tau_inertia{i}" for i in range(num_dofs)]
+        + [f"tau_coriolis{i}" for i in range(num_dofs)]
+        + [f"tau_gravity{i}" for i in range(num_dofs)]
+        + [f"tau_friction{i}" for i in range(num_dofs)]
+        + [f"tau_model{i}" for i in range(num_dofs)]
+        + [f"tau_tendon_residual{i}" for i in range(num_dofs)]
+    )
+
+
 def quote_identifier(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
@@ -64,7 +75,7 @@ def resolve_paths(recording: Path, metadata_arg: str | None) -> tuple[Path, Path
     if recording.is_dir():
         metadata_path = Path(metadata_arg) if metadata_arg is not None else recording / "metadata.json"
         metadata = load_metadata(metadata_path)
-        sqlite_name = Path(str(metadata.get("sqlite_path", "forrest_tendon_chain_sim_data.db"))).name
+        sqlite_name = Path(str(metadata.get("sqlite_path", "forrest_kinematics.db"))).name
         sqlite_path = recording / sqlite_name
         return sqlite_path, metadata_path, metadata
 
@@ -98,13 +109,38 @@ def load_sim_rows(db: sqlite3.Connection, table_name: str, columns: list[str]) -
     return [(int(row[0]) - 1, tuple(float(value) for value in row[1:])) for row in rows]
 
 
-def load_context_rows(db: sqlite3.Connection, table_name: str) -> list[tuple[int, int, float, int, str]]:
-    rows = db.execute(
-        f"SELECT sample_id, step_index, time, env_id, side FROM {quote_identifier(table_name)} ORDER BY sample_id"
-    ).fetchall()
-    return [
-        (int(sample_id), int(step), float(time), int(env_id), str(side)) for sample_id, step, time, env_id, side in rows
-    ]
+def resolve_dynamics_path(recording: Path, metadata: dict[str, Any]) -> Path | None:
+    dynamics_path = metadata.get("dynamics_sqlite_path")
+    if dynamics_path is None:
+        return None
+    if recording.is_dir():
+        return recording / Path(str(dynamics_path)).name
+    return recording.with_name(Path(str(dynamics_path)).name)
+
+
+def validate_dynamics_db(path: Path, num_dofs: int, expected_rows: int) -> str:
+    if not path.exists():
+        raise ValidationError(f"Dynamics database is listed in metadata but does not exist: {path}")
+
+    expected_columns = expected_dynamics_columns(num_dofs)
+    with sqlite3.connect(path) as db:
+        if not table_exists(db, "dynamics_data"):
+            raise ValidationError(f"Missing dynamics_data table in {path}")
+        actual_columns = table_columns(db, "dynamics_data")
+        if actual_columns != expected_columns:
+            raise ValidationError(
+                f"Unexpected dynamics_data columns.\nExpected: {expected_columns}\nActual:   {actual_columns}"
+            )
+        select_columns = ", ".join(quote_identifier(name) for name in expected_columns)
+        rows = db.execute(f"SELECT {select_columns} FROM dynamics_data ORDER BY sample_id").fetchall()
+
+    if len(rows) != expected_rows:
+        raise ValidationError(f"dynamics_data has {len(rows)} rows; expected {expected_rows}.")
+    numeric_rows = []
+    for row in rows:
+        numeric_rows.append(tuple(float(value) for value in row if not isinstance(value, str)))
+    require_finite(numeric_rows, "dynamics_data")
+    return f"Validated dynamics: {path} ({len(rows)} rows)"
 
 
 def require_finite(rows: list[tuple[float, ...]], label: str) -> None:
@@ -128,68 +164,40 @@ def compute_stats(rows: list[tuple[float, ...]], columns: list[str]) -> list[tup
 
 def finite_difference_report(
     sim_rows: list[tuple[int, tuple[float, ...]]],
-    context_rows: list[tuple[int, int, float, int, str]],
     num_dofs: int,
+    sample_dt: float,
 ) -> dict[str, tuple[float, float, int] | None]:
-    records_by_group = defaultdict(list)
-    for (sample_id, values), context in zip(sim_rows, context_rows):
-        context_sample_id, _, time, env_id, side = context
-        if sample_id != context_sample_id:
-            raise ValidationError(f"sim_data row order does not match sample_context at sample_id {context_sample_id}.")
-        records_by_group[(env_id, side)].append((time, values))
-
     return {
-        "q_to_dq": derivative_residual(records_by_group, 0, num_dofs, num_dofs),
-        "dq_to_ddq": derivative_residual(records_by_group, num_dofs, 2 * num_dofs, num_dofs),
+        "q_to_dq": derivative_residual(sim_rows, 0, num_dofs, num_dofs, sample_dt),
+        "dq_to_ddq": derivative_residual(sim_rows, num_dofs, 2 * num_dofs, num_dofs, sample_dt),
     }
 
 
-def derivative_residual(records_by_group, value_offset: int, derivative_offset: int, num_dofs: int):
+def derivative_residual(
+    sim_rows: list[tuple[int, tuple[float, ...]]],
+    value_offset: int,
+    derivative_offset: int,
+    num_dofs: int,
+    sample_dt: float,
+):
     residuals = []
-    for records in records_by_group.values():
-        records = sorted(records, key=lambda item: item[0])
-        if len(records) < 3:
-            continue
-        for index in range(1, len(records) - 1):
-            t_prev, values_prev = records[index - 1]
-            t_next, values_next = records[index + 1]
-            _, values = records[index]
-            dt = t_next - t_prev
-            if dt <= 0.0:
-                continue
-            for dof_index in range(num_dofs):
-                estimated = (values_next[value_offset + dof_index] - values_prev[value_offset + dof_index]) / dt
-                actual = values[derivative_offset + dof_index]
-                residuals.append(actual - estimated)
+    if len(sim_rows) < 3 or sample_dt <= 0.0:
+        return None
+    central_dt = 2.0 * sample_dt
+    for index in range(1, len(sim_rows) - 1):
+        _, values_prev = sim_rows[index - 1]
+        _, values = sim_rows[index]
+        _, values_next = sim_rows[index + 1]
+        for dof_index in range(num_dofs):
+            estimated = (values_next[value_offset + dof_index] - values_prev[value_offset + dof_index]) / central_dt
+            actual = values[derivative_offset + dof_index]
+            residuals.append(actual - estimated)
 
     if not residuals:
         return None
     rms = math.sqrt(sum(value * value for value in residuals) / len(residuals))
     max_abs = max(abs(value) for value in residuals)
     return rms, max_abs, len(residuals)
-
-
-def validate_spatial_table(db: sqlite3.Connection, metadata: dict[str, Any]) -> int | None:
-    spatial_table = metadata.get("spatial_table_name")
-    if spatial_table is None:
-        return None
-    if not table_exists(db, spatial_table):
-        raise ValidationError(f"Metadata references missing spatial table: {spatial_table}")
-
-    columns = table_columns(db, spatial_table)
-    required_columns = {"root_pos_z", "body_link_pos_z", "body_com_pos_z"}
-    missing = sorted(required_columns.difference(columns))
-    if missing:
-        raise ValidationError(f"Spatial table is missing 3D diagnostic columns: {missing}")
-
-    rows = db.execute(f"SELECT * FROM {quote_identifier(spatial_table)}").fetchall()
-    if not rows:
-        raise ValidationError("Spatial table exists but has no rows.")
-    for row_index, row in enumerate(rows):
-        for value in row:
-            if isinstance(value, (int, float)) and not math.isfinite(float(value)):
-                raise ValidationError(f"Spatial table contains non-finite numeric value at row {row_index}.")
-    return len(rows)
 
 
 def check_identix_loader(sqlite_path: Path, table_name: str, num_dofs: int, identix_repo: str | None) -> str:
@@ -216,14 +224,16 @@ def validate(args) -> None:
         raise ValidationError(f"SQLite database does not exist: {sqlite_path}")
 
     table_name = args.table_name or metadata.get("sim_table_name", "sim_data")
-    context_table = metadata.get("context_table_name", "sample_context")
     expected_columns = expected_sim_columns(args.num_dofs)
 
     with sqlite3.connect(sqlite_path) as db:
         if not table_exists(db, table_name):
             raise ValidationError(f"Missing sim_data table: {table_name}")
-        if not table_exists(db, context_table):
-            raise ValidationError(f"Missing sample context table: {context_table}")
+        data_tables = [
+            row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").fetchall()
+        ]
+        if data_tables != [table_name]:
+            raise ValidationError(f"Expected only {table_name!r} table in database; found {data_tables}.")
 
         actual_columns = table_columns(db, table_name)
         if actual_columns != expected_columns:
@@ -234,16 +244,12 @@ def validate(args) -> None:
         sim_rows = load_sim_rows(db, table_name, expected_columns)
         if not sim_rows:
             raise ValidationError("sim_data table is empty.")
-        context_rows = load_context_rows(db, context_table)
-        if len(context_rows) != len(sim_rows):
-            raise ValidationError(
-                f"Context row count {len(context_rows)} does not match sim_data rows {len(sim_rows)}."
-            )
 
         values = [row_values for _, row_values in sim_rows]
         require_finite(values, "sim_data")
-        fd_report = finite_difference_report(sim_rows, context_rows, args.num_dofs)
-        spatial_rows = validate_spatial_table(db, metadata)
+        sim_dt = float(metadata.get("sim_dt", 0.0))
+        sampling_stride = int(metadata.get("config", {}).get("sampling_stride", 1))
+        fd_report = finite_difference_report(sim_rows, args.num_dofs, sim_dt * sampling_stride)
         stats = compute_stats(values, expected_columns)
 
     if int(metadata.get("num_dofs", -1)) != args.num_dofs:
@@ -252,6 +258,12 @@ def validate(args) -> None:
         raise ValidationError("Metadata sim_columns do not match the SQLite sim_data schema.")
     if int(metadata.get("row_count", -1)) != len(sim_rows):
         raise ValidationError(f"Metadata row_count={metadata.get('row_count')} does not match {len(sim_rows)} rows.")
+    if metadata.get("dynamics_sqlite_path") is not None:
+        expected_dynamics_rows = int(metadata.get("dynamics_row_count", -1))
+        if expected_dynamics_rows != len(sim_rows):
+            raise ValidationError(
+                f"Metadata dynamics_row_count={expected_dynamics_rows} does not match {len(sim_rows)} sim rows."
+            )
     expected_units = {"q": "rad", "dq": "rad/s", "ddq": "rad/s^2", "tau": "N*m"}
     if metadata.get("sim_units") != expected_units:
         raise ValidationError(f"Metadata sim_units must be {expected_units}; got {metadata.get('sim_units')}.")
@@ -259,12 +271,16 @@ def validate(args) -> None:
         if mapping.get("units") != "rad":
             raise ValidationError(f"Joint mapping has non-radian units: {mapping}")
 
+    dynamics_report = None
+    dynamics_path = resolve_dynamics_path(Path(args.recording), metadata)
+    if dynamics_path is not None:
+        dynamics_report = validate_dynamics_db(dynamics_path, args.num_dofs, len(sim_rows))
+
     print(f"Validated recording: {sqlite_path}")
     print(f"Metadata: {metadata_path}")
     print(f"sim_data rows: {len(sim_rows)}")
-    print(f"context rows: {len(context_rows)}")
-    if spatial_rows is not None:
-        print(f"spatial rows: {spatial_rows}")
+    if dynamics_report is not None:
+        print(dynamics_report)
 
     for label, report in fd_report.items():
         if report is None:

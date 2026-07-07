@@ -24,7 +24,7 @@ from isaaclab.curriculums.command_bins import CommandBinCurriculumParameters
 
 DEFAULT_FORREST_CONFIG_ENV = "ISAACNEXT_FORREST_CONFIG"
 DEFAULT_FORREST_CONFIG_RELATIVE_PATH = Path("configs/forrest/default")
-PROFILE_CONFIG_FILENAMES = ("base.yaml", "train.yaml", "run.yaml", "agent.yaml")
+PROFILE_CONFIG_FILENAMES = ("base.yaml", "train.yaml", "run.yaml", "recording.yaml", "agent.yaml")
 
 TENDON_NAMES = ("gst", "dft", "edt1", "edt2", "kft")
 JOINT_INDEX = {
@@ -135,7 +135,6 @@ class ArticulationPhysicsParameters:
 class PhysicsParameters:
     sim_dt: float = 0.0024
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
-    virtual_ground_height: float | None = None
     physx_gpu_collision_stack_size: int = 160 * 1024 * 1024
     physx_gpu_found_lost_aggregate_pairs_capacity: int = 2**27
     physx_gpu_total_aggregate_pairs_capacity: int = 2**22
@@ -645,6 +644,30 @@ class TrainingParameters:
 
 
 @dataclass
+class RecordingParameters:
+    """Defaults for standalone Forrest database recording."""
+
+    enabled: bool = False
+    output_dir: str | None = None
+    side: str = "left"
+    env_ids: tuple[int, ...] | None = None
+    joint_set: str = "real_leg_joints"
+    body_set: str = "tendon_chain_links"
+    tau_source: str = "controller_plus_ground"
+    stride: int = 1
+    start_time: float = 0.0
+    overwrite: bool = False
+    record_spatial_state: bool = False
+    record_tendons: bool = True
+    record_dynamics: bool = True
+    kinematics_db_filename: str = "forrest_kinematics.db"
+    tendons_db_filename: str = "forrest_tendons.db"
+    dynamics_db_filename: str = "forrest_dynamics.db"
+    metadata_filename: str = "metadata.json"
+    viz_vars_filename: str = "viz_vars.json"
+
+
+@dataclass
 class ForrestParameterConfig:
     schema_version: int = 1
     robot: RobotAssetParameters = field(default_factory=RobotAssetParameters)
@@ -654,6 +677,7 @@ class ForrestParameterConfig:
     tendons: TendonParameters = field(default_factory=TendonParameters)
     run: RunScriptParameters = field(default_factory=RunScriptParameters)
     training: TrainingParameters = field(default_factory=TrainingParameters)
+    recording: RecordingParameters = field(default_factory=RecordingParameters)
     agent: AgentParameters = field(default_factory=AgentParameters)
 
     @classmethod

@@ -14,6 +14,7 @@ JIT mode runs the fast tensor-only tendon path and prints lightweight progress.
 import argparse
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 from isaaclab.app import AppLauncher
@@ -84,44 +85,59 @@ parser.add_argument(
     "--record_output_dir",
     type=str,
     default=None,
-    help="Output directory for the Identix SQLite database and metadata.",
+    help=(
+        "Exact output directory for the Identix SQLite database and metadata. "
+        "If omitted, uses outputs/forrest_dbs_<timestamp>."
+    ),
 )
 parser.add_argument(
     "--record_side",
     choices=("left", "right", "both"),
-    default="left",
-    help="Leg side to record. 'both' stores each side as separate 5-DOF samples.",
+    default=None,
+    help="Leg side to record. 'both' stores each side as separate samples.",
 )
 parser.add_argument(
     "--record_joint_set",
-    choices=("tendon_chain_5",),
-    default="tendon_chain_5",
+    choices=("real_leg_joints", "tendon_chain_5"),
+    default=None,
     help="Joint set to store in sim_data.",
 )
 parser.add_argument(
     "--record_spatial_state",
     action=argparse.BooleanOptionalAction,
-    default=False,
-    help="Record world-frame root/body spatial diagnostics next to sim_data.",
+    default=None,
+    help="Deprecated for Identix kinematics DB output; spatial tables are not written.",
 )
 parser.add_argument(
     "--record_body_set",
     choices=("tendon_chain_links",),
-    default="tendon_chain_links",
+    default=None,
     help="Body/link set to store in spatial diagnostics.",
 )
 parser.add_argument(
     "--record_tau_source",
-    choices=("applied_torque", "computed_torque", "zero"),
-    default="applied_torque",
+    choices=("controller_plus_ground", "applied_torque", "computed_torque", "zero"),
+    default=None,
     help="Torque tensor used for tau0..tauN in sim_data.",
 )
-parser.add_argument("--record_stride", type=int, default=1, help="Record every N simulation steps.")
+parser.add_argument("--record_stride", type=int, default=None, help="Record every N simulation steps.")
 parser.add_argument(
     "--record_start_time",
     type=float,
-    default=0.0,
+    default=None,
     help="Skip recording until this simulation time in seconds.",
+)
+parser.add_argument(
+    "--record_tendons",
+    action=argparse.BooleanOptionalAction,
+    default=None,
+    help="Write forrest_tendons.db with visualization/debug tendon frames when debug data is available.",
+)
+parser.add_argument(
+    "--record_dynamics",
+    action=argparse.BooleanOptionalAction,
+    default=None,
+    help="Write forrest_dynamics.db with non-tendon inverse-dynamics terms aligned to sim_data.",
 )
 parser.add_argument(
     "--record_overwrite",
@@ -148,7 +164,34 @@ args_cli.startup_hold_duration = (
 )
 args_cli.controller = args_cli.controller or FORREST_PARAMS.run.controller
 args_cli.constraint_mode = args_cli.constraint_mode or FORREST_PARAMS.run.constraint_mode
-args_cli.record_output_dir = args_cli.record_output_dir or str(Path(args_cli.output_dir) / "identix_recording")
+args_cli.record_identix = bool(args_cli.record_identix or FORREST_PARAMS.recording.enabled)
+args_cli.record_side = args_cli.record_side or FORREST_PARAMS.recording.side
+args_cli.record_joint_set = args_cli.record_joint_set or FORREST_PARAMS.recording.joint_set
+args_cli.record_spatial_state = (
+    args_cli.record_spatial_state
+    if args_cli.record_spatial_state is not None
+    else FORREST_PARAMS.recording.record_spatial_state
+)
+args_cli.record_body_set = args_cli.record_body_set or FORREST_PARAMS.recording.body_set
+args_cli.record_tau_source = args_cli.record_tau_source or FORREST_PARAMS.recording.tau_source
+args_cli.record_stride = (
+    args_cli.record_stride if args_cli.record_stride is not None else FORREST_PARAMS.recording.stride
+)
+args_cli.record_start_time = (
+    args_cli.record_start_time if args_cli.record_start_time is not None else FORREST_PARAMS.recording.start_time
+)
+args_cli.record_tendons = (
+    args_cli.record_tendons if args_cli.record_tendons is not None else FORREST_PARAMS.recording.record_tendons
+)
+args_cli.record_dynamics = (
+    args_cli.record_dynamics if args_cli.record_dynamics is not None else FORREST_PARAMS.recording.record_dynamics
+)
+args_cli.record_overwrite = bool(args_cli.record_overwrite or FORREST_PARAMS.recording.overwrite)
+if args_cli.record_output_dir is None:
+    args_cli.record_output_dir = FORREST_PARAMS.recording.output_dir
+if args_cli.record_output_dir is None:
+    datestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    args_cli.record_output_dir = str(Path(args_cli.output_dir) / f"forrest_dbs_{datestamp}")
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -159,6 +202,7 @@ import carb
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
+from isaaclab.sensors import ContactSensor, ContactSensorCfg
 from isaaclab.sensors.camera import TiledCamera, TiledCameraCfg
 from isaaclab.sim import SimulationContext
 from isaaclab.tendons.data_recording import DataRecording, DataRecordingConfig
@@ -178,11 +222,15 @@ from isaaclab.utils.math import create_rotation_matrix_from_view, quat_from_matr
 from isaaclab_assets.robots.forrest import get_forrest_cfg
 
 USD_PATH = "symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd"
-VIRTUAL_GROUND_HEIGHT = FORREST_PARAMS.physics.virtual_ground_height
 SIM_DT = FORREST_PARAMS.physics.sim_dt
 CAMERA_EYE = (2.5, -8.0, 2.0)
 CAMERA_TARGET = (2.5, 0.0, 0.85)
 _CV2 = None
+
+
+def body_name_regex(body_names: tuple[str, ...] | list[str]) -> str:
+    escaped = [name.replace(".", r"\.") for name in body_names]
+    return "(" + "|".join(escaped) + ")"
 
 
 # Enable this while hunting for autograd issues in the tendon model.
@@ -305,9 +353,6 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
     print(f"Torch CUDA:        {torch.cuda.is_available()}")
     print(f"Physics dt:        {sim_cfg.dt:.6f} s")
     print(f"Duration:          {args.duration:.3f} s ({num_steps} steps)")
-    virtual_ground_str = "disabled" if VIRTUAL_GROUND_HEIGHT is None else f"{VIRTUAL_GROUND_HEIGHT:.3f} m"
-
-    print(f"Virtual ground:    {virtual_ground_str}")
     print(f"Video recording:   {'on' if args.record_video else 'off'}")
     print(f"Identix recording: {'on' if args.record_identix else 'off'}")
     if args.record_identix:
@@ -315,6 +360,8 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
         print(f"Recording side:    {args.record_side}")
         print(f"Recording stride:  {args.record_stride}")
         print(f"Recording tau:     {args.record_tau_source}")
+        print(f"Recording tendons: {'on' if args.record_tendons and not args.jit else 'off'}")
+        print(f"Recording dynamics:{'on' if args.record_dynamics else 'off'}")
 
     if args.jit:
         print("Diagnostics:       lightweight console status only")
@@ -361,6 +408,85 @@ def maybe_print_status(
         print(prefix)
 
 
+def projected_contact_sensor_torque(robot, contact_sensor: ContactSensor, contact_body_names: tuple[str, ...]):
+    """Project measured world-frame contact forces into generalized joint torques."""
+
+    num_joints = robot.data.joint_pos.shape[1]
+    tau_ground = torch.zeros_like(robot.data.joint_pos)
+    sensor_body_indices = [contact_sensor.body_names.index(name) for name in contact_body_names]
+    robot_body_indices, _ = robot.find_bodies(list(contact_body_names), preserve_order=True)
+
+    if contact_sensor.data.force_matrix_w is not None:
+        forces_world = contact_sensor.data.force_matrix_w[:, sensor_body_indices, 0, :]
+    else:
+        forces_world = contact_sensor.data.net_forces_w[:, sensor_body_indices, :]
+    if not torch.any(forces_world).item():
+        return tau_ground
+
+    joint_ids = list(range(num_joints))
+    jacobian_joint_ids = joint_ids if robot.is_fixed_base else [joint_id + 6 for joint_id in joint_ids]
+    jacobians = robot.root_physx_view.get_jacobians()
+
+    for local_foot_index, body_index in enumerate(robot_body_indices):
+        jacobian_body_index = int(body_index) - 1 if robot.is_fixed_base else int(body_index)
+        jacobian_pos = jacobians[:, jacobian_body_index, 0:3, :][:, :, jacobian_joint_ids]
+        tau_ground += torch.bmm(
+            jacobian_pos.transpose(1, 2), forces_world[:, local_foot_index, :].unsqueeze(-1)
+        ).squeeze(-1)
+
+    return tau_ground
+
+
+def recording_tau_tensor(
+    robot,
+    contact_sensor: ContactSensor,
+    contact_body_names: tuple[str, ...],
+    actuated_joint_indices: list[int],
+    tau_source: str,
+):
+    if tau_source == "controller_plus_ground":
+        tau = torch.zeros_like(robot.data.joint_pos)
+        tau[:, actuated_joint_indices] = robot.data.applied_torque[:, actuated_joint_indices]
+        tau += projected_contact_sensor_torque(robot, contact_sensor, contact_body_names)
+        return tau
+    if tau_source == "applied_torque":
+        return robot.data.applied_torque
+    if tau_source == "computed_torque":
+        return robot.data.computed_torque
+    if tau_source == "zero":
+        return robot.data.joint_pos * 0.0
+    raise ValueError(f"Unsupported record tau source: {tau_source}")
+
+
+def recording_dynamics_terms(robot):
+    """Compute full-joint inverse-dynamics terms exposed by PhysX for recording."""
+
+    num_joints = robot.data.joint_pos.shape[1]
+    joint_ids = list(range(num_joints))
+    generalized_joint_ids = joint_ids if robot.is_fixed_base else [joint_id + 6 for joint_id in joint_ids]
+
+    mass_matrices = robot.root_physx_view.get_generalized_mass_matrices()
+    if not robot.is_fixed_base:
+        mass_matrices = mass_matrices[:, 6:, 6:]
+    inertia = torch.bmm(mass_matrices, robot.data.joint_acc.unsqueeze(-1)).squeeze(-1)
+
+    coriolis_all = robot.root_physx_view.get_coriolis_and_centrifugal_compensation_forces()
+    gravity_all = robot.root_physx_view.get_gravity_compensation_forces()
+    coriolis = coriolis_all[:, generalized_joint_ids]
+    gravity = gravity_all[:, generalized_joint_ids]
+
+    dynamic = robot.data.joint_dynamic_friction_coeff
+    viscous = robot.data.joint_viscous_friction_coeff
+    friction = -dynamic * torch.sign(robot.data.joint_vel) - viscous * robot.data.joint_vel
+
+    return {
+        "inertia": inertia,
+        "coriolis": coriolis,
+        "gravity": gravity,
+        "friction": friction,
+    }
+
+
 def record_side_policy(record_side: str) -> str:
     if record_side == "left":
         return "left_only"
@@ -394,6 +520,16 @@ def main():
 
     robot_cfg = get_forrest_cfg(FORREST_PARAMS).replace(prim_path="/World/Bot")
     robot = Articulation(robot_cfg)
+    contact_body_names = FORREST_PARAMS.training.contacts.foot_body_names
+    contact_sensor = ContactSensor(
+        ContactSensorCfg(
+            prim_path=f"{robot_cfg.prim_path}/{body_name_regex(contact_body_names)}",
+            update_period=sim_cfg.dt,
+            history_length=1,
+            track_air_time=False,
+            filter_prim_paths_expr=["/World/defaultGroundPlane/GroundPlane/CollisionPlane"],
+        )
+    )
 
     sim_utils.GroundPlaneCfg().func("/World/defaultGroundPlane", sim_utils.GroundPlaneCfg())
     sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func("/World/Light", sim_utils.DomeLightCfg())
@@ -460,6 +596,13 @@ def main():
                 constraint_mode=args_cli.constraint_mode,
                 controller=args_cli.controller,
                 tau_source=args_cli.record_tau_source,
+                record_tendons=bool(args_cli.record_tendons and not args_cli.jit),
+                record_dynamics=bool(args_cli.record_dynamics),
+                sqlite_filename=FORREST_PARAMS.recording.kinematics_db_filename,
+                tendon_sqlite_filename=FORREST_PARAMS.recording.tendons_db_filename,
+                dynamics_sqlite_filename=FORREST_PARAMS.recording.dynamics_db_filename,
+                metadata_filename=FORREST_PARAMS.recording.metadata_filename,
+                viz_vars_filename=FORREST_PARAMS.recording.viz_vars_filename,
                 overwrite=args_cli.record_overwrite,
                 parameter_file=args_cli.parameters_file,
             )
@@ -478,9 +621,12 @@ def main():
             },
         )
         print(f"Identix recorder initialized: {data_recorder.sqlite_path}")
+        if data_recorder.cfg.record_tendons:
+            print(f"Tendon visualization recorder initialized: {data_recorder.tendon_sqlite_path}")
+        if data_recorder.cfg.record_dynamics:
+            print(f"Dynamics recorder initialized: {data_recorder.dynamics_sqlite_path}")
 
     wall_start = time.perf_counter()
-
     try:
         for iteration in range(num_steps):
             t = iteration * sim.get_physics_dt()
@@ -489,12 +635,12 @@ def main():
             debug_joint_pos_right = None
 
             if args_cli.jit:
-                tendon_manager.apply_jit(virtual_ground_height=VIRTUAL_GROUND_HEIGHT, dt=SIM_DT)
+                tendon_manager.apply_jit(dt=SIM_DT)
             else:
                 # apply_debug reads the current pre-step joint state; keep the JSONL joint_pos aligned with it.
                 debug_joint_pos_left = robot.data.joint_pos[0, joint_indices_left].detach().clone()
                 debug_joint_pos_right = robot.data.joint_pos[0, joint_indices_right].detach().clone()
-                debug_info = tendon_manager.apply_debug(virtual_ground_height=VIRTUAL_GROUND_HEIGHT, dt=SIM_DT)
+                debug_info = tendon_manager.apply_debug(dt=SIM_DT)
                 data_left, data_right = leg_tensordict_to_python_dict(debug_info)
 
             controller_t = max(0.0, t - startup_hold_duration)
@@ -519,15 +665,32 @@ def main():
             robot.write_data_to_sim()
             sim.step()
             robot.update(sim.get_physics_dt())
+            contact_sensor.update(sim.get_physics_dt(), force_recompute=True)
             recorded_time = (iteration + 1) * sim.get_physics_dt()
 
             if data_recorder is not None:
+                tau_override = recording_tau_tensor(
+                    robot,
+                    contact_sensor,
+                    contact_body_names,
+                    actuated_joint_indices,
+                    args_cli.record_tau_source,
+                )
                 data_recorder.record_step(
                     step_index=iteration + 1,
                     sim_time=recorded_time,
                     robot=robot,
                     extra_context={"controller_time": controller_t},
+                    tau_override=tau_override,
                 )
+                if data_recorder.cfg.record_dynamics:
+                    data_recorder.record_dynamics_step(
+                        step_index=iteration + 1,
+                        sim_time=recorded_time,
+                        robot=robot,
+                        dynamics_terms=recording_dynamics_terms(robot),
+                        tau_input=tau_override,
+                    )
 
             if args_cli.record_video and camera is not None and video_writer is not None:
                 cv2 = require_cv2()
@@ -543,6 +706,19 @@ def main():
                 data_right["joint_pos"] = tensor_to_python(debug_joint_pos_right)
                 data_left["joint_pos_after_step"] = tensor_to_python(robot.data.joint_pos[0, joint_indices_left])
                 data_right["joint_pos_after_step"] = tensor_to_python(robot.data.joint_pos[0, joint_indices_right])
+                if data_recorder is not None and data_recorder.cfg.record_tendons:
+                    data_recorder.record_tendon_frame(
+                        step_index=iteration + 1,
+                        sim_time=t,
+                        side="left",
+                        frame=data_left,
+                    )
+                    data_recorder.record_tendon_frame(
+                        step_index=iteration + 1,
+                        sim_time=t,
+                        side="right",
+                        frame=data_right,
+                    )
                 append_jsonl(debug_left_path, data_left)
                 append_jsonl(debug_right_path, data_right)
 
@@ -564,6 +740,11 @@ def main():
             data_recorder.close()
             print(f"Identix database saved to: {data_recorder.sqlite_path}")
             print(f"Identix metadata saved to: {data_recorder.metadata_path}")
+            if data_recorder.cfg.record_tendons:
+                print(f"Tendon visualization database saved to: {data_recorder.tendon_sqlite_path}")
+                print(f"Visualization variables saved to: {data_recorder.viz_vars_path}")
+            if data_recorder.cfg.record_dynamics:
+                print(f"Dynamics database saved to: {data_recorder.dynamics_sqlite_path}")
         if video_writer is not None:
             video_writer.release()
             print(f"Video saved to {args_cli.video_output}")

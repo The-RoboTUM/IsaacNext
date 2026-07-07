@@ -25,19 +25,20 @@ TENDON_CHAIN_5_JOINTS: dict[str, tuple[str, ...]] = {
     "left": tuple(joint_names_left),
     "right": tuple(joint_names_right),
 }
-TENDON_CHAIN_LINKS: dict[str, tuple[str, ...]] = {
-    "left": tuple(link_names_left),
-    "right": tuple(link_names_right),
-}
-OMITTED_FIRST_PASS_JOINTS: dict[str, tuple[str, ...]] = {
+REAL_LEG_JOINTS: dict[str, tuple[str, ...]] = {
     "left": (
         "lp1_pantograph",
         "l0_acetabulofemoral_roll",
         "l1_acetabulofemoral_lateral",
         "l2_pseudo_acetabulofemoral_flexion",
         "l3b_femorotibial_back",
+        "l3f_femorotibial_front",
+        "l4f_intertarsal_front",
         "l4b_intertarsal_back",
         "l4p_intertarsal_pulley",
+        "l5_metatarsophalangeal",
+        "l6_interphalangeal",
+        "l8_knee_flexor",
     ),
     "right": (
         "rp1_pantograph",
@@ -45,9 +46,44 @@ OMITTED_FIRST_PASS_JOINTS: dict[str, tuple[str, ...]] = {
         "r1_acetabulofemoral_lateral",
         "r2_pseudo_acetabulofemoral_flexion",
         "r3b_femorotibial_back",
+        "r3f_femorotibial_front",
+        "r4f_intertarsal_front",
         "r4b_intertarsal_back",
         "r4p_intertarsal_pulley",
+        "r5_metatarsophalangeal",
+        "r6_interphalangeal",
+        "r8_knee_flexor",
     ),
+}
+TENDON_CHAIN_LINKS: dict[str, tuple[str, ...]] = {
+    "left": tuple(link_names_left),
+    "right": tuple(link_names_right),
+}
+OMITTED_JOINTS_BY_SET: dict[str, dict[str, tuple[str, ...]]] = {
+    "real_leg_joints": {
+        "left": (),
+        "right": (),
+    },
+    "tendon_chain_5": {
+        "left": (
+            "lp1_pantograph",
+            "l0_acetabulofemoral_roll",
+            "l1_acetabulofemoral_lateral",
+            "l2_pseudo_acetabulofemoral_flexion",
+            "l3b_femorotibial_back",
+            "l4b_intertarsal_back",
+            "l4p_intertarsal_pulley",
+        ),
+        "right": (
+            "rp1_pantograph",
+            "r0_acetabulofemoral_roll",
+            "r1_acetabulofemoral_lateral",
+            "r2_pseudo_acetabulofemoral_flexion",
+            "r3b_femorotibial_back",
+            "r4b_intertarsal_back",
+            "r4p_intertarsal_pulley",
+        ),
+    },
 }
 
 
@@ -56,22 +92,26 @@ class DataRecordingConfig:
     """Configuration for one Identix-style recording run."""
 
     output_dir: str | Path
-    sqlite_filename: str = "forrest_tendon_chain_sim_data.db"
+    sqlite_filename: str = "forrest_kinematics.db"
+    tendon_sqlite_filename: str = "forrest_tendons.db"
+    dynamics_sqlite_filename: str = "forrest_dynamics.db"
     metadata_filename: str = "metadata.json"
+    viz_vars_filename: str = "viz_vars.json"
     sim_table_name: str = "sim_data"
-    context_table_name: str = "sample_context"
-    spatial_table_name: str = "spatial_data"
-    joint_set: str = "tendon_chain_5"
+    joint_set: str = "real_leg_joints"
     side_policy: str = "left_only"
     selected_joint_names: tuple[str, ...] | None = None
+    selected_env_ids: tuple[int, ...] | None = None
     body_set: str = "tendon_chain_links"
     selected_body_names: tuple[str, ...] | None = None
-    record_spatial_state: bool = True
+    record_spatial_state: bool = False
     sampling_stride: int = 1
     startup_skip_seconds: float = 0.0
     constraint_mode: str = "static"
     controller: str | None = "sin"
-    tau_source: str = "applied_torque"
+    tau_source: str = "controller_plus_ground"
+    record_tendons: bool = True
+    record_dynamics: bool = True
     overwrite: bool = False
     batch_size: int = 512
     parameter_file: str | None = None
@@ -82,9 +122,9 @@ class DataRecording:
     """Write Forrest simulation samples in Identix ``sim_data`` format.
 
     ``sim_data`` intentionally contains only positional Identix columns:
-    ``q0..qN``, ``dq0..dqN``, ``ddq0..ddqN``, ``tau0..tauN``. Time, env, side,
-    joint names, and 3D spatial state are stored separately so Identix loaders
-    can read the main table without schema changes.
+    ``q0..qN``, ``dq0..dqN``, ``ddq0..ddqN``, ``tau0..tauN``. Metadata such as
+    joint names and simulation settings are stored in the sidecar JSON so the
+    SQLite file stays compatible with Identix-style kinematics databases.
     """
 
     def __init__(self, cfg: DataRecordingConfig):
@@ -96,23 +136,33 @@ class DataRecording:
         self.cfg = cfg
         self.output_dir = Path(cfg.output_dir)
         self.sqlite_path = self.output_dir / cfg.sqlite_filename
+        self.tendon_sqlite_path = self.output_dir / cfg.tendon_sqlite_filename
+        self.dynamics_sqlite_path = self.output_dir / cfg.dynamics_sqlite_filename
         self.metadata_path = self.output_dir / cfg.metadata_filename
+        self.viz_vars_path = self.output_dir / cfg.viz_vars_filename
 
         self._db: sqlite3.Connection | None = None
+        self._tendon_db: sqlite3.Connection | None = None
+        self._dynamics_db: sqlite3.Connection | None = None
         self._sim_buffer: list[tuple[float, ...]] = []
-        self._context_buffer: list[tuple[Any, ...]] = []
-        self._spatial_buffer: list[tuple[Any, ...]] = []
+        self._tendon_buffer: list[tuple[int, float, str, str]] = []
+        self._dynamics_buffer: list[tuple[Any, ...]] = []
         self._joint_indices_by_side: dict[str, list[int]] = {}
         self._joint_names_by_side: dict[str, tuple[str, ...]] = {}
         self._body_indices_by_side: dict[str, list[int]] = {}
         self._body_names_by_side: dict[str, tuple[str, ...]] = {}
+        self._joint_dynamics_properties_rows: list[dict[str, Any]] = []
         self._sim_columns: list[str] = []
+        self._dynamics_columns: list[str] = []
         self._spatial_columns: list[str] = []
         self._row_count = 0
+        self._tendon_row_count = 0
+        self._dynamics_row_count = 0
         self._initialized = False
         self._closed = False
         self._sim_dt: float | None = None
         self._context_metadata: dict[str, Any] = {}
+        self._selected_env_ids: tuple[int, ...] = ()
 
     @property
     def num_dofs(self) -> int:
@@ -126,19 +176,115 @@ class DataRecording:
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
         if not self.cfg.overwrite:
-            existing = [path for path in (self.sqlite_path, self.metadata_path) if path.exists()]
+            existing = [
+                path
+                for path in (
+                    self.sqlite_path,
+                    self.tendon_sqlite_path,
+                    self.dynamics_sqlite_path,
+                    self.metadata_path,
+                    self.viz_vars_path,
+                )
+                if path.exists()
+            ]
             if existing:
                 raise FileExistsError(f"Recording output already exists: {existing}")
-        for path in (self.sqlite_path, self.metadata_path):
+        for path in (
+            self.sqlite_path,
+            self.tendon_sqlite_path,
+            self.dynamics_sqlite_path,
+            self.metadata_path,
+            self.viz_vars_path,
+        ):
             if self.cfg.overwrite and path.exists():
                 path.unlink()
 
         self._sim_dt = sim_dt
         self._context_metadata = dict(metadata or {})
         self._resolve_joint_indices(robot)
-        self._resolve_body_indices(robot)
+        self._resolve_env_ids(robot)
+        self._resolve_joint_dynamics_properties(robot)
         self._create_tables()
         self._initialized = True
+
+    def record_dynamics_step(
+        self,
+        *,
+        step_index: int,
+        sim_time: float,
+        robot,
+        dynamics_terms: dict[str, Any],
+        tau_input,
+    ) -> None:
+        """Record non-kinematic inverse-dynamics terms aligned to ``sim_data`` rows."""
+
+        if not self.cfg.record_dynamics:
+            return
+        if not self._initialized or self._dynamics_db is None:
+            raise RuntimeError("Call initialize(...) before record_dynamics_step(...).")
+        if self._closed:
+            raise RuntimeError("Cannot record after close().")
+        if sim_time < self.cfg.startup_skip_seconds:
+            return
+        if step_index % self.cfg.sampling_stride != 0:
+            return
+
+        required = ("inertia", "coriolis", "gravity", "friction")
+        missing = [name for name in required if name not in dynamics_terms]
+        if missing:
+            raise ValueError(f"Missing dynamics term tensors: {missing}")
+
+        tau_total = (
+            dynamics_terms["inertia"]
+            + dynamics_terms["coriolis"]
+            + dynamics_terms["gravity"]
+            + dynamics_terms["friction"]
+        )
+        tau_residual = tau_total - tau_input
+
+        for env_id in self._selected_env_ids:
+            for side in self._selected_sides():
+                joint_indices = self._joint_indices_by_side[side]
+                row_values: list[Any] = [
+                    int(self._dynamics_row_count),
+                    int(step_index),
+                    float(sim_time),
+                    int(env_id),
+                    side,
+                ]
+                for term_name in ("inertia", "coriolis", "gravity", "friction"):
+                    term_values = dynamics_terms[term_name][env_id, joint_indices].detach().cpu().tolist()
+                    row_values.extend(float(value) for value in term_values)
+                row_values.extend(float(value) for value in tau_total[env_id, joint_indices].detach().cpu().tolist())
+                row_values.extend(float(value) for value in tau_residual[env_id, joint_indices].detach().cpu().tolist())
+                self._dynamics_buffer.append(tuple(row_values))
+                self._dynamics_row_count += 1
+
+        if len(self._dynamics_buffer) >= self.cfg.batch_size:
+            self.flush()
+
+    def record_tendon_frame(self, *, step_index: int, sim_time: float, side: str, frame: dict[str, Any]) -> None:
+        """Record one visualization/debug tendon frame as timed data."""
+
+        if not self.cfg.record_tendons:
+            return
+        if not self._initialized or self._tendon_db is None:
+            raise RuntimeError("Call initialize(...) before record_tendon_frame(...).")
+        if self._closed:
+            raise RuntimeError("Cannot record after close().")
+        if sim_time < self.cfg.startup_skip_seconds:
+            return
+        if step_index % self.cfg.sampling_stride != 0:
+            return
+        if side not in self._selected_sides():
+            return
+
+        payload = dict(frame)
+        payload.setdefault("sim_time", float(sim_time))
+        self._tendon_buffer.append((int(step_index), float(sim_time), side, json.dumps(payload, sort_keys=True)))
+        self._tendon_row_count += 1
+        if len(self._tendon_buffer) >= self.cfg.batch_size:
+            self.flush()
 
     def record_step(
         self,
@@ -147,6 +293,7 @@ class DataRecording:
         sim_time: float,
         robot,
         extra_context: dict[str, Any] | None = None,
+        tau_override=None,
     ) -> None:
         """Record one simulation step if it passes stride and startup filters."""
 
@@ -162,10 +309,10 @@ class DataRecording:
         q_all = robot.data.joint_pos
         dq_all = robot.data.joint_vel
         ddq_all = robot.data.joint_acc
-        tau_all = self._tau_tensor(robot)
+        tau_all = self._tau_tensor(robot, tau_override=tau_override)
         context = dict(extra_context or {})
 
-        for env_id in range(robot.num_instances):
+        for env_id in self._selected_env_ids:
             for side in self._selected_sides():
                 joint_indices = self._joint_indices_by_side[side]
                 q = q_all[env_id, joint_indices].detach().cpu().tolist()
@@ -173,11 +320,7 @@ class DataRecording:
                 ddq = ddq_all[env_id, joint_indices].detach().cpu().tolist()
                 tau = tau_all[env_id, joint_indices].detach().cpu().tolist()
 
-                sample_id = self._row_count
                 self._sim_buffer.append(tuple(float(value) for value in [*q, *dq, *ddq, *tau]))
-                self._context_buffer.append((sample_id, int(step_index), float(sim_time), int(env_id), side))
-                if self.cfg.record_spatial_state:
-                    self._record_spatial_rows(sample_id, step_index, sim_time, env_id, side, robot)
                 self._row_count += 1
 
         if context:
@@ -198,21 +341,25 @@ class DataRecording:
                 self._sim_buffer,
             )
             self._sim_buffer.clear()
-        if self._context_buffer:
-            self._db.executemany(
-                f"INSERT INTO {_quote_identifier(self.cfg.context_table_name)} VALUES (?, ?, ?, ?, ?)",
-                self._context_buffer,
+        if self._tendon_db is not None and self._tendon_buffer:
+            self._tendon_db.executemany(
+                "INSERT INTO tendon_frames (step_index, time, side, frame_json) VALUES (?, ?, ?, ?)",
+                self._tendon_buffer,
             )
-            self._context_buffer.clear()
-        if self._spatial_buffer:
-            placeholders = ", ".join("?" for _ in self._spatial_columns)
-            columns = ", ".join(_quote_identifier(name) for name in self._spatial_columns)
-            self._db.executemany(
-                f"INSERT INTO {_quote_identifier(self.cfg.spatial_table_name)} ({columns}) VALUES ({placeholders})",
-                self._spatial_buffer,
+            self._tendon_buffer.clear()
+        if self._dynamics_db is not None and self._dynamics_buffer:
+            placeholders = ", ".join("?" for _ in self._dynamics_columns)
+            columns = ", ".join(_quote_identifier(name) for name in self._dynamics_columns)
+            self._dynamics_db.executemany(
+                f"INSERT INTO dynamics_data ({columns}) VALUES ({placeholders})",
+                self._dynamics_buffer,
             )
-            self._spatial_buffer.clear()
+            self._dynamics_buffer.clear()
         self._db.commit()
+        if self._tendon_db is not None:
+            self._tendon_db.commit()
+        if self._dynamics_db is not None:
+            self._dynamics_db.commit()
 
     def close(self) -> None:
         """Flush rows, write metadata, and close the SQLite connection."""
@@ -221,9 +368,16 @@ class DataRecording:
             return
         self.flush()
         self._write_metadata()
+        self._write_viz_vars()
         if self._db is not None:
             self._db.close()
             self._db = None
+        if self._tendon_db is not None:
+            self._tendon_db.close()
+            self._tendon_db = None
+        if self._dynamics_db is not None:
+            self._dynamics_db.close()
+            self._dynamics_db = None
         self._closed = True
 
     def __enter__(self):
@@ -247,9 +401,11 @@ class DataRecording:
             if len(self._selected_sides()) != 1:
                 raise ValueError("selected_joint_names can only be used with one selected side.")
             return tuple(self.cfg.selected_joint_names)
-        if self.cfg.joint_set != "tendon_chain_5":
-            raise ValueError(f"Unknown joint_set: {self.cfg.joint_set!r}")
-        return TENDON_CHAIN_5_JOINTS[side]
+        if self.cfg.joint_set == "real_leg_joints":
+            return REAL_LEG_JOINTS[side]
+        if self.cfg.joint_set == "tendon_chain_5":
+            return TENDON_CHAIN_5_JOINTS[side]
+        raise ValueError(f"Unknown joint_set: {self.cfg.joint_set!r}")
 
     def _body_names_for_side(self, side: str) -> tuple[str, ...]:
         if self.cfg.selected_body_names is not None:
@@ -277,6 +433,18 @@ class DataRecording:
 
         self._sim_columns = _sim_data_columns(expected_dofs or 0)
 
+    def _resolve_env_ids(self, robot) -> None:
+        if self.cfg.selected_env_ids is None:
+            self._selected_env_ids = tuple(range(robot.num_instances))
+            return
+
+        env_ids = tuple(int(env_id) for env_id in self.cfg.selected_env_ids)
+        _validate_unique(env_ids, "selected environment ids")
+        invalid = [env_id for env_id in env_ids if env_id < 0 or env_id >= robot.num_instances]
+        if invalid:
+            raise ValueError(f"Selected environment ids out of range for {robot.num_instances} envs: {invalid}")
+        self._selected_env_ids = env_ids
+
     def _resolve_body_indices(self, robot) -> None:
         if not self.cfg.record_spatial_state:
             return
@@ -289,28 +457,56 @@ class DataRecording:
             self._body_indices_by_side[side] = _to_int_list(indices)
             self._body_names_by_side[side] = names
 
+    def _resolve_joint_dynamics_properties(self, robot) -> None:
+        rows = []
+        for side, names in self._joint_names_by_side.items():
+            for q_index, (joint_name, joint_index) in enumerate(zip(names, self._joint_indices_by_side[side])):
+                rows.append(
+                    {
+                        "side": side,
+                        "q_index": q_index,
+                        "joint_name": joint_name,
+                        "isaac_joint_index": int(joint_index),
+                        "static_friction_coeff": _tensor_scalar(robot.data.joint_friction_coeff, joint_index),
+                        "dynamic_friction_coeff": _tensor_scalar(robot.data.joint_dynamic_friction_coeff, joint_index),
+                        "viscous_friction_coeff": _tensor_scalar(robot.data.joint_viscous_friction_coeff, joint_index),
+                        "armature": _tensor_scalar(robot.data.joint_armature, joint_index),
+                    }
+                )
+        self._joint_dynamics_properties_rows = rows
+
     def _create_tables(self) -> None:
         self._db = sqlite3.connect(self.sqlite_path)
         sim_columns_sql = ", ".join(f"{_quote_identifier(name)} REAL NOT NULL" for name in self._sim_columns)
         self._db.execute(f"CREATE TABLE {_quote_identifier(self.cfg.sim_table_name)} ({sim_columns_sql})")
-        self._db.execute(
-            f"""
-            CREATE TABLE {_quote_identifier(self.cfg.context_table_name)} (
-                sample_id INTEGER PRIMARY KEY,
-                step_index INTEGER NOT NULL,
-                time REAL NOT NULL,
-                env_id INTEGER NOT NULL,
-                side TEXT NOT NULL
-            )
-            """
-        )
-        if self.cfg.record_spatial_state:
-            self._spatial_columns = _spatial_columns()
-            spatial_sql = ", ".join(_spatial_column_sql(name) for name in self._spatial_columns)
-            self._db.execute(f"CREATE TABLE {_quote_identifier(self.cfg.spatial_table_name)} ({spatial_sql})")
         self._db.commit()
+        if self.cfg.record_tendons:
+            self._tendon_db = sqlite3.connect(self.tendon_sqlite_path)
+            self._tendon_db.execute(
+                """
+                CREATE TABLE tendon_frames (
+                    step_index INTEGER NOT NULL,
+                    time REAL NOT NULL,
+                    side TEXT NOT NULL,
+                    frame_json TEXT NOT NULL
+                )
+                """
+            )
+            self._tendon_db.execute("CREATE INDEX tendon_frames_side_step_idx ON tendon_frames (side, step_index)")
+            self._tendon_db.commit()
+        if self.cfg.record_dynamics:
+            self._dynamics_columns = _dynamics_data_columns(self.num_dofs)
+            self._dynamics_db = sqlite3.connect(self.dynamics_sqlite_path)
+            columns_sql = ", ".join(_dynamics_column_sql(name) for name in self._dynamics_columns)
+            self._dynamics_db.execute(f"CREATE TABLE dynamics_data ({columns_sql})")
+            self._dynamics_db.execute("CREATE INDEX dynamics_data_step_idx ON dynamics_data (step_index, side)")
+            self._dynamics_db.commit()
 
-    def _tau_tensor(self, robot):
+    def _tau_tensor(self, robot, *, tau_override=None):
+        if tau_override is not None:
+            return tau_override
+        if self.cfg.tau_source == "controller_plus_ground":
+            raise RuntimeError("tau_source='controller_plus_ground' requires a tau_override tensor.")
         if self.cfg.tau_source == "applied_torque":
             return robot.data.applied_torque
         if self.cfg.tau_source == "computed_torque":
@@ -319,64 +515,100 @@ class DataRecording:
             return robot.data.joint_pos * 0.0
         raise ValueError(f"Unsupported tau_source: {self.cfg.tau_source!r}")
 
-    def _record_spatial_rows(
-        self,
-        sample_id: int,
-        step_index: int,
-        sim_time: float,
-        env_id: int,
-        side: str,
-        robot,
-    ) -> None:
-        body_indices = self._body_indices_by_side.get(side)
-        if not body_indices:
-            return
-
-        root_state = robot.data.root_state_w[env_id].detach().cpu().tolist()
-        body_link_state = robot.data.body_link_state_w[env_id, body_indices].detach().cpu().tolist()
-        body_com_state = robot.data.body_com_state_w[env_id, body_indices].detach().cpu().tolist()
-        body_com_acc = robot.data.body_com_acc_w[env_id, body_indices].detach().cpu().tolist()
-
-        for local_index, body_index in enumerate(body_indices):
-            body_name = self._body_names_by_side[side][local_index]
-            row = (
-                int(sample_id),
-                int(step_index),
-                float(sim_time),
-                int(env_id),
-                side,
-                int(body_index),
-                body_name,
-                *[float(value) for value in root_state],
-                *[float(value) for value in body_link_state[local_index]],
-                *[float(value) for value in body_com_state[local_index]],
-                *[float(value) for value in body_com_acc[local_index]],
-            )
-            self._spatial_buffer.append(row)
-
     def _write_metadata(self) -> None:
         metadata = {
             "created_at_utc": datetime.now(timezone.utc).isoformat(),
             "sqlite_path": str(self.sqlite_path),
+            "tendon_sqlite_path": str(self.tendon_sqlite_path) if self.cfg.record_tendons else None,
+            "dynamics_sqlite_path": str(self.dynamics_sqlite_path) if self.cfg.record_dynamics else None,
+            "viz_vars_path": str(self.viz_vars_path),
             "sim_table_name": self.cfg.sim_table_name,
-            "context_table_name": self.cfg.context_table_name,
-            "spatial_table_name": self.cfg.spatial_table_name if self.cfg.record_spatial_state else None,
+            "dynamics_table_name": "dynamics_data" if self.cfg.record_dynamics else None,
             "num_dofs": self.num_dofs,
             "row_count": self._row_count,
+            "tendon_row_count": self._tendon_row_count,
+            "dynamics_row_count": self._dynamics_row_count,
             "sim_columns": self._sim_columns,
+            "dynamics_columns": self._dynamics_columns,
             "sim_dt": self._sim_dt,
+            "selected_env_ids": list(self._selected_env_ids),
+            "sample_order": "for each recorded step: selected_env_ids in order, then selected_sides in order",
             "tau_source": self.cfg.tau_source,
-            "available_tau_sources": ["applied_torque", "computed_torque", "zero"],
+            "tau_semantics": self._tau_semantics(),
+            "dynamics_semantics": self._dynamics_semantics(),
+            "available_tau_sources": ["controller_plus_ground", "applied_torque", "computed_torque", "zero"],
             "sim_units": {"q": "rad", "dq": "rad/s", "ddq": "rad/s^2", "tau": "N*m"},
+            "dynamics_units": {"tau": "N*m"},
             "joint_mappings": self._joint_metadata(),
+            "joint_dynamics_properties": self._joint_dynamics_properties(),
             "body_mappings": self._body_metadata(),
-            "omitted_first_pass_joint_names": {
-                side: list(OMITTED_FIRST_PASS_JOINTS[side]) for side in self._selected_sides()
-            },
+            "omitted_joint_names": self._omitted_joint_metadata(),
             "config": _jsonable_config(self.cfg),
             "runtime_metadata": self._context_metadata,
         }
         self.metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    def _write_viz_vars(self) -> None:
+        viz_vars = {
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "format_version": 1,
+            "recording_dir": str(self.output_dir),
+            "kinematics_db": self.cfg.sqlite_filename,
+            "tendons_db": self.cfg.tendon_sqlite_filename if self.cfg.record_tendons else None,
+            "dynamics_db": self.cfg.dynamics_sqlite_filename if self.cfg.record_dynamics else None,
+            "metadata": self.cfg.metadata_filename,
+            "sim_table_name": self.cfg.sim_table_name,
+            "tendon_table_name": "tendon_frames",
+            "dynamics_table_name": "dynamics_data",
+            "tendon_frame_format": "jsonl-compatible analytic tendon debug frame",
+            "num_dofs": self.num_dofs,
+            "sim_dt": self._sim_dt,
+            "selected_sides": list(self._selected_sides()),
+            "selected_env_ids": list(self._selected_env_ids),
+            "sample_order": "for each recorded step: selected_env_ids in order, then selected_sides in order",
+            "joint_mappings": self._joint_metadata(),
+            "body_mappings": self._body_metadata(),
+            "config": _jsonable_config(self.cfg),
+        }
+        self.viz_vars_path.write_text(json.dumps(viz_vars, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    def _omitted_joint_metadata(self) -> dict[str, list[str]]:
+        omitted_by_side = OMITTED_JOINTS_BY_SET.get(self.cfg.joint_set)
+        if omitted_by_side is None:
+            return {side: [] for side in self._selected_sides()}
+        return {side: list(omitted_by_side[side]) for side in self._selected_sides()}
+
+    def _tau_semantics(self) -> str:
+        if self.cfg.tau_source == "controller_plus_ground":
+            return (
+                "actuator generalized torque on actuated joints plus PhysX ground contact generalized torque "
+                "from contact sensor forces projected with J^T f; tendon forces are intentionally excluded"
+            )
+        if self.cfg.tau_source == "zero":
+            return "zero placeholder for Identix kinematics schema compatibility; do not use as dynamics labels"
+        if self.cfg.tau_source == "applied_torque":
+            return "IsaacLab robot.data.applied_torque selected by joint index; may not include tendon body wrenches"
+        if self.cfg.tau_source == "computed_torque":
+            return "IsaacLab robot.data.computed_torque selected by joint index"
+        return self.cfg.tau_source
+
+    def _dynamics_semantics(self) -> dict[str, str]:
+        if not self.cfg.record_dynamics:
+            return {}
+        return {
+            "sample_id": "zero-based row index aligned one-to-one with sim_data rowid - 1",
+            "tau_inertia": "selected rows of PhysX generalized mass matrix multiplied by IsaacLab joint_acc",
+            "tau_coriolis": "PhysX Coriolis and centrifugal compensation forces for the current articulation state",
+            "tau_gravity": "PhysX generalized gravity compensation forces for the current articulation pose",
+            "tau_friction": (
+                "model estimate from configured joint dynamic and viscous friction coefficients; static friction is "
+                "stored in metadata because its active solver value is not exposed as a separated generalized force"
+            ),
+            "tau_model": "tau_inertia + tau_coriolis + tau_gravity + tau_friction",
+            "tau_tendon_residual": (
+                "tau_model - sim_data tau; intended as the residual target for tendon potential learning"
+            ),
+        }
 
     def _joint_metadata(self) -> list[dict[str, Any]]:
         rows = []
@@ -394,6 +626,9 @@ class DataRecording:
                     }
                 )
         return rows
+
+    def _joint_dynamics_properties(self) -> list[dict[str, Any]]:
+        return list(self._joint_dynamics_properties_rows)
 
     def _body_metadata(self) -> list[dict[str, Any]]:
         rows = []
@@ -417,6 +652,28 @@ def _sim_data_columns(num_dofs: int) -> list[str]:
         + [f"ddq{i}" for i in range(num_dofs)]
         + [f"tau{i}" for i in range(num_dofs)]
     )
+
+
+def _dynamics_data_columns(num_dofs: int) -> list[str]:
+    return (
+        ["sample_id", "step_index", "time", "env_id", "side"]
+        + [f"tau_inertia{i}" for i in range(num_dofs)]
+        + [f"tau_coriolis{i}" for i in range(num_dofs)]
+        + [f"tau_gravity{i}" for i in range(num_dofs)]
+        + [f"tau_friction{i}" for i in range(num_dofs)]
+        + [f"tau_model{i}" for i in range(num_dofs)]
+        + [f"tau_tendon_residual{i}" for i in range(num_dofs)]
+    )
+
+
+def _dynamics_column_sql(name: str) -> str:
+    if name == "sample_id":
+        return f"{_quote_identifier(name)} INTEGER PRIMARY KEY"
+    if name in ("step_index", "env_id"):
+        return f"{_quote_identifier(name)} INTEGER NOT NULL"
+    if name == "side":
+        return f"{_quote_identifier(name)} TEXT NOT NULL"
+    return f"{_quote_identifier(name)} REAL NOT NULL"
 
 
 def _spatial_columns() -> list[str]:
@@ -461,6 +718,11 @@ def _validate_unique(values: tuple[str, ...], label: str) -> None:
 
 def _to_int_list(values) -> list[int]:
     return [int(value) for value in values]
+
+
+def _tensor_scalar(tensor, joint_index: int) -> float:
+    value = tensor[0, joint_index] if tensor.ndim == 2 else tensor[joint_index]
+    return float(value.detach().cpu().item())
 
 
 def _jsonable_config(cfg: DataRecordingConfig) -> dict[str, Any]:

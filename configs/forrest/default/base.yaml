@@ -40,7 +40,6 @@ boom:
 physics:
   sim_dt: 0.0024  # Physics simulation timestep in seconds.
   gravity: [ 0.0, 0.0, -9.81 ]  # World gravity vector in m/s^2.
-  virtual_ground_height: null  # Optional debug ground plane height; null disables virtual ground forces.
   physx_gpu_collision_stack_size: 167772160  # PhysX GPU collision stack size for large contact-heavy env batches.
   physx_gpu_found_lost_aggregate_pairs_capacity: 134217728  # Broadphase found/lost aggregate pair buffer.
   physx_gpu_total_aggregate_pairs_capacity: 4194304  # Broadphase total aggregate pair buffer.

@@ -15,7 +15,6 @@ from isaaclab.tendons.models.analytic.constants import (
     link_names_left,
     link_names_right,
 )
-from isaaclab.utils.math import quat_apply_inverse
 
 
 class TendonRobotIO:
@@ -50,7 +49,6 @@ class TendonRobotIO:
         self._external_forces = torch.zeros(
             (self.robot.num_instances, N_CHAIN_LINKS_PER_LEG * 2, 3), device=self.device
         )
-        self._virtual_ground_force_scale = torch.tensor([0.0, 0.0, 8000.0], device=self.device)
 
     def get_leg_joint_angles(self, *, requires_grad: bool = True) -> torch.Tensor:
         joint_angles = torch.cat(
@@ -67,17 +65,3 @@ class TendonRobotIO:
     def empty_external_forces(self) -> torch.Tensor:
         self._external_forces.zero_()
         return self._external_forces
-
-    def compute_external_forces(self, *, virtual_ground_height: float | None = None) -> torch.Tensor:
-        forces = self.empty_external_forces()
-        if virtual_ground_height is None:
-            return forces
-
-        foot_heights = self.robot.data.body_com_pos_w[:, self.foot_link_indices, 2]
-        penetration_depths = virtual_ground_height - foot_heights
-        forces_world = penetration_depths.clamp(min=0.0).unsqueeze(-1) * self._virtual_ground_force_scale
-        forces[:, [tids.I_CHAIN_LINK_67, tids.I_CHAIN_LINK_67 + N_CHAIN_LINKS_PER_LEG], :] = quat_apply_inverse(
-            self.robot.data.body_link_quat_w[:, self.foot_link_indices],
-            forces_world,
-        )
-        return forces

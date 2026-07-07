@@ -34,6 +34,59 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument(
+    "--record_forrest_dbs",
+    action="store_true",
+    default=False,
+    help="Record Forrest kinematics/dynamics databases during play.",
+)
+parser.add_argument(
+    "--record_output_dir",
+    type=str,
+    default=None,
+    help="Exact output directory for Forrest play databases. Defaults to outputs/forrest_dbs_<timestamp>.",
+)
+parser.add_argument(
+    "--record_side",
+    choices=("left", "right", "both"),
+    default=None,
+    help="Forrest leg side to record. Defaults to recording.yaml.",
+)
+parser.add_argument(
+    "--record_env_ids",
+    type=str,
+    default=None,
+    help="Comma-separated env ids to record, for example '0,3,7'. Defaults to all envs.",
+)
+parser.add_argument(
+    "--record_stride",
+    type=int,
+    default=None,
+    help="Record every N play steps. Defaults to recording.yaml.",
+)
+parser.add_argument(
+    "--record_start_time",
+    type=float,
+    default=None,
+    help="Skip recording until this play time in seconds. Defaults to recording.yaml.",
+)
+parser.add_argument(
+    "--record_max_steps",
+    type=int,
+    default=None,
+    help="Stop recording after this many play steps. If video is off, play exits after reaching this limit.",
+)
+parser.add_argument(
+    "--record_dynamics",
+    action=argparse.BooleanOptionalAction,
+    default=None,
+    help="Write forrest_dynamics.db during play. Defaults to recording.yaml.",
+)
+parser.add_argument(
+    "--record_overwrite",
+    action="store_true",
+    help="Overwrite an existing Forrest recording output directory.",
+)
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -75,6 +128,8 @@ from isaaclab.envs import (
     ManagerBasedRLEnvCfg,
     multi_agent_to_single_agent,
 )
+from isaaclab.tendons.parameter_loader import load_forrest_parameter_config
+from isaaclab.tendons.rl_recording import ForrestRLRecorder, ForrestRLRecordingOptions, parse_env_ids
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
 
@@ -152,6 +207,39 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print_dict(video_kwargs, nesting=4)
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
+    forrest_recorder = None
+    if args_cli.record_forrest_dbs:
+        forrest_params = load_forrest_parameter_config()
+        recording_params = forrest_params.recording
+        forrest_recorder = ForrestRLRecorder(
+            env.unwrapped,
+            params=forrest_params,
+            options=ForrestRLRecordingOptions(
+                enabled=True,
+                output_dir=args_cli.record_output_dir or recording_params.output_dir,
+                side=args_cli.record_side or recording_params.side,
+                env_ids=parse_env_ids(args_cli.record_env_ids)
+                if args_cli.record_env_ids is not None
+                else recording_params.env_ids,
+                overwrite=bool(args_cli.record_overwrite or recording_params.overwrite),
+                stride=args_cli.record_stride if args_cli.record_stride is not None else recording_params.stride,
+                start_time=(
+                    args_cli.record_start_time
+                    if args_cli.record_start_time is not None
+                    else recording_params.start_time
+                ),
+                record_dynamics=(
+                    args_cli.record_dynamics
+                    if args_cli.record_dynamics is not None
+                    else recording_params.record_dynamics
+                ),
+                max_steps=args_cli.record_max_steps,
+            ),
+            task_name=args_cli.task,
+            checkpoint=str(resume_path),
+        )
+        print(f"[INFO] Forrest database recording enabled: {forrest_recorder.output_dir}")
+
     # wrap around environment for rsl-rl
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
@@ -201,33 +289,39 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # reset environment
     obs = env.get_observations()
     timestep = 0
-    # simulate environment
-    while simulation_app.is_running():
-        start_time = time.time()
-        # run everything in inference mode
-        with torch.inference_mode():
-            # agent stepping
-            actions = policy(obs)
-            # env stepping
-            obs, _, dones, _ = env.step(actions)
-            # reset recurrent states for episodes that have terminated
-            if version.parse(installed_version) >= version.parse("4.0.0"):
-                policy.reset(dones)
-            else:
-                policy_nn.reset(dones)
-        if args_cli.video:
-            timestep += 1
-            # Exit the play loop after recording one video
-            if timestep == args_cli.video_length:
-                break
+    try:
+        # simulate environment
+        while simulation_app.is_running():
+            start_time = time.time()
+            # run everything in inference mode
+            with torch.inference_mode():
+                # agent stepping
+                actions = policy(obs)
+                # env stepping
+                obs, _, dones, _ = env.step(actions)
+                if forrest_recorder is not None and not forrest_recorder.record_after_step():
+                    break
+                # reset recurrent states for episodes that have terminated
+                if version.parse(installed_version) >= version.parse("4.0.0"):
+                    policy.reset(dones)
+                else:
+                    policy_nn.reset(dones)
+            if args_cli.video:
+                timestep += 1
+                # Exit the play loop after recording one video
+                if timestep == args_cli.video_length:
+                    break
 
-        # time delay for real-time evaluation
-        sleep_time = dt - (time.time() - start_time)
-        if args_cli.real_time and sleep_time > 0:
-            time.sleep(sleep_time)
-
-    # close the simulator
-    env.close()
+            # time delay for real-time evaluation
+            sleep_time = dt - (time.time() - start_time)
+            if args_cli.real_time and sleep_time > 0:
+                time.sleep(sleep_time)
+    finally:
+        if forrest_recorder is not None:
+            forrest_recorder.close()
+            print(f"[INFO] Forrest database recording saved to: {forrest_recorder.output_dir}")
+        # close the simulator
+        env.close()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,24 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+recording:
+  enabled: false
+  output_dir: null
+  side: left
+  env_ids: null
+  joint_set: real_leg_joints
+  body_set: tendon_chain_links
+  tau_source: controller_plus_ground
+  stride: 1
+  start_time: 0.0
+  overwrite: false
+  record_spatial_state: false
+  record_tendons: false
+  record_dynamics: true
+  kinematics_db_filename: forrest_kinematics.db
+  tendons_db_filename: forrest_tendons.db
+  dynamics_db_filename: forrest_dynamics.db
+  metadata_filename: metadata.json
+  viz_vars_filename: viz_vars.json

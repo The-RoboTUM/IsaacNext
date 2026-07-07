@@ -71,7 +71,7 @@ class TendonActionTermHybrid(ActionTerm):
 
     This mirrors the JIT path used in ``run.py``:
 
-        tendon_manager.apply_jit(virtual_ground_height=None, dt=SIM_DT)
+        tendon_manager.apply_jit(dt=SIM_DT)
     """
 
     def __init__(self, cfg: TendonActionTermHybridCfg, env: ManagerBasedEnv):
@@ -164,12 +164,11 @@ class TendonActionTermHybrid(ActionTerm):
         if bool(getattr(profiler, "enabled", False)):
             with profiler.scope("env/tendon/apply_jit"):
                 self.tendon_manager.apply_jit(
-                    virtual_ground_height=None,
                     dt=self._get_physics_dt(),
                 )
             return
 
-        self.tendon_manager.apply_jit(virtual_ground_height=None, dt=self._get_physics_dt())
+        self.tendon_manager.apply_jit(dt=self._get_physics_dt())
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         """Reset tendon internal state.

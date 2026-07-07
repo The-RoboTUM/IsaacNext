@@ -189,7 +189,7 @@ class TendonManager:
 
             return left, right
 
-    def apply(self, *, debug: bool = False, virtual_ground_height: float | None = None, dt: float = 0.0):
+    def apply(self, *, debug: bool = False, dt: float = 0.0):
         """Eager apply path preserving the previous public behaviour."""
         batch_size = self.robot.num_instances
         if debug:
@@ -199,23 +199,21 @@ class TendonManager:
             info = None
 
         link_torques = self.torque_mapper.joint_to_link_torques(left, right, batch_size=batch_size)
-        forces = self.robot_io.compute_external_forces(virtual_ground_height=virtual_ground_height)
 
         self.robot.permanent_wrench_composer.set_forces_and_torques(
-            forces=forces,
+            forces=self.robot_io.empty_external_forces(),
             torques=link_torques,
             body_ids=self.link_indices_left_right,
         )
         return info
 
-    def apply_debug(self, virtual_ground_height: float | None = None, dt: float = 0.0):
-        return self.apply(debug=True, virtual_ground_height=virtual_ground_height, dt=dt)
+    def apply_debug(self, dt: float = 0.0):
+        return self.apply(debug=True, dt=dt)
 
-    def apply_jit(self, *, virtual_ground_height: float | None = None, dt: float = 0.0):
+    def apply_jit(self, *, dt: float = 0.0):
         """Apply torques using the JIT torque path.
 
-        External force construction remains in ``TendonRobotIO`` because it uses
-        Isaac Lab state and quaternion utilities.
+        Tendon forces are applied as link torques only. Ground contact is left to PhysX.
         """
         batch_size = self.robot.num_instances
         profiler = self._external_profiler()
@@ -225,7 +223,7 @@ class TendonManager:
         t1 = self._profile_time()
         link_torques = self.torque_mapper.joint_to_link_torques_jit(left, right, batch_size=batch_size)
         t2 = self._profile_time()
-        forces = self.robot_io.compute_external_forces(virtual_ground_height=virtual_ground_height)
+        forces = self.robot_io.empty_external_forces()
         t3 = self._profile_time()
 
         self.robot.permanent_wrench_composer.set_forces_and_torques(
