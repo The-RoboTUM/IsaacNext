@@ -13,6 +13,7 @@
   - [Joints Parameter Settings](#joints-parameter-settings)
   - [Joints Limits](#joints-limits)
   - [Collision Parameter Settings](#collision-parameter-settings)
+  - [Forrest Tendon Calibration and PSO](#forrest-tendon-calibration-and-pso)
   - [🚀 Reinforcement Learning Pipeline](#-reinforcement-learning-pipeline)
     - [Train Forrest](#train-forrest)
     - [Experiment Tracking](#experiment-tracking)
@@ -334,6 +335,77 @@ pip install -r requirements.txt
 
 ```
 -->
+
+
+## Forrest Tendon Calibration and PSO
+
+The central Forrest parameter profile lives in `configs/forrest/default/`. It is shared by the standalone tendon
+runner, PSO, and RL task configuration so replayed PSO results can be promoted into training without manually copying
+physics settings.
+
+### Standalone Tendon Replay
+
+Run the current default Forrest tendon profile:
+
+```bash
+./isaaclab.sh -p scripts/tendons/run.py --duration 120 --jit
+```
+
+Useful options:
+
+- `--parameters_file <path>` loads a profile directory or YAML override, for example a PSO `best.yaml`.
+- `--controller cpg|sin|cpg_oscillator` selects the open-loop controller.
+- `--constraint_mode static|boom|freefall` controls the base constraint for replay.
+- `--startup_hold` enables the configured startup hold before the controller starts.
+
+The runner prints the active ground and foot friction values at startup. Ground material settings are under
+`configs/forrest/default/base.yaml` in `physics.ground`; foot material settings used by RL randomization are under
+`configs/forrest/default/train.yaml` in `training.events`.
+
+### Live Calibration UI
+
+Open the live calibration windows with:
+
+```bash
+./isaaclab.sh -p scripts/tendons/run.py --calibration --duration 120 --jit
+```
+
+Calibration mode adds docked Isaac UI windows for:
+
+- tendon length and stiffness sliders, with editable min/max ranges;
+- baseline geometry parameters;
+- controller parameters for the selected controller;
+- reset, pause, and reset-and-stop controls;
+- live controller/tendon plots and a colored tendon overlay in the viewport.
+
+With no slider changes, `--calibration` is intended to match the normal replay physics. The UI path uses the same
+controller classes as non-calibration replay and only changes tendon/controller values when the live state is edited.
+
+### PSO Search
+
+Run the current PSO search:
+
+```bash
+./isaaclab.sh -p scripts/pso/run.py --headless --jit --iterations 1000
+```
+
+Outputs are written under `outputs/pso/<timestamp>/`:
+
+```text
+best.yaml
+best_info.yaml
+checkpoint.pt
+checkpoint_final.pt
+```
+
+Replay a PSO result:
+
+```bash
+./isaaclab.sh -p scripts/tendons/run.py --jit --parameters_file outputs/pso/<timestamp>/best.yaml --duration 20
+```
+
+The default profile currently contains the latest promoted PSO CPG/tendon values. Previous YAML values are left
+commented next to the active values for quick rollback while testing RL transfer.
 
 
 ## 🚀 Reinforcement Learning Pipeline

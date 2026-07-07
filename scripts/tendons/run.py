@@ -80,6 +80,11 @@ parser.add_argument(
     default=None,
     help="Path to a Forrest parameter YAML file or profile directory.",
 )
+parser.add_argument(
+    "--calibration",
+    action="store_true",
+    help="Open live calibration controls and plot windows.",
+)
 parser.add_argument("--record_identix", action="store_true", help="Record Identix-compatible sim_data.")
 parser.add_argument(
     "--record_output_dir",
@@ -219,10 +224,21 @@ from isaaclab.tendons.runner import (
 )
 from isaaclab.utils.math import create_rotation_matrix_from_view, quat_from_matrix
 
+if args_cli.calibration:
+    from isaaclab.tendons.calibration import (
+        CalibrationWindows,
+        ForrestTendonOverlay,
+        apply_tendon_parameters,
+        build_calibration_state,
+        build_tendon_data_from_state,
+        runtime_controller_command_tensor,
+    )
+
 from isaaclab_assets.robots.forrest import get_forrest_cfg
 
 USD_PATH = "symlinks/forrest_ws/urdf/forrest_isaac/forrest_isaac.usd"
 SIM_DT = FORREST_PARAMS.physics.sim_dt
+VIRTUAL_GROUND_HEIGHT = None
 CAMERA_EYE = (2.5, -8.0, 2.0)
 CAMERA_TARGET = (2.5, 0.0, 0.85)
 _CV2 = None
@@ -273,6 +289,45 @@ def append_jsonl(path: Path, data: dict):
     """Append one JSON object to a JSONL file."""
     with path.open("a", encoding="utf-8") as file:
         file.write(json.dumps(data) + "\n")
+
+
+def make_ground_material_cfg():
+    material = FORREST_PARAMS.physics.ground
+    return sim_utils.RigidBodyMaterialCfg(
+        static_friction=material.static_friction,
+        dynamic_friction=material.dynamic_friction,
+        restitution=material.restitution,
+        friction_combine_mode=material.friction_combine_mode,
+        restitution_combine_mode=material.restitution_combine_mode,
+    )
+
+
+def make_foot_material_cfg():
+    events = FORREST_PARAMS.training.events
+    return sim_utils.RigidBodyMaterialCfg(
+        static_friction=events.foot_static_friction_range[0],
+        dynamic_friction=events.foot_dynamic_friction_range[0],
+        restitution=events.foot_restitution_range[0],
+        friction_combine_mode=FORREST_PARAMS.physics.ground.friction_combine_mode,
+        restitution_combine_mode=FORREST_PARAMS.physics.ground.restitution_combine_mode,
+    )
+
+
+def apply_foot_material(robot_prim_path: str) -> None:
+    material_path = f"{robot_prim_path}/rubberFootPhysicsMaterial"
+    material_cfg = make_foot_material_cfg()
+    material_cfg.func(material_path, material_cfg)
+    for body_name in FORREST_PARAMS.training.contacts.foot_body_names:
+        body_path = f"{robot_prim_path}/{body_name}"
+        try:
+            bound = sim_utils.bind_physics_material(body_path, material_path)
+        except ValueError as exc:
+            carb.log_warn(f"Unable to bind foot physics material to {body_path}: {exc}")
+            continue
+        if not bound:
+            carb.log_warn(f"Unable to bind foot physics material to {body_path}")
+        else:
+            carb.log_info(f"Bound rubber foot physics material to {body_path}")
 
 
 def require_cv2():
@@ -344,6 +399,8 @@ def setup_video_writer(args, sim_cfg):
 def print_startup_summary(args, sim_cfg, num_steps: int):
     mode = "JIT / TorchScript" if args.jit else "DEBUG / eager"
     startup_hold_duration = args.startup_hold_duration if args.startup_hold else 0.0
+    ground_material = FORREST_PARAMS.physics.ground
+    event_params = FORREST_PARAMS.training.events
     print("\n=== Forrest tendon simulation ===")
     print(f"Mode:              {mode}")
     print(f"Base constraint:   {args.constraint_mode}")
@@ -353,6 +410,20 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
     print(f"Torch CUDA:        {torch.cuda.is_available()}")
     print(f"Physics dt:        {sim_cfg.dt:.6f} s")
     print(f"Duration:          {args.duration:.3f} s ({num_steps} steps)")
+    virtual_ground_str = "disabled" if VIRTUAL_GROUND_HEIGHT is None else f"{VIRTUAL_GROUND_HEIGHT:.3f} m"
+
+    print(f"Virtual ground:    {virtual_ground_str}")
+    print(
+        "Ground friction:   "
+        f"static={ground_material.static_friction:.3f}, "
+        f"dynamic={ground_material.dynamic_friction:.3f}, "
+        f"combine={ground_material.friction_combine_mode}"
+    )
+    print(
+        "Foot friction:     "
+        f"static={event_params.foot_static_friction_range[0]:.3f}, "
+        f"dynamic={event_params.foot_dynamic_friction_range[0]:.3f}"
+    )
     print(f"Video recording:   {'on' if args.record_video else 'off'}")
     print(f"Identix recording: {'on' if args.record_identix else 'off'}")
     if args.record_identix:
@@ -362,6 +433,7 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
         print(f"Recording tau:     {args.record_tau_source}")
         print(f"Recording tendons: {'on' if args.record_tendons and not args.jit else 'off'}")
         print(f"Recording dynamics:{'on' if args.record_dynamics else 'off'}")
+    print(f"Calibration UI:    {'on' if args.calibration else 'off'}")
 
     if args.jit:
         print("Diagnostics:       lightweight console status only")
@@ -497,7 +569,7 @@ def record_side_policy(record_side: str) -> str:
     raise ValueError(f"Unsupported record side: {record_side}")
 
 
-def main():
+def main():  # noqa: C901
     output_dir = Path(args_cli.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -531,7 +603,9 @@ def main():
         )
     )
 
-    sim_utils.GroundPlaneCfg().func("/World/defaultGroundPlane", sim_utils.GroundPlaneCfg())
+    ground_cfg = sim_utils.GroundPlaneCfg(physics_material=make_ground_material_cfg())
+    ground_cfg.func("/World/defaultGroundPlane", ground_cfg)
+    apply_foot_material("/World/Bot")
     sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func("/World/Light", sim_utils.DomeLightCfg())
 
     debug_left_path = None
@@ -558,28 +632,33 @@ def main():
     actuated_joint_indices = find_actuated_joint_indices(robot, actuated_dof_specs)
     FORREST_PARAMS.run.controller = args_cli.controller
     left_controller, right_controller = make_leg_controllers(FORREST_PARAMS.run)
-    initial_controller_targets = controller_command_tensor(
-        t=0.0,
-        left_controller=left_controller,
-        right_controller=right_controller,
-        actuated_dof_specs=actuated_dof_specs,
-        initial_joint_positions=torch.zeros((1, len(actuated_joint_indices)), dtype=torch.float32, device=robot.device),
-        controller_zero=torch.zeros((1, len(actuated_joint_indices)), dtype=torch.float32, device=robot.device),
-        device=robot.device,
-    )
     initial_joint_positions = robot.data.joint_pos[:, actuated_joint_indices].clone()
     startup_hold_duration = max(0.0, float(args_cli.startup_hold_duration)) if args_cli.startup_hold else 0.0
 
+    tendon_data = TendonData(
+        robot.num_instances,
+        FORREST_PARAMS.to_tendon_randomization_ranges(),
+        tc=FORREST_PARAMS.to_tendon_constants(device=robot.device),
+        device=robot.device,
+    )
     tendon_manager = TendonManager(
         robot,
-        tendon_data=TendonData(
-            robot.num_instances,
-            FORREST_PARAMS.to_tendon_randomization_ranges(),
-            tc=FORREST_PARAMS.to_tendon_constants(device=robot.device),
-            device=robot.device,
-        ),
+        tendon_data=tendon_data,
         tendon_damping=FORREST_PARAMS.tendon_damping(),
     )
+
+    calibration_state = None
+    calibration_windows = None
+    tendon_overlay = None
+    if args_cli.calibration:
+        calibration_state = build_calibration_state(FORREST_PARAMS, args_cli.controller)
+        command_labels = [f"{spec.side}_{spec.dof}" for spec in actuated_dof_specs]
+        calibration_windows = CalibrationWindows(
+            calibration_state,
+            command_labels=command_labels,
+            tendon_labels=["left |tau|max", "right |tau|max"],
+        )
+        tendon_overlay = ForrestTendonOverlay(robot)
 
     mode_label = "jit" if args_cli.jit else "debug"
     data_recorder = None
@@ -628,14 +707,45 @@ def main():
 
     wall_start = time.perf_counter()
     try:
-        for iteration in range(num_steps):
+        iteration = 0
+        while iteration < num_steps:
+            if calibration_windows is not None:
+                calibration_windows.update()
+
+            if calibration_state is not None and calibration_state.consume_reset_request():
+                reset_robot_to_default(robot)
+                robot.update(0.0)
+                tendon_manager.reset_damping_state()
+                initial_joint_positions = robot.data.joint_pos[:, actuated_joint_indices].clone()
+                iteration = 0
+                wall_start = time.perf_counter()
+                if calibration_state.should_stop():
+                    break
+
+            if calibration_state is not None and calibration_state.is_paused():
+                simulation_app.update()
+                time.sleep(0.01)
+                continue
+
             t = iteration * sim.get_physics_dt()
             debug_info = None
             debug_joint_pos_left = None
             debug_joint_pos_right = None
+            jit_tendon_torques = None
+
+            if calibration_state is not None:
+                if calibration_state.consume_tendon_rebuild_request():
+                    tendon_data = build_tendon_data_from_state(
+                        FORREST_PARAMS,
+                        calibration_state,
+                        num_instances=robot.num_instances,
+                        device=robot.device,
+                    )
+                    tendon_manager.set_tendon_data(tendon_data)
+                apply_tendon_parameters(tendon_data, calibration_state)
 
             if args_cli.jit:
-                tendon_manager.apply_jit(dt=SIM_DT)
+                jit_tendon_torques = tendon_manager.apply_jit(dt=SIM_DT)
             else:
                 # apply_debug reads the current pre-step joint state; keep the JSONL joint_pos aligned with it.
                 debug_joint_pos_left = robot.data.joint_pos[0, joint_indices_left].detach().clone()
@@ -646,6 +756,14 @@ def main():
             controller_t = max(0.0, t - startup_hold_duration)
             if t < startup_hold_duration:
                 commanded_positions = initial_joint_positions
+                controller_delta = torch.zeros_like(initial_joint_positions)
+            elif calibration_state is not None:
+                commanded_positions, controller_delta = runtime_controller_command_tensor(
+                    t=controller_t,
+                    state=calibration_state,
+                    actuated_dof_specs=actuated_dof_specs,
+                    initial_joint_positions=initial_joint_positions,
+                )
             else:
                 commanded_positions = controller_command_tensor(
                     t=controller_t,
@@ -653,9 +771,9 @@ def main():
                     right_controller=right_controller,
                     actuated_dof_specs=actuated_dof_specs,
                     initial_joint_positions=initial_joint_positions,
-                    controller_zero=initial_controller_targets,
                     device=robot.device,
                 )
+                controller_delta = commanded_positions - initial_joint_positions
 
             robot.set_joint_position_target(
                 commanded_positions,
@@ -722,6 +840,45 @@ def main():
                 append_jsonl(debug_left_path, data_left)
                 append_jsonl(debug_right_path, data_right)
 
+            if calibration_state is not None:
+                tendon_active = {}
+                overlay_left_data = data_left if debug_info is not None else None
+                overlay_right_data = data_right if debug_info is not None else None
+                if debug_info is not None:
+                    tendon_plot_values = [
+                        debug_info["tendon_torques_left"].detach().abs().max().cpu().item(),
+                        debug_info["tendon_torques_right"].detach().abs().max().cpu().item(),
+                    ]
+                    tendon_active = {
+                        "gst": bool(debug_info["GST_not_slack"].detach().any().cpu().item()),
+                        "dft": bool(debug_info["DFT_not_slack"].detach().any().cpu().item()),
+                        "kft": bool(debug_info["KFT_not_slack"].detach().any().cpu().item()),
+                        "edt1": bool(debug_info["EDT1_not_slack"].detach().any().cpu().item()),
+                        "edt2": bool(debug_info["EDT2_not_slack"].detach().any().cpu().item()),
+                    }
+                elif jit_tendon_torques is not None:
+                    tendon_plot_values = [
+                        jit_tendon_torques[0].detach().abs().max().cpu().item(),
+                        jit_tendon_torques[1].detach().abs().max().cpu().item(),
+                    ]
+                    tendon_active = tendon_manager.get_tendon_activity()
+                else:
+                    tendon_plot_values = [0.0, 0.0]
+                calibration_state.publish_telemetry(
+                    sim_time=t,
+                    controller_values=controller_delta[0].detach().cpu().tolist(),
+                    tendon_values=tendon_plot_values,
+                    extra={"tendon_active": tendon_active},
+                )
+                if tendon_overlay is not None:
+                    tendon_overlay.update(
+                        iteration=iteration,
+                        left_debug=overlay_left_data,
+                        right_debug=overlay_right_data,
+                        tendon_data=tendon_data,
+                        tendon_active=tendon_active,
+                    )
+
             maybe_print_status(
                 iteration=iteration,
                 num_steps=num_steps,
@@ -731,11 +888,16 @@ def main():
                 mode=mode_label,
                 debug_info=debug_info,
             )
+            iteration += 1
 
     except KeyboardInterrupt as exc:
         carb.log_error(f"Simulation interrupted: {exc}")
         raise
     finally:
+        if tendon_overlay is not None:
+            tendon_overlay.clear()
+        if calibration_windows is not None:
+            calibration_windows.destroy()
         if data_recorder is not None:
             data_recorder.close()
             print(f"Identix database saved to: {data_recorder.sqlite_path}")

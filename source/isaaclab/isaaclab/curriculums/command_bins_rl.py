@@ -16,13 +16,13 @@ import torch
 from isaaclab.curriculums.command_bins import (
     CommandBinCurriculumParameters,
     CommandBinCurriculumState,
-    command_tracking_success,
+    command_tracking_reward_success,
 )
 from isaaclab.envs.mdp.commands.commands_cfg import UniformVelocityCommandCfg
 from isaaclab.envs.mdp.commands.velocity_command import UniformVelocityCommand
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.utils import configclass
-from isaaclab.utils.math import wrap_to_pi
+from isaaclab.utils.math import quat_apply_inverse, yaw_quat
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -40,6 +40,8 @@ class BinnedVelocityCommand(UniformVelocityCommand):
         self.command_start_pos_w = self.robot.data.root_pos_w[:, :2].clone()
         self.command_start_heading_w = self.robot.data.heading_w.clone()
         self.command_start_step = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+        self.tracking_reward_sum = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
+        self.tracking_reward_steps = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
         self.metrics["curriculum_unlocked_bin"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["curriculum_progress_percent"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["curriculum_current_bin_attempts"] = torch.zeros(self.num_envs, device=self.device)
@@ -48,6 +50,7 @@ class BinnedVelocityCommand(UniformVelocityCommand):
         self.metrics["sampled_bin"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["sampled_bin_percent"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["command_duration_s"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["command_tracking_reward"] = torch.zeros(self.num_envs, device=self.device)
         self._update_curriculum_metrics()
 
     def _bin_percent(self, bin_ids: torch.Tensor) -> torch.Tensor:
@@ -74,36 +77,58 @@ class BinnedVelocityCommand(UniformVelocityCommand):
         self.metrics["sampled_bin"][:] = self.bin_ids.to(dtype=torch.float32)
         self.metrics["sampled_bin_percent"][:] = self._bin_percent(self.bin_ids)
 
+    def _sample_range(self, limits: tuple[float, float], count: int) -> torch.Tensor:
+        low, high = float(limits[0]), float(limits[1])
+        samples = torch.rand(count, dtype=torch.float32, device=self.device)
+        return low + samples * (high - low)
+
+    def _raw_tracking_reward(self) -> torch.Tensor:
+        vel_yaw = quat_apply_inverse(yaw_quat(self.robot.data.root_quat_w), self.robot.data.root_lin_vel_w[:, :3])
+        lin_vel_error = torch.sum(torch.square(self.vel_command_b[:, :2] - vel_yaw[:, :2]), dim=1)
+        reward = torch.exp(-lin_vel_error / float(self.cfg.curriculum.success_tracking_reward_std) ** 2)
+        positive_forward_command = self.vel_command_b[:, 0] > 0.05
+        command_x = torch.clamp(self.vel_command_b[:, 0], min=0.05)
+        forward_progress_scale = torch.clamp(vel_yaw[:, 0] / command_x, 0.0, 1.0)
+        return torch.where(positive_forward_command, reward * forward_progress_scale, reward)
+
+    def _update_metrics(self):
+        super()._update_metrics()
+        raw_tracking_reward = self._raw_tracking_reward()
+        self.tracking_reward_sum += raw_tracking_reward
+        self.tracking_reward_steps += 1.0
+        self.metrics["command_tracking_reward"][:] = self.tracking_reward_sum / torch.clamp(
+            self.tracking_reward_steps, min=1.0
+        )
+
     def _record_attempts(self, env_ids: torch.Tensor, *, terminated: torch.Tensor | None = None) -> None:
         if env_ids.numel() == 0:
             return
         valid = (self.command_counter[env_ids] > 0) & (
             self._env.episode_length_buf[env_ids] > self.command_start_step[env_ids]
         )
+        if terminated is not None:
+            terminated = terminated.to(device=self.device, dtype=torch.bool)[valid]
         env_ids = env_ids[valid]
         if env_ids.numel() == 0:
             return
 
-        displacement_xy = self.robot.data.root_pos_w[env_ids, :2] - self.command_start_pos_w[env_ids]
-        heading_delta = wrap_to_pi(self.robot.data.heading_w[env_ids] - self.command_start_heading_w[env_ids])
         command_steps = torch.clamp(self._env.episode_length_buf[env_ids] - self.command_start_step[env_ids], min=1)
         duration = command_steps.to(dtype=torch.float32) * float(self._env.step_dt)
         self.metrics["command_duration_s"][env_ids] = duration
         if terminated is None:
             terminated = torch.zeros(env_ids.shape, dtype=torch.bool, device=self.device)
-        else:
-            terminated = terminated.to(device=self.device, dtype=torch.bool)
-        max_command_duration = float(self.cfg.resampling_time_range[1])
+        max_command_duration = min(
+            float(self.cfg.resampling_time_range[1]),
+            float(getattr(self._env, "max_episode_length_s", self.cfg.resampling_time_range[1])),
+        )
         min_survival_duration = float(self.cfg.curriculum.success_min_survival_fraction) * max_command_duration
-        success_mask = command_tracking_success(
-            self.vel_command_b[env_ids],
-            displacement_xy,
-            heading_delta,
+        tracking_reward = self.tracking_reward_sum[env_ids] / torch.clamp(self.tracking_reward_steps[env_ids], min=1.0)
+        success_mask = command_tracking_reward_success(
+            tracking_reward,
             duration,
             terminated,
             min_survival_duration,
-            float(self.cfg.curriculum.success_velocity_tolerance),
-            float(self.cfg.curriculum.success_yaw_rate_tolerance),
+            float(self.cfg.curriculum.success_tracking_reward_threshold),
         )
         self._curriculum_state.update(self.bin_ids[env_ids], success_mask)
         self.command_start_step[env_ids] = self._env.episode_length_buf[env_ids]
@@ -139,11 +164,16 @@ class BinnedVelocityCommand(UniformVelocityCommand):
             return
         self._record_attempts(env_ids_tensor)
         commands, bin_ids = self._curriculum_state.sample(int(env_ids_tensor.numel()))
+        commands[:, 1] = self._sample_range(self.cfg.ranges.lin_vel_y, int(env_ids_tensor.numel()))
+        commands[:, 2] = self._sample_range(self.cfg.ranges.ang_vel_z, int(env_ids_tensor.numel()))
         self.vel_command_b[env_ids_tensor] = commands
         self.bin_ids[env_ids_tensor] = bin_ids
         self.command_start_pos_w[env_ids_tensor] = self.robot.data.root_pos_w[env_ids_tensor, :2]
         self.command_start_heading_w[env_ids_tensor] = self.robot.data.heading_w[env_ids_tensor]
         self.command_start_step[env_ids_tensor] = self._env.episode_length_buf[env_ids_tensor]
+        self.tracking_reward_sum[env_ids_tensor] = 0.0
+        self.tracking_reward_steps[env_ids_tensor] = 0.0
+        self.metrics["command_tracking_reward"][env_ids_tensor] = 0.0
         self.is_standing_env[env_ids_tensor] = False
         self.is_heading_env[env_ids_tensor] = False
         self._update_curriculum_metrics()

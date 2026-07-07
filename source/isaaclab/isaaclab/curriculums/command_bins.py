@@ -32,8 +32,13 @@ class CommandBinCurriculumParameters:
     max_attempts_to_track: int = 0
     success_velocity_tolerance: float = 0.25
     success_yaw_rate_tolerance: float = 0.4
+    success_check_lin_vel_y: bool = True
+    success_check_ang_vel_z: bool = True
+    success_tracking_reward_threshold: float = 0.8
+    success_tracking_reward_std: float = 0.5
     success_min_survival_fraction: float = 0.98
     sample_only_frontier: bool = False
+    sample_lookahead_lin_vel_x: float = 0.0
     reset_counts_on_unlock: bool = False
     command_name: str = "base_velocity"
 
@@ -111,22 +116,32 @@ def sample_binned_velocity_commands(
     sample_only_frontier: bool,
     prefer_newer_bins: bool,
     older_bin_probability_decay: float,
+    lookahead_lin_vel_x: float,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Sample velocity commands from unlocked bins."""
 
     max_bin = int(torch.clamp(unlocked_bin, min=0, max=bins.shape[0] - 1).item())
+    min_sample_bin = 0
+    max_sample_bin = max_bin
+    if lookahead_lin_vel_x > 0.0:
+        upper_x = bins[max_bin, 1] + lookahead_lin_vel_x
+        max_sample_bin = int(torch.sum(bins[:, 1] <= upper_x + 1.0e-6).item()) - 1
+        max_sample_bin = max(max_bin, min(max_sample_bin, bins.shape[0] - 1))
+        min_sample_bin = max_bin
+
     if sample_only_frontier:
-        bin_ids = torch.full((count,), max_bin, dtype=torch.long, device=bins.device)
-    elif prefer_newer_bins and max_bin > 0:
-        bin_index = torch.arange(max_bin + 1, dtype=torch.long, device=bins.device)
-        distance_from_frontier = (max_bin - bin_index).to(dtype=torch.float32)
+        bin_ids = torch.full((count,), max_sample_bin, dtype=torch.long, device=bins.device)
+    elif prefer_newer_bins and max_sample_bin > min_sample_bin:
+        bin_index = torch.arange(min_sample_bin, max_sample_bin + 1, dtype=torch.long, device=bins.device)
+        distance_from_frontier = (max_sample_bin - bin_index).to(dtype=torch.float32)
         decay = torch.tensor(older_bin_probability_decay, dtype=torch.float32, device=bins.device).clamp(0.01, 1.0)
         weights = torch.pow(decay, distance_from_frontier)
         cdf = torch.cumsum(weights / torch.sum(weights), dim=0)
         draws = torch.rand(count, dtype=torch.float32, device=bins.device)
-        bin_ids = torch.searchsorted(cdf, draws).clamp(0, max_bin).to(dtype=torch.long)
+        sampled_offsets = torch.searchsorted(cdf, draws).clamp(0, bin_index.numel() - 1).to(dtype=torch.long)
+        bin_ids = bin_index[sampled_offsets]
     else:
-        bin_ids = torch.randint(0, max_bin + 1, (count,), dtype=torch.long, device=bins.device)
+        bin_ids = torch.randint(min_sample_bin, max_sample_bin + 1, (count,), dtype=torch.long, device=bins.device)
 
     selected = bins[bin_ids]
     rand = torch.rand((count, 3), dtype=torch.float32, device=bins.device)
@@ -147,6 +162,8 @@ def command_tracking_success(
     min_survival_duration: float,
     velocity_tolerance: float,
     yaw_rate_tolerance: float,
+    check_lin_vel_y: bool,
+    check_ang_vel_z: bool,
 ) -> torch.Tensor:
     """Return success mask for completed command attempts."""
 
@@ -157,13 +174,27 @@ def command_tracking_success(
     y_error = torch.abs(achieved_xy[:, 1] - command[:, 1])
     yaw_error = torch.abs(achieved_yaw_rate - command[:, 2])
     survived = duration >= min_survival_duration
-    return (
-        (~terminated)
-        & survived
-        & (x_error <= velocity_tolerance)
-        & (y_error <= velocity_tolerance)
-        & (yaw_error <= yaw_rate_tolerance)
-    )
+    y_success = y_error <= velocity_tolerance
+    if not check_lin_vel_y:
+        y_success = torch.ones_like(y_success, dtype=torch.bool)
+    yaw_success = yaw_error <= yaw_rate_tolerance
+    if not check_ang_vel_z:
+        yaw_success = torch.ones_like(yaw_success, dtype=torch.bool)
+    return (~terminated) & survived & (x_error <= velocity_tolerance) & y_success & yaw_success
+
+
+@torch.jit.script
+def command_tracking_reward_success(
+    tracking_reward: torch.Tensor,
+    duration: torch.Tensor,
+    terminated: torch.Tensor,
+    min_survival_duration: float,
+    reward_threshold: float,
+) -> torch.Tensor:
+    """Return success mask from accumulated raw command-tracking reward."""
+
+    survived = duration >= min_survival_duration
+    return (~terminated) & survived & (tracking_reward >= reward_threshold)
 
 
 @torch.jit.script
@@ -250,15 +281,22 @@ class CommandBinCurriculumState:
             bool(self.params.sample_only_frontier),
             self.prefer_newer_bins,
             self.older_bin_probability_decay,
+            float(self.params.sample_lookahead_lin_vel_x),
         )
 
     def update(self, bin_ids: torch.Tensor, success_mask: torch.Tensor) -> None:
+        bin_ids = bin_ids.to(device=self.bins.device, dtype=torch.long)
+        success_mask = success_mask.to(device=self.bins.device, dtype=torch.bool)
+        unlocked = int(self.unlocked_bin.detach().cpu())
+        record_mask = bin_ids <= unlocked
+        bin_ids = bin_ids[record_mask]
+        success_mask = success_mask[record_mask]
         update_command_bin_curriculum(
             self.attempts,
             self.successes,
             self.unlocked_bin,
-            bin_ids.to(device=self.bins.device, dtype=torch.long),
-            success_mask.to(device=self.bins.device, dtype=torch.bool),
+            bin_ids,
+            success_mask,
             int(self.params.successes_to_unlock),
             int(self.params.min_attempts_to_unlock),
             float(self.params.min_success_rate_to_unlock),
@@ -283,4 +321,5 @@ class CommandBinCurriculumState:
             "successes": [float(value) for value in self.successes.detach().cpu().tolist()],
             "prefer_newer_bins": self.prefer_newer_bins,
             "older_bin_probability_decay": self.older_bin_probability_decay,
+            "sample_lookahead_lin_vel_x": float(self.params.sample_lookahead_lin_vel_x),
         }

@@ -3,11 +3,13 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+import isaaclab.sim as sim_utils
 from isaaclab.curriculums.command_bins_rl import BinnedVelocityCommandCfg, make_binned_velocity_curriculum_term
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg, TerminationTermCfg
 from isaaclab.sensors import ContactSensorCfg
 from isaaclab.utils import configclass
+from isaaclab.utils.modifiers import ModifierCfg
 
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg
 
@@ -22,6 +24,7 @@ from .rl_env_cfg import (
     ForrestRewards,
     _body_name_regex,
     actuated_joint_names,
+    finite_observation,
     reset_root_state_uniform_all_envs_on_startup,
     terminate_if_base_too_low,
 )
@@ -33,6 +36,28 @@ def _disable_zero_weight_rewards(rewards_cfg, reward_weights: dict[str, float]) 
     for reward_name, weight in reward_weights.items():
         if float(weight) == 0.0 and hasattr(rewards_cfg, reward_name):
             setattr(rewards_cfg, reward_name, None)
+
+
+def _forrest_ground_material_cfg() -> sim_utils.RigidBodyMaterialCfg:
+    ground = FORREST_PARAMS.physics.ground
+    return sim_utils.RigidBodyMaterialCfg(
+        static_friction=ground.static_friction,
+        dynamic_friction=ground.dynamic_friction,
+        restitution=ground.restitution,
+        friction_combine_mode=ground.friction_combine_mode,
+        restitution_combine_mode=ground.restitution_combine_mode,
+    )
+
+
+def _sanitize_policy_observations(policy_cfg) -> None:
+    finite_modifier = ModifierCfg(func=finite_observation)
+    for term_name, term_cfg in policy_cfg.__dict__.items():
+        if term_cfg is None or not hasattr(term_cfg, "func"):
+            continue
+        modifiers = list(term_cfg.modifiers or [])
+        if not any(getattr(modifier, "func", None) is finite_observation for modifier in modifiers):
+            modifiers.append(finite_modifier)
+        term_cfg.modifiers = modifiers
 
 
 @configclass
@@ -54,7 +79,14 @@ class ForrestBaseEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Scene
         self.scene.robot = get_forrest_cfg(FORREST_PARAMS).replace(prim_path=FORREST_PARAMS.robot.prim_path)
-        self.scene.height_scanner.prim_path = FORREST_PARAMS.robot.height_scanner_prim_path
+        self.scene.terrain.physics_material = _forrest_ground_material_cfg()
+        self.sim.physics_material = self.scene.terrain.physics_material
+        if FORREST_PARAMS.robot.use_height_scanner:
+            self.scene.height_scanner.prim_path = FORREST_PARAMS.robot.height_scanner_prim_path
+        else:
+            self.scene.height_scanner = None
+            self.observations.policy.height_scan = None
+        _sanitize_policy_observations(self.observations.policy)
         if (
             FORREST_PARAMS.physics.articulation.enabled_self_collisions
             and FORREST_PARAMS.physics.articulation.selective_self_collision_body_names
@@ -84,6 +116,16 @@ class ForrestBaseEnvCfg(LocomotionVelocityRoughEnvCfg):
             self.events.push_robot = None
         if TRAINING_PARAMS.events.disable_add_base_mass:
             self.events.add_base_mass = None
+        self.events.physics_material.params["asset_cfg"] = SceneEntityCfg(
+            "robot",
+            body_names=list(CONTACT_PARAMS.foot_body_names),
+        )
+        self.events.physics_material.params["static_friction_range"] = TRAINING_PARAMS.events.foot_static_friction_range
+        self.events.physics_material.params["dynamic_friction_range"] = (
+            TRAINING_PARAMS.events.foot_dynamic_friction_range
+        )
+        self.events.physics_material.params["restitution_range"] = TRAINING_PARAMS.events.foot_restitution_range
+        self.events.physics_material.params["num_buckets"] = TRAINING_PARAMS.events.foot_material_num_buckets
         self.events.reset_robot_joints.params["position_range"] = (
             TRAINING_PARAMS.events.reset_robot_joint_position_range
         )
@@ -159,6 +201,9 @@ class ForrestBaseEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # Commands
+        self.commands.base_velocity.ranges.lin_vel_x = TRAINING_PARAMS.commands.lin_vel_x
+        self.commands.base_velocity.ranges.lin_vel_y = TRAINING_PARAMS.commands.lin_vel_y
+        self.commands.base_velocity.ranges.ang_vel_z = TRAINING_PARAMS.commands.ang_vel_z
         if TRAINING_PARAMS.command_curriculum.enabled:
             self.commands.base_velocity = BinnedVelocityCommandCfg(
                 asset_name="robot",
@@ -173,7 +218,3 @@ class ForrestBaseEnvCfg(LocomotionVelocityRoughEnvCfg):
             self.curriculum.command_bins = make_binned_velocity_curriculum_term(
                 TRAINING_PARAMS.command_curriculum.command_name
             )
-        else:
-            self.commands.base_velocity.ranges.lin_vel_x = TRAINING_PARAMS.commands.lin_vel_x
-            self.commands.base_velocity.ranges.lin_vel_y = TRAINING_PARAMS.commands.lin_vel_y
-            self.commands.base_velocity.ranges.ang_vel_z = TRAINING_PARAMS.commands.ang_vel_z

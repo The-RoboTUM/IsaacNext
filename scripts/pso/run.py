@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -115,6 +116,28 @@ def resolve_reload_checkpoint(path: str) -> Path:
     return reload_path
 
 
+def snapshot_base_config(run_dir: Path, base_config_path: Path | None) -> Path | None:
+    """Copy the base Forrest config beside PSO outputs so best.yaml is replayable."""
+
+    if base_config_path is None:
+        return None
+    source = base_config_path.expanduser().resolve()
+    if not source.exists():
+        raise FileNotFoundError(f"Base Forrest parameter config does not exist: {source}")
+
+    if source.is_dir():
+        destination = run_dir / "base_config_snapshot"
+        if not destination.exists():
+            shutil.copytree(source, destination)
+        return destination
+
+    suffix = source.suffix or ".yaml"
+    destination = run_dir / f"base_config_snapshot{suffix}"
+    if not destination.exists():
+        shutil.copy2(source, destination)
+    return destination
+
+
 def export_best(
     run_dir: Path,
     space: ParameterSpace,
@@ -123,6 +146,7 @@ def export_best(
     iteration: int,
     base_config_path: Path | None,
     sim_dt: float | None,
+    duration: float | None,
     startup_hold_duration: float | None,
     constraint_mode: str | None,
     yaml_path: Path | None = None,
@@ -135,6 +159,7 @@ def export_best(
         "parameter_names": list(space.names),
         "parameters": space.vector_to_dict(best_physical),
         "sim_dt": None if sim_dt is None else float(sim_dt),
+        "duration": None if duration is None else float(duration),
     }
     includes = None if base_config_path is None else [str(base_config_path.resolve())]
     yaml_path = yaml_path or run_dir / "best.yaml"
@@ -143,12 +168,14 @@ def export_best(
     if sim_dt is not None:
         exported.setdefault("physics", {})["sim_dt"] = float(sim_dt)
     run_overrides = exported.setdefault("run", {})
+    if duration is not None:
+        run_overrides["duration"] = float(duration)
     if startup_hold_duration is not None:
         run_overrides["startup_hold_enabled"] = float(startup_hold_duration) > 0.0
         run_overrides["startup_hold_duration"] = float(startup_hold_duration)
     if constraint_mode is not None:
         run_overrides["constraint_mode"] = str(constraint_mode)
-    if sim_dt is not None or startup_hold_duration is not None or constraint_mode is not None:
+    if sim_dt is not None or duration is not None or startup_hold_duration is not None or constraint_mode is not None:
         write_yaml(yaml_path, exported)
     write_yaml(info_path, metadata)
 
@@ -161,6 +188,7 @@ def export_periodic_best_checkpoint(
     completed_iteration: int,
     base_config_path: Path | None,
     sim_dt: float | None,
+    duration: float | None,
 ) -> None:
     checkpoint_dir = run_dir / "best_checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -172,6 +200,7 @@ def export_periodic_best_checkpoint(
         iteration=completed_iteration - 1,
         base_config_path=base_config_path,
         sim_dt=sim_dt,
+        duration=duration,
         startup_hold_duration=PSO_CFG.objective.startup_hold_duration,
         constraint_mode=PSO_CFG.objective.constraint_mode,
         yaml_path=checkpoint_dir / f"{stem}.yaml",
@@ -189,6 +218,8 @@ def format_iteration_row(
     best_particle_speed: float,
     mean_rollout_speed: float,
     max_rollout_speed: float,
+    raw_mean_rollout_speed: float,
+    raw_max_rollout_speed: float,
     mean_survival_time: float,
     bad_percent: float,
     fall_percent: float,
@@ -204,6 +235,8 @@ def format_iteration_row(
         f"{best_particle_speed:>8.2f} "
         f"{mean_rollout_speed:>8.2f} "
         f"{max_rollout_speed:>8.2f} "
+        f"{raw_mean_rollout_speed:>8.2f} "
+        f"{raw_max_rollout_speed:>8.2f} "
         f"{mean_survival_time:>7.2f} "
         f"{ok_percent:>6.1f} "
         f"{bad_percent:>6.1f} "
@@ -215,8 +248,9 @@ def format_iteration_row(
 
 def format_iteration_header() -> str:
     return (
-        "iter    iter_s      score    global   v_best   v_mean    v_max  life_s    ok%   bad%  fall% unphys%  back%\n"
-        "--------------------------------------------------------------------------------------------------------------"
+        "iter    iter_s      score    global   v_best   v_mean    v_max  raw_avg  raw_max  life_s"
+        "    ok%   bad%  fall% unphys%  back%\n"
+        "------------------------------------------------------------------------------------------------------------------------------"
     )
 
 
@@ -238,6 +272,7 @@ def main():  # noqa: C901
     history_path = run_dir / "history.jsonl"
     checkpoint_path = run_dir / "checkpoint.pt"
     final_checkpoint_path = run_dir / "checkpoint_final.pt"
+    base_config_snapshot_path = snapshot_base_config(run_dir, FORREST_CONFIG_PATH)
 
     torch.manual_seed(int(PSO_CFG.swarm.seed))
     space = ParameterSpace(PSO_CFG.parameters, device=args_cli.device)
@@ -257,6 +292,7 @@ def main():  # noqa: C901
         {
             "pso": asdict(PSO_CFG),
             "base_parameters_file": None if FORREST_CONFIG_PATH is None else str(FORREST_CONFIG_PATH),
+            "base_parameters_snapshot": None if base_config_snapshot_path is None else str(base_config_snapshot_path),
             "device": args_cli.device,
             "reload_checkpoint": None if reload_checkpoint is None else str(reload_checkpoint),
         },
@@ -355,6 +391,7 @@ def main():  # noqa: C901
                         "mean_survival_time": result.mean_survival_time,
                         "mean_rollout_forward_speed": result.mean_rollout_forward_speed,
                         "max_rollout_forward_speed": result.max_rollout_forward_speed,
+                        "raw_mean_rollout_forward_speed": result.raw_mean_rollout_forward_speed,
                         "raw_max_rollout_forward_speed": result.raw_max_rollout_forward_speed,
                         "best_particle_forward_speed": best_particle_speed,
                         "command_curriculum": curriculum,
@@ -370,8 +407,9 @@ def main():  # noqa: C901
                         space,
                         optimizer,
                         iteration=iteration,
-                        base_config_path=FORREST_CONFIG_PATH,
+                        base_config_path=base_config_snapshot_path,
                         sim_dt=PSO_CFG.objective.sim_dt,
+                        duration=PSO_CFG.objective.duration,
                         startup_hold_duration=PSO_CFG.objective.startup_hold_duration,
                         constraint_mode=PSO_CFG.objective.constraint_mode,
                     )
@@ -408,6 +446,8 @@ def main():  # noqa: C901
                         best_particle_speed=best_particle_speed,
                         mean_rollout_speed=result.mean_rollout_forward_speed,
                         max_rollout_speed=result.max_rollout_forward_speed,
+                        raw_mean_rollout_speed=result.raw_mean_rollout_forward_speed,
+                        raw_max_rollout_speed=result.raw_max_rollout_forward_speed,
                         mean_survival_time=result.mean_survival_time,
                         bad_percent=result.terminated_percent,
                         fall_percent=result.fall_percent,
@@ -436,8 +476,9 @@ def main():  # noqa: C901
                         space,
                         optimizer,
                         completed_iteration=completed_iteration,
-                        base_config_path=FORREST_CONFIG_PATH,
+                        base_config_path=base_config_snapshot_path,
                         sim_dt=PSO_CFG.objective.sim_dt,
+                        duration=PSO_CFG.objective.duration,
                     )
                 report_start_s = time.perf_counter()
 
@@ -492,6 +533,7 @@ def main():  # noqa: C901
                     "mean_survival_time": result.mean_survival_time,
                     "mean_rollout_forward_speed": result.mean_rollout_forward_speed,
                     "max_rollout_forward_speed": result.max_rollout_forward_speed,
+                    "raw_mean_rollout_forward_speed": result.raw_mean_rollout_forward_speed,
                     "raw_max_rollout_forward_speed": result.raw_max_rollout_forward_speed,
                     "best_particle_forward_speed": best_particle_speed,
                     "command_curriculum": curriculum,
@@ -511,8 +553,9 @@ def main():  # noqa: C901
                     space,
                     optimizer,
                     iteration=iteration,
-                    base_config_path=FORREST_CONFIG_PATH,
+                    base_config_path=base_config_snapshot_path,
                     sim_dt=PSO_CFG.objective.sim_dt,
+                    duration=PSO_CFG.objective.duration,
                     startup_hold_duration=PSO_CFG.objective.startup_hold_duration,
                     constraint_mode=PSO_CFG.objective.constraint_mode,
                 )
@@ -549,6 +592,8 @@ def main():  # noqa: C901
                     best_particle_speed=best_particle_speed,
                     mean_rollout_speed=result.mean_rollout_forward_speed,
                     max_rollout_speed=result.max_rollout_forward_speed,
+                    raw_mean_rollout_speed=result.raw_mean_rollout_forward_speed,
+                    raw_max_rollout_speed=result.raw_max_rollout_forward_speed,
                     mean_survival_time=result.mean_survival_time,
                     bad_percent=result.terminated_percent,
                     fall_percent=result.fall_percent,
@@ -577,8 +622,9 @@ def main():  # noqa: C901
                     space,
                     optimizer,
                     completed_iteration=completed_iteration,
-                    base_config_path=FORREST_CONFIG_PATH,
+                    base_config_path=base_config_snapshot_path,
                     sim_dt=PSO_CFG.objective.sim_dt,
+                    duration=PSO_CFG.objective.duration,
                 )
 
     finally:
@@ -589,8 +635,9 @@ def main():  # noqa: C901
             space,
             optimizer,
             iteration=max(0, optimizer.iteration - 1),
-            base_config_path=FORREST_CONFIG_PATH,
+            base_config_path=base_config_snapshot_path,
             sim_dt=PSO_CFG.objective.sim_dt,
+            duration=PSO_CFG.objective.duration,
             startup_hold_duration=PSO_CFG.objective.startup_hold_duration,
             constraint_mode=PSO_CFG.objective.constraint_mode,
         )

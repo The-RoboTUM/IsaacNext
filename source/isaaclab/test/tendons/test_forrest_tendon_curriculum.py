@@ -9,17 +9,27 @@ import math
 
 import torch
 
-from isaaclab.curriculums.command_bins import command_tracking_success
+from isaaclab.curriculums.command_bins import (
+    CommandBinCurriculumParameters,
+    CommandBinCurriculumState,
+    command_tracking_reward_success,
+    command_tracking_success,
+)
 from isaaclab.pso.config import PsoConfig
 from isaaclab.pso.kernels import cpg_oscillator_command_kernel
 from isaaclab.pso.parameters import ParameterSpace
 from isaaclab.tendons.controllers.base import DOF_ORDER, DOF_SIGN
-from isaaclab.tendons.controllers.cpg import HopfCPGLeg, HopfCPGParams
+from isaaclab.tendons.controllers.cpg import BirdBotCPGLeg, CPGParams, HopfCPGLeg, HopfCPGParams
 from isaaclab.tendons.controllers.sinusoidal import SinusoidalLegController, SinusoidalParams
 from isaaclab.tendons.models.analytic.analytic_energy_model import AnalyticTendonEnergyModel
 from isaaclab.tendons.models.analytic.tendon_data import TendonData
 from isaaclab.tendons.parameter_loader import RunSinusoidalControllerParameters, load_forrest_parameter_config
-from isaaclab.tendons.runner import ActuatedDofSpec, cpg_oscillator_command_batch, sinusoidal_command_batch
+from isaaclab.tendons.runner import (
+    ActuatedDofSpec,
+    cpg_command_batch,
+    cpg_oscillator_command_batch,
+    sinusoidal_command_batch,
+)
 from isaaclab.tendons.torque_mapper import TendonTorqueMapper
 
 
@@ -46,10 +56,15 @@ def test_pso_exported_forrest_yaml_loads_from_external_directory(tmp_path):
 
     space.export_forrest_yaml(output_path, physical, includes=["configs/forrest/default"])
     loaded = load_forrest_parameter_config(output_path)
+    initial_by_name = {param.name: param.initial for param in cfg.parameters}
 
-    assert loaded.run.controller == "cpg_oscillator"
-    assert math.isclose(loaded.tendons.baseline.lengths["gst_spring_rest"], 0.06, rel_tol=1e-6)
-    assert math.isclose(loaded.run.cpg_oscillator.f_hz, 0.8, rel_tol=1e-6)
+    assert loaded.run.controller == "cpg"
+    assert math.isclose(
+        loaded.tendons.baseline.lengths["gst_spring_rest"],
+        initial_by_name["tendons.baseline.lengths.gst_spring_rest"],
+        rel_tol=1e-6,
+    )
+    assert math.isclose(loaded.run.cpg.f_hz, initial_by_name["run.cpg.f_hz"], rel_tol=1e-6)
 
 
 def test_tendon_data_and_jit_energy_support_cpu():
@@ -139,6 +154,50 @@ def test_vectorized_sinusoidal_command_matches_scalar_controller():
         params_by_env[f"run.sinusoidal.right_phase_rad.{dof}"] = torch.tensor([params.right_phase_rad.get(dof, 0.0)])
 
     batch = sinusoidal_command_batch(
+        t=t,
+        params_by_env=params_by_env,
+        actuated_dof_specs=specs,
+        initial_joint_positions=initial_joint_positions,
+        controller_zero=controller_zero,
+    )
+    expected = torch.tensor(
+        [[spec.sign * (left if spec.side == "left" else right).joint(spec.dof, t)[0] for spec in specs]],
+        dtype=torch.float32,
+    )
+
+    torch.testing.assert_close(batch, expected, rtol=1e-6, atol=1e-6)
+
+
+def test_vectorized_basic_cpg_command_matches_scalar_controller():
+    specs = _actuated_specs()
+    initial_joint_positions = torch.zeros((1, len(specs)), dtype=torch.float32)
+    controller_zero = torch.zeros_like(initial_joint_positions)
+    t = 0.37
+    common = {
+        "f_hz": 1.1,
+        "D": 0.62,
+        "A_h_deg": 27.0,
+        "O_h_deg": 5.0,
+        "A_k_deg": 95.0,
+        "S_f": 0.04,
+        "S_e": 0.08,
+    }
+    left = BirdBotCPGLeg(CPGParams(phi0=-0.35, **common), include_knee=True)
+    right = BirdBotCPGLeg(CPGParams(phi0=2.1, **common), include_knee=True)
+    params_by_env = {
+        "run.cpg.f_hz": torch.tensor([common["f_hz"]]),
+        "run.cpg.duty_factor": torch.tensor([common["D"]]),
+        "run.cpg.hip_amplitude_deg": torch.tensor([common["A_h_deg"]]),
+        "run.cpg.hip_offset_deg": torch.tensor([common["O_h_deg"]]),
+        "run.cpg.knee_amplitude_deg": torch.tensor([common["A_k_deg"]]),
+        "run.cpg.swing_start_offset": torch.tensor([common["S_f"]]),
+        "run.cpg.swing_end_offset": torch.tensor([common["S_e"]]),
+        "run.cpg.combined_phase_offset_rad": torch.tensor([0.0]),
+        "run.cpg.left_phase_offset_rad": torch.tensor([-0.35]),
+        "run.cpg.right_phase_offset_rad": torch.tensor([2.1]),
+    }
+
+    batch = cpg_command_batch(
         t=t,
         params_by_env=params_by_env,
         actuated_dof_specs=specs,
@@ -307,6 +366,65 @@ def test_command_tracking_success_checks_yaw_and_termination():
         0.5,
         0.05,
         0.05,
+        True,
+        True,
     )
 
     assert success.tolist() == [True, True, False, False]
+
+    x_only_success = command_tracking_success(
+        command,
+        displacement_xy,
+        heading_delta,
+        duration,
+        terminated,
+        0.5,
+        0.05,
+        0.05,
+        True,
+        False,
+    )
+
+    assert x_only_success.tolist() == [True, True, True, False]
+
+
+def test_command_tracking_reward_success_uses_reward_threshold_and_survival():
+    tracking_reward = torch.tensor([0.85, 0.79, 0.90, 0.95], dtype=torch.float32)
+    duration = torch.tensor([6.0, 6.0, 5.9, 6.0], dtype=torch.float32)
+    terminated = torch.tensor([False, False, False, True])
+
+    success = command_tracking_reward_success(
+        tracking_reward,
+        duration,
+        terminated,
+        6.0,
+        0.8,
+    )
+
+    assert success.tolist() == [True, False, False, False]
+
+
+def test_command_curriculum_samples_lookahead_window_without_poisoning_future_bins():
+    params = CommandBinCurriculumParameters(
+        include_stand_bin=True,
+        lin_vel_x_min=0.0,
+        lin_vel_x_max=1.0,
+        lin_vel_x_bin_width=0.1,
+        initial_unlocked_bin=2,
+        sample_lookahead_lin_vel_x=0.5,
+    )
+    state = CommandBinCurriculumState(params, device="cpu")
+
+    commands, bin_ids = state.sample(512)
+
+    assert int(bin_ids.min()) >= 2
+    assert int(bin_ids.max()) <= 7
+    assert torch.all(commands[:, 0] >= 0.1)
+    assert torch.all(commands[:, 0] <= 0.7)
+
+    state.update(torch.tensor([2, 3, 7], dtype=torch.long), torch.tensor([True, True, True]))
+
+    assert state.attempts[2].item() == 1.0
+    assert state.successes[2].item() == 1.0
+    assert state.attempts[3].item() == 0.0
+    assert state.attempts[7].item() == 0.0

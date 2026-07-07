@@ -6,7 +6,18 @@
 """Package containing the core framework."""
 
 import os
-import toml
+try:
+    import toml
+except ModuleNotFoundError:
+    import tomllib
+
+    class _TomlCompat:
+        @staticmethod
+        def load(path):
+            with open(path, "rb") as file:
+                return tomllib.load(file)
+
+    toml = _TomlCompat()
 
 # Conveniences to other module directories via relative paths
 ISAACLAB_EXT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))

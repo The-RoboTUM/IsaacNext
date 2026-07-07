@@ -148,6 +148,11 @@ def _safe_nonnegative_reward(value: torch.Tensor, max_value: float | None = None
     return _safe_nonnegative_reward_bounded(value, max_value)
 
 
+def finite_observation(data: torch.Tensor) -> torch.Tensor:
+    """Replace non-finite policy observations before they enter the rollout buffer."""
+    return torch.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
+
+
 @torch.jit.script
 def _feet_crossing_penalty_core(
     pos_b: torch.Tensor,
