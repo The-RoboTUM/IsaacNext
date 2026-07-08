@@ -62,8 +62,6 @@ def expected_dynamics_columns(num_dofs: int) -> list[str]:
         + [f"tau_coriolis{i}" for i in range(num_dofs)]
         + [f"tau_gravity{i}" for i in range(num_dofs)]
         + [f"tau_friction{i}" for i in range(num_dofs)]
-        + [f"tau_model{i}" for i in range(num_dofs)]
-        + [f"tau_tendon_residual{i}" for i in range(num_dofs)]
     )
 
 

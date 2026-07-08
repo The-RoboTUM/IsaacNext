@@ -144,9 +144,9 @@ class DataRecording:
         self._db: sqlite3.Connection | None = None
         self._tendon_db: sqlite3.Connection | None = None
         self._dynamics_db: sqlite3.Connection | None = None
-        self._sim_buffer: list[tuple[float, ...]] = []
+        self._sim_rows_by_stream: dict[tuple[int, str], list[tuple[float, ...]]] = {}
         self._tendon_buffer: list[tuple[int, float, str, str]] = []
-        self._dynamics_buffer: list[tuple[Any, ...]] = []
+        self._dynamics_rows_by_stream: dict[tuple[int, str], list[tuple[Any, ...]]] = {}
         self._joint_indices_by_side: dict[str, list[int]] = {}
         self._joint_names_by_side: dict[str, tuple[str, ...]] = {}
         self._body_indices_by_side: dict[str, list[int]] = {}
@@ -234,19 +234,11 @@ class DataRecording:
         if missing:
             raise ValueError(f"Missing dynamics term tensors: {missing}")
 
-        tau_total = (
-            dynamics_terms["inertia"]
-            + dynamics_terms["coriolis"]
-            + dynamics_terms["gravity"]
-            + dynamics_terms["friction"]
-        )
-        tau_residual = tau_total - tau_input
-
         for env_id in self._selected_env_ids:
             for side in self._selected_sides():
                 joint_indices = self._joint_indices_by_side[side]
                 row_values: list[Any] = [
-                    int(self._dynamics_row_count),
+                    -1,
                     int(step_index),
                     float(sim_time),
                     int(env_id),
@@ -255,13 +247,8 @@ class DataRecording:
                 for term_name in ("inertia", "coriolis", "gravity", "friction"):
                     term_values = dynamics_terms[term_name][env_id, joint_indices].detach().cpu().tolist()
                     row_values.extend(float(value) for value in term_values)
-                row_values.extend(float(value) for value in tau_total[env_id, joint_indices].detach().cpu().tolist())
-                row_values.extend(float(value) for value in tau_residual[env_id, joint_indices].detach().cpu().tolist())
-                self._dynamics_buffer.append(tuple(row_values))
+                self._dynamics_rows_by_stream.setdefault((int(env_id), side), []).append(tuple(row_values))
                 self._dynamics_row_count += 1
-
-        if len(self._dynamics_buffer) >= self.cfg.batch_size:
-            self.flush()
 
     def record_tendon_frame(self, *, step_index: int, sim_time: float, side: str, frame: dict[str, Any]) -> None:
         """Record one visualization/debug tendon frame as timed data."""
@@ -320,41 +307,41 @@ class DataRecording:
                 ddq = ddq_all[env_id, joint_indices].detach().cpu().tolist()
                 tau = tau_all[env_id, joint_indices].detach().cpu().tolist()
 
-                self._sim_buffer.append(tuple(float(value) for value in [*q, *dq, *ddq, *tau]))
+                self._sim_rows_by_stream.setdefault((int(env_id), side), []).append(
+                    tuple(float(value) for value in [*q, *dq, *ddq, *tau])
+                )
                 self._row_count += 1
 
         if context:
             self._context_metadata.setdefault("per_step_context_seen", sorted(context))
-        if len(self._sim_buffer) >= self.cfg.batch_size:
-            self.flush()
 
     def flush(self) -> None:
         """Flush buffered rows to SQLite."""
 
         if self._db is None:
             return
-        if self._sim_buffer:
+        if self._sim_rows_by_stream:
             placeholders = ", ".join("?" for _ in self._sim_columns)
             columns = ", ".join(_quote_identifier(name) for name in self._sim_columns)
             self._db.executemany(
                 f"INSERT INTO {_quote_identifier(self.cfg.sim_table_name)} ({columns}) VALUES ({placeholders})",
-                self._sim_buffer,
+                self._ordered_sim_rows(),
             )
-            self._sim_buffer.clear()
+            self._sim_rows_by_stream.clear()
         if self._tendon_db is not None and self._tendon_buffer:
             self._tendon_db.executemany(
                 "INSERT INTO tendon_frames (step_index, time, side, frame_json) VALUES (?, ?, ?, ?)",
                 self._tendon_buffer,
             )
             self._tendon_buffer.clear()
-        if self._dynamics_db is not None and self._dynamics_buffer:
+        if self._dynamics_db is not None and self._dynamics_rows_by_stream:
             placeholders = ", ".join("?" for _ in self._dynamics_columns)
             columns = ", ".join(_quote_identifier(name) for name in self._dynamics_columns)
             self._dynamics_db.executemany(
                 f"INSERT INTO dynamics_data ({columns}) VALUES ({placeholders})",
-                self._dynamics_buffer,
+                self._ordered_dynamics_rows(),
             )
-            self._dynamics_buffer.clear()
+            self._dynamics_rows_by_stream.clear()
         self._db.commit()
         if self._tendon_db is not None:
             self._tendon_db.commit()
@@ -445,6 +432,24 @@ class DataRecording:
             raise ValueError(f"Selected environment ids out of range for {robot.num_instances} envs: {invalid}")
         self._selected_env_ids = env_ids
 
+    def _ordered_stream_keys(self) -> list[tuple[int, str]]:
+        return [(env_id, side) for env_id in self._selected_env_ids for side in self._selected_sides()]
+
+    def _ordered_sim_rows(self) -> list[tuple[float, ...]]:
+        rows: list[tuple[float, ...]] = []
+        for key in self._ordered_stream_keys():
+            rows.extend(self._sim_rows_by_stream.get(key, ()))
+        return rows
+
+    def _ordered_dynamics_rows(self) -> list[tuple[Any, ...]]:
+        rows: list[tuple[Any, ...]] = []
+        sample_id = 0
+        for key in self._ordered_stream_keys():
+            for row in self._dynamics_rows_by_stream.get(key, ()):
+                rows.append((sample_id, *row[1:]))
+                sample_id += 1
+        return rows
+
     def _resolve_body_indices(self, robot) -> None:
         if not self.cfg.record_spatial_state:
             return
@@ -532,7 +537,7 @@ class DataRecording:
             "dynamics_columns": self._dynamics_columns,
             "sim_dt": self._sim_dt,
             "selected_env_ids": list(self._selected_env_ids),
-            "sample_order": "for each recorded step: selected_env_ids in order, then selected_sides in order",
+            "sample_order": "selected_env_ids in order, then selected_sides in order, then all recorded steps",
             "tau_source": self.cfg.tau_source,
             "tau_semantics": self._tau_semantics(),
             "dynamics_semantics": self._dynamics_semantics(),
@@ -565,7 +570,7 @@ class DataRecording:
             "sim_dt": self._sim_dt,
             "selected_sides": list(self._selected_sides()),
             "selected_env_ids": list(self._selected_env_ids),
-            "sample_order": "for each recorded step: selected_env_ids in order, then selected_sides in order",
+            "sample_order": "selected_env_ids in order, then selected_sides in order, then all recorded steps",
             "joint_mappings": self._joint_metadata(),
             "body_mappings": self._body_metadata(),
             "config": _jsonable_config(self.cfg),
@@ -603,10 +608,6 @@ class DataRecording:
             "tau_friction": (
                 "model estimate from configured joint dynamic and viscous friction coefficients; static friction is "
                 "stored in metadata because its active solver value is not exposed as a separated generalized force"
-            ),
-            "tau_model": "tau_inertia + tau_coriolis + tau_gravity + tau_friction",
-            "tau_tendon_residual": (
-                "tau_model - sim_data tau; intended as the residual target for tendon potential learning"
             ),
         }
 
@@ -661,8 +662,6 @@ def _dynamics_data_columns(num_dofs: int) -> list[str]:
         + [f"tau_coriolis{i}" for i in range(num_dofs)]
         + [f"tau_gravity{i}" for i in range(num_dofs)]
         + [f"tau_friction{i}" for i in range(num_dofs)]
-        + [f"tau_model{i}" for i in range(num_dofs)]
-        + [f"tau_tendon_residual{i}" for i in range(num_dofs)]
     )
 
 

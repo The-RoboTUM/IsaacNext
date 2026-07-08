@@ -264,8 +264,6 @@ together under one timestamped recording directory.
     - `tau_coriolis`
     - `tau_gravity`
     - `tau_friction`
-    - `tau_model`
-    - `tau_tendon_residual`
 - [x] Inspect Isaac/PhysX APIs for each component:
     - generalized mass matrix for inertia
     - gravity compensation for gravitational potential contribution
@@ -280,10 +278,6 @@ together under one timestamped recording directory.
     - `tau_coriolis*`
     - `tau_gravity*`
     - `tau_friction*`
-    - `tau_model*`
-    - `tau_tendon_residual*`
-- [ ] Validate the sign convention of `tau_tendon_residual = tau_model - sim_data.tau` against analytic tendon debug
-  torques on a short run.
 - [ ] Check whether tendon effects applied through `TendonManager` appear in any Isaac generalized torque tensor.
 - [ ] If they do not, record tendon debug torques as a separate diagnostic/dynamics channel and document how they relate
   to `sim_data.tau`.
