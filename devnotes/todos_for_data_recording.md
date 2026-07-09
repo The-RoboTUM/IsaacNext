@@ -266,9 +266,10 @@ together under one timestamped recording directory.
     - `tau_friction`
 - [x] Inspect Isaac/PhysX APIs for each component:
     - generalized mass matrix for inertia
-    - gravity compensation for gravitational potential contribution
-    - coriolis/centrifugal compensation forces
+    - actual generalized gravity forces for gravitational contribution
+    - actual generalized coriolis/centrifugal forces
     - actuator torque channels
+    - normal plus friction ground contact forces and contact-point moments
     - configured joint friction coefficients
 - [x] Create `forrest_dynamics.db` together with `forrest_kinematics.db`.
 - [x] Keep repeated `q`, `dq`, `ddq`, and `tau` out of `forrest_dynamics.db`.
@@ -278,6 +279,8 @@ together under one timestamped recording directory.
     - `tau_coriolis*`
     - `tau_gravity*`
     - `tau_friction*`
+- [x] Use actual generalized gravity/coriolis force APIs rather than compensation-torque APIs.
+- [x] Project ground contact as a contact wrench when available: normal force, friction force, and contact-point moment.
 - [ ] Check whether tendon effects applied through `TendonManager` appear in any Isaac generalized torque tensor.
 - [ ] If they do not, record tendon debug torques as a separate diagnostic/dynamics channel and document how they relate
   to `sim_data.tau`.

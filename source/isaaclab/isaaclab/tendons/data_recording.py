@@ -587,7 +587,8 @@ class DataRecording:
         if self.cfg.tau_source == "controller_plus_ground":
             return (
                 "actuator generalized torque on actuated joints plus PhysX ground contact generalized torque "
-                "from contact sensor forces projected with J^T f; tendon forces are intentionally excluded"
+                "from measured contact wrench projected with J^T; uses normal plus friction contact force and "
+                "contact-point moment when the contact sensor provides them; tendon forces are intentionally excluded"
             )
         if self.cfg.tau_source == "zero":
             return "zero placeholder for Identix kinematics schema compatibility; do not use as dynamics labels"
@@ -603,8 +604,10 @@ class DataRecording:
         return {
             "sample_id": "zero-based row index aligned one-to-one with sim_data rowid - 1",
             "tau_inertia": "selected rows of PhysX generalized mass matrix multiplied by IsaacLab joint_acc",
-            "tau_coriolis": "PhysX Coriolis and centrifugal compensation forces for the current articulation state",
-            "tau_gravity": "PhysX generalized gravity compensation forces for the current articulation pose",
+            "tau_coriolis": (
+                "PhysX actual generalized Coriolis and centrifugal forces for the current articulation state"
+            ),
+            "tau_gravity": "PhysX actual generalized gravity forces for the current articulation pose",
             "tau_friction": (
                 "model estimate from configured joint dynamic and viscous friction coefficients; static friction is "
                 "stored in metadata because its active solver value is not exposed as a separated generalized force"

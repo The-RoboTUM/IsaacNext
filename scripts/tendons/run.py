@@ -481,7 +481,7 @@ def maybe_print_status(
 
 
 def projected_contact_sensor_torque(robot, contact_sensor: ContactSensor, contact_body_names: tuple[str, ...]):
-    """Project measured world-frame contact forces into generalized joint torques."""
+    """Project measured world-frame contact wrench into generalized joint torques."""
 
     num_joints = robot.data.joint_pos.shape[1]
     tau_ground = torch.zeros_like(robot.data.joint_pos)
@@ -489,11 +489,30 @@ def projected_contact_sensor_torque(robot, contact_sensor: ContactSensor, contac
     robot_body_indices, _ = robot.find_bodies(list(contact_body_names), preserve_order=True)
 
     if contact_sensor.data.force_matrix_w is not None:
-        forces_world = contact_sensor.data.force_matrix_w[:, sensor_body_indices, 0, :]
+        normal_forces_by_filter = contact_sensor.data.force_matrix_w[:, sensor_body_indices, :, :]
     else:
-        forces_world = contact_sensor.data.net_forces_w[:, sensor_body_indices, :]
+        normal_forces_by_filter = contact_sensor.data.net_forces_w[:, sensor_body_indices, :].unsqueeze(2)
+    friction_forces = getattr(contact_sensor.data, "friction_forces_w", None)
+    if friction_forces is not None:
+        friction_forces_by_filter = friction_forces[:, sensor_body_indices, :, :]
+    else:
+        friction_forces_by_filter = torch.zeros_like(normal_forces_by_filter)
+    forces_by_filter = normal_forces_by_filter + friction_forces_by_filter
+    forces_world = forces_by_filter.sum(dim=2)
     if not torch.any(forces_world).item():
         return tau_ground
+
+    contact_pos = getattr(contact_sensor.data, "contact_pos_w", None)
+    if contact_pos is not None:
+        selected_contact_pos = contact_pos[:, sensor_body_indices, :, :]
+        valid_contact = torch.isfinite(selected_contact_pos).all(dim=-1)
+        force_weights = torch.linalg.norm(forces_by_filter, dim=-1) * valid_contact.to(dtype=forces_by_filter.dtype)
+        weight_sum = force_weights.sum(dim=2, keepdim=True).clamp_min(1.0e-12)
+        contact_pos_world = (torch.nan_to_num(selected_contact_pos, nan=0.0) * force_weights.unsqueeze(-1)).sum(
+            dim=2
+        ) / weight_sum
+    else:
+        contact_pos_world = None
 
     joint_ids = list(range(num_joints))
     jacobian_joint_ids = joint_ids if robot.is_fixed_base else [joint_id + 6 for joint_id in joint_ids]
@@ -501,10 +520,16 @@ def projected_contact_sensor_torque(robot, contact_sensor: ContactSensor, contac
 
     for local_foot_index, body_index in enumerate(robot_body_indices):
         jacobian_body_index = int(body_index) - 1 if robot.is_fixed_base else int(body_index)
-        jacobian_pos = jacobians[:, jacobian_body_index, 0:3, :][:, :, jacobian_joint_ids]
-        tau_ground += torch.bmm(
-            jacobian_pos.transpose(1, 2), forces_world[:, local_foot_index, :].unsqueeze(-1)
-        ).squeeze(-1)
+        jacobian_linear = jacobians[:, jacobian_body_index, 0:3, :][:, :, jacobian_joint_ids]
+        jacobian_angular = jacobians[:, jacobian_body_index, 3:6, :][:, :, jacobian_joint_ids]
+        force = forces_world[:, local_foot_index, :]
+        body_pos = robot.data.body_pos_w[:, int(body_index), :]
+        if contact_pos_world is not None:
+            moment = torch.cross(contact_pos_world[:, local_foot_index, :] - body_pos, force, dim=1)
+        else:
+            moment = torch.zeros_like(force)
+        tau_ground += torch.bmm(jacobian_linear.transpose(1, 2), force.unsqueeze(-1)).squeeze(-1)
+        tau_ground += torch.bmm(jacobian_angular.transpose(1, 2), moment.unsqueeze(-1)).squeeze(-1)
 
     return tau_ground
 
@@ -535,17 +560,24 @@ def recording_dynamics_terms(robot):
 
     num_joints = robot.data.joint_pos.shape[1]
     joint_ids = list(range(num_joints))
-    generalized_joint_ids = joint_ids if robot.is_fixed_base else [joint_id + 6 for joint_id in joint_ids]
 
     mass_matrices = robot.root_physx_view.get_generalized_mass_matrices()
     if not robot.is_fixed_base:
         mass_matrices = mass_matrices[:, 6:, 6:]
     inertia = torch.bmm(mass_matrices, robot.data.joint_acc.unsqueeze(-1)).squeeze(-1)
 
-    coriolis_all = robot.root_physx_view.get_coriolis_and_centrifugal_compensation_forces()
-    gravity_all = robot.root_physx_view.get_gravity_compensation_forces()
-    coriolis = coriolis_all[:, generalized_joint_ids]
-    gravity = gravity_all[:, generalized_joint_ids]
+    coriolis = _actual_generalized_force(
+        robot,
+        joint_ids,
+        force_api_name="get_coriolis_and_centrifugal_forces",
+        compensation_api_name="get_coriolis_and_centrifugal_compensation_forces",
+    )
+    gravity = _actual_generalized_force(
+        robot,
+        joint_ids,
+        force_api_name="get_generalized_gravity_forces",
+        compensation_api_name="get_gravity_compensation_forces",
+    )
 
     dynamic = robot.data.joint_dynamic_friction_coeff
     viscous = robot.data.joint_viscous_friction_coeff
@@ -557,6 +589,15 @@ def recording_dynamics_terms(robot):
         "gravity": gravity,
         "friction": friction,
     }
+
+
+def _actual_generalized_force(robot, joint_ids: list[int], *, force_api_name: str, compensation_api_name: str):
+    try:
+        return getattr(robot.root_physx_view, force_api_name)()[:, joint_ids]
+    except Exception:
+        compensation = getattr(robot.root_physx_view, compensation_api_name)()
+        generalized_joint_ids = joint_ids if robot.is_fixed_base else [joint_id + 6 for joint_id in joint_ids]
+        return -compensation[:, generalized_joint_ids]
 
 
 def record_side_policy(record_side: str) -> str:
@@ -599,6 +640,9 @@ def main():  # noqa: C901
             update_period=sim_cfg.dt,
             history_length=1,
             track_air_time=False,
+            track_contact_points=True,
+            track_friction_forces=True,
+            max_contact_data_count_per_prim=16,
             filter_prim_paths_expr=["/World/defaultGroundPlane/GroundPlane/CollisionPlane"],
         )
     )
