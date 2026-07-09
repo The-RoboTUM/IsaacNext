@@ -122,7 +122,7 @@ training:
       pitch: [ 0.0, 0.0 ]  # Reset range for base pitch angular velocity in rad/s.
       yaw: [ 0.0, 0.0 ]  # Reset range for base yaw angular velocity in rad/s.
   commands:
-    lin_vel_x: [ 3.2, 3.2 ]  # Commanded forward velocity sampling range in m/s.
+    lin_vel_x: [ 0.0, 3.8 ]  # Commanded forward velocity sampling range in m/s.
     lin_vel_y: [ -0.0, 0.0 ]  # Lateral velocity range; sampled independently when x curriculum is enabled.
     ang_vel_z: [ -0.5, 0.5 ]  # Yaw-rate range; sampled independently when x curriculum is enabled.
   command_curriculum:
