@@ -168,6 +168,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = agent_cfg.seed
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
+    if args_cli.record_forrest_dbs:
+        _configure_recording_contact_sensor(env_cfg)
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
@@ -322,6 +324,32 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             print(f"[INFO] Forrest database recording saved to: {forrest_recorder.output_dir}")
         # close the simulator
         env.close()
+
+
+def _configure_recording_contact_sensor(env_cfg) -> None:
+    """Enable full contact data needed by Forrest database recording during play."""
+
+    scene_cfg = getattr(env_cfg, "scene", None)
+    sensor_cfg = getattr(scene_cfg, "contact_forces", None)
+    if sensor_cfg is None:
+        return
+
+    sensor_cfg.track_contact_points = True
+    sensor_cfg.track_friction_forces = True
+    sensor_cfg.max_contact_data_count_per_prim = max(int(sensor_cfg.max_contact_data_count_per_prim), 16)
+
+    terrain_cfg = getattr(scene_cfg, "terrain", None)
+    terrain_path = getattr(terrain_cfg, "prim_path", "/World/ground")
+    terrain_filters = [
+        f"{terrain_path}/terrain",
+        f"{terrain_path}/terrain.*",
+        f"{terrain_path}/terrain/GroundPlane/CollisionPlane",
+    ]
+    filters = list(sensor_cfg.filter_prim_paths_expr or [])
+    for terrain_filter in terrain_filters:
+        if terrain_filter not in filters:
+            filters.append(terrain_filter)
+    sensor_cfg.filter_prim_paths_expr = filters
 
 
 if __name__ == "__main__":
