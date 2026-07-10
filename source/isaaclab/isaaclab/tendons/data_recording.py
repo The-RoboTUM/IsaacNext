@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import math
-import random
 import sqlite3
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -17,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from isaaclab.tendons.models.analytic.constants import (
+    actuated_joint_names,
     joint_names_left,
     joint_names_right,
     link_names_left,
@@ -29,9 +29,9 @@ TENDON_CHAIN_5_JOINTS: dict[str, tuple[str, ...]] = {
 }
 REAL_LEG_JOINTS: dict[str, tuple[str, ...]] = {
     "left": (
-        "lp1_pantograph",
         "l0_acetabulofemoral_roll",
         "l1_acetabulofemoral_lateral",
+        "lp1_pantograph",
         "l2_pseudo_acetabulofemoral_flexion",
         "l3b_femorotibial_back",
         "l3f_femorotibial_front",
@@ -43,9 +43,9 @@ REAL_LEG_JOINTS: dict[str, tuple[str, ...]] = {
         "l8_knee_flexor",
     ),
     "right": (
-        "rp1_pantograph",
         "r0_acetabulofemoral_roll",
         "r1_acetabulofemoral_lateral",
+        "rp1_pantograph",
         "r2_pseudo_acetabulofemoral_flexion",
         "r3b_femorotibial_back",
         "r3f_femorotibial_front",
@@ -77,51 +77,22 @@ TRAINING_DYNAMICS_TERM_NAMES = (
 
 DEBUG_DYNAMICS_TERM_NAMES = (
     "inertia",
-    "inertia_recording_interval",
-    "inertia_raw",
-    "inertia_joint_only",
-    "inertia_joint_all",
-    "inertia_leg_self",
-    "inertia_other_joints",
-    "inertia_root_coupling",
-    "inertia_root_coupling_raw",
-    "inertia_root_coupling_alt",
-    "inertia_root_coupled_alt",
-    "inertia_full_raw",
     "coriolis",
     "gravity",
-    "friction_dynamic",
-    "friction_viscous",
-    "friction",
-    "solver_joint",
+    "tendon",
+    "pantograph_spring",
+    "tendon_model",
+    "tendon_projection_delta",
+    "motor_actuation",
+    "knee_flexor_actuation",
     "actuation",
     "actuation_command",
-    "actuation_estimated",
-    "actuation_estimated_hip",
-    "actuation_estimated_hip_lateral_flexion",
-    "actuation_estimated_passive",
+    "pantograph_actuation",
+    "pantograph_applied_actuation",
+    "pantograph_computed_actuation",
+    "pantograph_reconstructed_actuation",
+    "pantograph_actuation_error",
     "physx_actuation",
-    "solver_constraint_passive",
-    "solver_constraint_limit",
-    "solver_constraint_internal",
-    "joint_drive_pos_target",
-    "joint_drive_vel_target",
-    "joint_drive_effort_target",
-    "joint_drive_stiffness",
-    "joint_drive_damping",
-    "joint_effort_limit",
-    "joint_velocity_limit",
-    "joint_limit_lower",
-    "joint_limit_upper",
-    "joint_limit_distance_lower",
-    "joint_limit_distance_upper",
-    "joint_limit_distance_min",
-    "drive_stiffness",
-    "drive_damping",
-    "drive_effort_target",
-    "drive_pd",
-    "drive_pd_clipped",
-    "armature_inertia",
     "contact",
     "contact_force",
     "contact_moment",
@@ -135,43 +106,25 @@ DEBUG_DYNAMICS_TERM_NAMES = (
     "contact_base",
     "contact_base_force",
     "contact_base_moment",
-    "tendon",
-    "tendon_model",
-    "tendon_projection_delta",
-    "unmodeled_quasistatic",
-    "unmodeled_full_dynamics",
-    "unmodeled_recording_interval",
-    "unmodeled_estimated_actuation",
-    "unmodeled_estimated_hip_actuation",
-    "unmodeled_estimated_hip_force_contact",
-    "unmodeled_estimated_hip_force_contact_solver",
-    "unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal",
-    "unmodeled_full_contact",
-    "unmodeled_contact_force_only",
-    "unmodeled_contact_validated",
-    "unmodeled",
-    "inverse_residual",
-    "solver_residual",
+    "friction",
+    "pantograph_damping",
+    "solver_joint",
+    "solver_constraint_internal",
+    "residual",
+    "residual_with_pantograph_actuation",
+    "residual_with_knee_flexor_actuation",
+    "residual_with_pantograph_and_knee_flexor_actuation",
+    "residual_no_pantograph_actuation",
+    "residual_no_knee_flexor_actuation",
+    "residual_no_pantograph_no_knee_flexor_actuation",
+    "residual_no_pantograph_no_knee_flexor_plus_solver",
 )
 DEBUG_DYNAMICS_MATRIX_TERM_NAMES = ("mass_matrix",)
 DEBUG_DYNAMICS_SCALAR_NAMES = (
-    "quality_primary_residual_norm",
-    "quality_sysid_residual_norm",
-    "quality_sysid_residual_pct",
-    "quality_dynamics_scale",
-    "quality_usable_100",
-    "quality_usable_150",
-    "quality_usable_200",
+    "quality_residual_norm",
     "quality_contact_norm",
-    "quality_solver_internal_norm",
     "quality_inertia_norm",
-    "quality_command_norm",
-    "quality_max_limit_penetration",
-    "quality_has_limit_penetration",
-    "quality_has_inertia_spike",
-    "quality_has_solver_spike",
-    "quality_has_command_spike",
-    "quality_has_contact_spike",
+    "quality_actuation_norm",
 )
 OMITTED_JOINTS_BY_SET: dict[str, dict[str, tuple[str, ...]]] = {
     "real_leg_joints": {
@@ -224,7 +177,7 @@ class DataRecordingConfig:
     startup_skip_seconds: float = 0.0
     constraint_mode: str = "static"
     controller: str | None = "sin"
-    tau_source: str = "controller_plus_ground"
+    tau_source: str = "motor_torque"
     record_tendons: bool = True
     record_dynamics: bool = True
     record_debug_dynamics: bool = False
@@ -249,6 +202,10 @@ class DataRecording:
             raise ValueError("sampling_stride must be >= 1.")
         if cfg.batch_size < 1:
             raise ValueError("batch_size must be >= 1.")
+        cfg.residual_filter_threshold = _normalize_optional_float(
+            cfg.residual_filter_threshold,
+            "residual_filter_threshold",
+        )
 
         self.cfg = cfg
         self.output_dir = Path(cfg.output_dir)
@@ -335,6 +292,7 @@ class DataRecording:
         robot,
         dynamics_terms: dict[str, Any],
         tau_input,
+        skip_env_ids: set[int] | None = None,
     ) -> None:
         """Record non-kinematic inverse-dynamics terms aligned to ``sim_data`` rows."""
 
@@ -358,7 +316,10 @@ class DataRecording:
             if debug_missing:
                 raise ValueError(f"Missing debug dynamics term tensors: {debug_missing}")
 
+        excluded_env_ids = set(skip_env_ids or ())
         for env_id in self._selected_env_ids:
+            if int(env_id) in excluded_env_ids:
+                continue
             for side in self._selected_sides():
                 joint_indices = self._joint_indices_by_side[side]
                 if not self._passes_residual_filter(
@@ -417,11 +378,11 @@ class DataRecording:
         if term_name == "inertia":
             values = dynamics_terms["inertia"][env_id, joint_indices]
         elif term_name == "coriolis":
-            values = -dynamics_terms["coriolis"][env_id, joint_indices]
+            values = dynamics_terms["coriolis"][env_id, joint_indices]
         elif term_name == "gravity":
-            values = -dynamics_terms["gravity"][env_id, joint_indices]
+            values = dynamics_terms["gravity"][env_id, joint_indices]
         elif term_name == "tendon":
-            values = -dynamics_terms["tendon"][env_id, joint_indices]
+            values = dynamics_terms["tendon"][env_id, joint_indices]
         elif term_name == "actuation":
             values = dynamics_terms["actuation_command"][env_id, joint_indices]
         elif term_name == "contact":
@@ -474,46 +435,15 @@ class DataRecording:
             values = dynamics_terms[term_name][env_id, joint_indices].detach()
             return float((values * values).sum().sqrt().cpu())
 
-        def selected_min(term_name: str) -> float:
-            values = dynamics_terms[term_name][env_id, joint_indices].detach()
-            return float(values.min().cpu())
-
-        primary_residual = selected_norm("unmodeled")
-        sysid_residual = selected_norm("unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal")
+        residual_norm = selected_norm("residual")
         contact_norm = selected_norm("contact_force")
-        solver_norm = selected_norm("solver_constraint_internal")
         inertia_norm = selected_norm("inertia")
-        command_norm = selected_norm("actuation_command")
-        dynamics_scale = max(
-            inertia_norm,
-            selected_norm("gravity"),
-            selected_norm("coriolis"),
-            selected_norm("tendon"),
-            contact_norm,
-            solver_norm,
-            command_norm,
-            1.0,
-        )
-        min_limit_distance = selected_min("joint_limit_distance_min")
-        max_limit_penetration = max(0.0, -min_limit_distance)
+        actuation_norm = selected_norm("actuation_command")
         return {
-            "quality_primary_residual_norm": primary_residual,
-            "quality_sysid_residual_norm": sysid_residual,
-            "quality_sysid_residual_pct": 100.0 * sysid_residual / dynamics_scale,
-            "quality_dynamics_scale": dynamics_scale,
-            "quality_usable_100": 1.0 if sysid_residual <= 100.0 else 0.0,
-            "quality_usable_150": 1.0 if sysid_residual <= 150.0 else 0.0,
-            "quality_usable_200": 1.0 if sysid_residual <= 200.0 else 0.0,
+            "quality_residual_norm": residual_norm,
             "quality_contact_norm": contact_norm,
-            "quality_solver_internal_norm": solver_norm,
             "quality_inertia_norm": inertia_norm,
-            "quality_command_norm": command_norm,
-            "quality_max_limit_penetration": max_limit_penetration,
-            "quality_has_limit_penetration": 1.0 if max_limit_penetration > 0.02 else 0.0,
-            "quality_has_inertia_spike": 1.0 if inertia_norm > 1000.0 else 0.0,
-            "quality_has_solver_spike": 1.0 if solver_norm > 1000.0 else 0.0,
-            "quality_has_command_spike": 1.0 if command_norm > 1000.0 else 0.0,
-            "quality_has_contact_spike": 1.0 if contact_norm > 1000.0 else 0.0,
+            "quality_actuation_norm": actuation_norm,
         }
 
     def record_tendon_frame(self, *, step_index: int, sim_time: float, side: str, frame: dict[str, Any]) -> None:
@@ -549,6 +479,7 @@ class DataRecording:
         tau_override=None,
         ddq_override=None,
         dynamics_terms: dict[str, Any] | None = None,
+        skip_env_ids: set[int] | None = None,
     ) -> None:
         """Record one simulation step if it passes stride and startup filters."""
 
@@ -567,7 +498,10 @@ class DataRecording:
         tau_all = self._tau_tensor(robot, tau_override=tau_override)
         context = dict(extra_context or {})
 
+        excluded_env_ids = set(skip_env_ids or ())
         for env_id in self._selected_env_ids:
+            if int(env_id) in excluded_env_ids:
+                continue
             for side in self._selected_sides():
                 joint_indices = self._joint_indices_by_side[side]
                 if not self._passes_residual_filter(
@@ -600,9 +534,7 @@ class DataRecording:
             return True
         if dynamics_terms is None:
             raise RuntimeError("residual_filter_threshold requires dynamics_terms to be provided when recording.")
-        residual = dynamics_terms["unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal"][
-            env_id, joint_indices
-        ].detach()
+        residual = dynamics_terms["residual"][env_id, joint_indices].detach()
         norm = float((residual * residual).sum().sqrt().cpu())
         return norm <= float(self.cfg.residual_filter_threshold)
 
@@ -649,11 +581,42 @@ class DataRecording:
         if self._debug_db is not None:
             self._debug_db.commit()
 
+    def drop_recent_samples(self, env_ids: set[int], *, count: int) -> int:
+        """Drop recently buffered samples for selected env ids before they are flushed."""
+
+        if count <= 0 or not env_ids:
+            return 0
+
+        dropped = 0
+        for env_id in env_ids:
+            for side in self._selected_sides():
+                key = (int(env_id), side)
+                sim_rows = self._sim_rows_by_stream.get(key)
+                if sim_rows:
+                    drop_count = min(count, len(sim_rows))
+                    del sim_rows[-drop_count:]
+                    self._row_count -= drop_count
+                    dropped += drop_count
+
+                dynamics_rows = self._dynamics_rows_by_stream.get(key)
+                if dynamics_rows:
+                    drop_count = min(count, len(dynamics_rows))
+                    del dynamics_rows[-drop_count:]
+                    self._dynamics_row_count -= drop_count
+
+                debug_rows = self._debug_rows_by_stream.get(key)
+                if debug_rows:
+                    drop_count = min(count, len(debug_rows))
+                    del debug_rows[-drop_count:]
+                    self._debug_row_count -= drop_count
+        return dropped
+
     def close(self) -> None:
         """Flush rows, write metadata, and close the SQLite connection."""
 
         if self._closed:
             return
+        self._regularize_sim_derivatives()
         self.flush()
         if self.cfg.record_debug_dynamics:
             self._report_dynamics_residual()
@@ -679,6 +642,58 @@ class DataRecording:
     def __exit__(self, exc_type, exc, traceback):
         self.close()
         return False
+
+    def _regularize_sim_derivatives(self) -> None:
+        if self._sim_dt is None or self._sim_dt <= 0.0:
+            return
+
+        num_dofs = self.num_dofs
+        dt = float(self._sim_dt)
+        regularized_rows = 0
+        for key, sim_rows in self._sim_rows_by_stream.items():
+            if len(sim_rows) < 3:
+                continue
+            dynamics_rows = self._dynamics_rows_by_stream.get(key, ())
+            if len(dynamics_rows) != len(sim_rows):
+                continue
+
+            q_rows = [row[:num_dofs] for row in sim_rows]
+            tau_rows = [row[3 * num_dofs : 4 * num_dofs] for row in sim_rows]
+            step_indices = [int(row[1]) for row in dynamics_rows]
+            dq_rows = [list(row[num_dofs : 2 * num_dofs]) for row in sim_rows]
+            ddq_rows = [list(row[2 * num_dofs : 3 * num_dofs]) for row in sim_rows]
+
+            for index in range(1, len(sim_rows) - 1):
+                if step_indices[index] - step_indices[index - 1] != 1:
+                    continue
+                if step_indices[index + 1] - step_indices[index] != 1:
+                    continue
+                dq_rows[index] = [
+                    (float(q_rows[index + 1][dof]) - float(q_rows[index - 1][dof])) / (2.0 * dt)
+                    for dof in range(num_dofs)
+                ]
+
+            for index in range(1, len(sim_rows) - 1):
+                if step_indices[index] - step_indices[index - 1] != 1:
+                    continue
+                if step_indices[index + 1] - step_indices[index] != 1:
+                    continue
+                ddq_rows[index] = [
+                    (float(dq_rows[index + 1][dof]) - float(dq_rows[index - 1][dof])) / (2.0 * dt)
+                    for dof in range(num_dofs)
+                ]
+
+            self._sim_rows_by_stream[key] = [
+                tuple(float(value) for value in [*q_rows[index], *dq_rows[index], *ddq_rows[index], *tau_rows[index]])
+                for index in range(len(sim_rows))
+            ]
+            regularized_rows += len(sim_rows)
+
+        if regularized_rows:
+            self._context_metadata["kinematics_derivative_policy"] = (
+                "dq and ddq are recomputed from recorded q streams across consecutive samples before export"
+            )
+            self._context_metadata["kinematics_derivative_regularized_rows"] = regularized_rows
 
     def _selected_sides(self) -> tuple[str, ...]:
         if self.cfg.side_policy == "left_only":
@@ -832,6 +847,8 @@ class DataRecording:
     def _tau_tensor(self, robot, *, tau_override=None):
         if tau_override is not None:
             return tau_override
+        if self.cfg.tau_source == "motor_torque":
+            return motor_torque_tensor(robot)
         if self.cfg.tau_source == "controller_plus_ground":
             raise RuntimeError("tau_source='controller_plus_ground' requires a tau_override tensor.")
         if self.cfg.tau_source == "applied_torque":
@@ -868,7 +885,13 @@ class DataRecording:
             "residual_filter_threshold": self.cfg.residual_filter_threshold,
             "tau_semantics": self._tau_semantics(),
             "dynamics_semantics": self._dynamics_semantics(),
-            "available_tau_sources": ["controller_plus_ground", "applied_torque", "computed_torque", "zero"],
+            "available_tau_sources": [
+                "motor_torque",
+                "controller_plus_ground",
+                "applied_torque",
+                "computed_torque",
+                "zero",
+            ],
             "sim_units": {"q": "rad", "dq": "rad/s", "ddq": "rad/s^2", "tau": "N*m"},
             "dynamics_units": {"tau": "N*m"},
             "joint_mappings": self._joint_metadata(),
@@ -913,11 +936,18 @@ class DataRecording:
         return {side: list(omitted_by_side[side]) for side in self._selected_sides()}
 
     def _tau_semantics(self) -> str:
+        if self.cfg.tau_source == "motor_torque":
+            return (
+                "motor actuation generalized torque only: robot.data.applied_torque is zeroed on every joint except "
+                "the Forrest motor joints listed in isaaclab.tendons.models.analytic.constants.actuated_joint_names; "
+                "contact, tendon, passive damping, solver, and constraint forces are intentionally excluded"
+            )
         if self.cfg.tau_source == "controller_plus_ground":
             return (
-                "actuator generalized torque on actuated joints plus PhysX ground contact generalized torque "
-                "from measured contact wrench projected with J^T; uses normal plus friction contact force and "
-                "contact-point moment when the contact sensor provides them; tendon forces are intentionally excluded"
+                "legacy mixed label: actuator generalized torque on actuated joints plus PhysX ground contact "
+                "generalized torque from measured contact wrench projected with J^T; uses normal plus friction "
+                "contact force and contact-point moment when the contact sensor provides them; tendon forces are "
+                "intentionally excluded"
             )
         if self.cfg.tau_source == "zero":
             return "zero placeholder for Identix kinematics schema compatibility; do not use as dynamics labels"
@@ -933,342 +963,56 @@ class DataRecording:
         return {
             "sample_id": "zero-based row index aligned one-to-one with sim_data rowid - 1 after optional filtering",
             "equation": (
-                "training convention: tau_inertia + tau_coriolis + tau_gravity + tau_tendon = "
-                "tau_external, where tau_external = tau_actuation + tau_contact + tau_friction"
+                "Identix convention: residual = conservative - non_conservative, where conservative = "
+                "tau_inertia + tau_coriolis + tau_gravity + tau_tendon and non_conservative = "
+                "tau_actuation + tau_contact + tau_friction"
             ),
             "tau_inertia": "selected leg rows of the full floating-base generalized inertia product M(q)qdd",
             "tau_coriolis": "Coriolis/centrifugal term on the left-hand side of the training equation",
             "tau_gravity": "gravity term on the left-hand side of the training equation",
-            "tau_tendon": "tendon term on the left-hand side of the training equation",
-            "tau_actuation": "external actuation command/drive generalized force used for training labels",
+            "tau_tendon": "analytic tendon term on the left-hand side of the training equation",
+            "tau_actuation": (
+                "external actuation generalized force used by the dynamics force balance; contains motor torque "
+                "except pantograph implicit effort and knee-flexor effort, which are kept as debug diagnostics"
+            ),
             "tau_contact": "external validated contact generalized force projected from measured contact wrench",
             "tau_friction": "external configured joint-friction model term",
             "tau_external": "tau_actuation + tau_contact + tau_friction",
-        }
-        return {
-            "sample_id": "zero-based row index aligned one-to-one with sim_data rowid - 1",
-            "tau_inertia": (
-                "selected leg rows of the full generalized inertia product using raw IsaacLab/PhysX acceleration "
-                "signals. For floating-base robots this includes raw root acceleration coupling plus all-joint "
-                "acceleration coupling, then selected back to the recorded 12 leg DOFs."
-            ),
-            "tau_inertia_recording_interval": (
-                "same selected-row full inertia structure as tau_inertia, but using root and joint accelerations "
-                "finite-differenced over the recorder's row interval. Kept as a diagnostic because this estimate has "
-                "shown worse residual tails than raw PhysX/IsaacLab acceleration signals."
-            ),
-            "tau_inertia_raw": (
-                "selected rows of PhysX generalized mass matrix multiplied by IsaacLab robot.data.joint_acc. "
-                "In decimated RL loops this is a last-physics-substep acceleration diagnostic, not necessarily the "
-                "average acceleration over the recorded row interval."
-            ),
-            "tau_inertia_joint_only": (
-                "legacy alias of tau_inertia_joint_all: joint block of the generalized mass matrix multiplied by all "
-                "joint accelerations, without floating-root acceleration coupling"
-            ),
-            "tau_inertia_joint_all": (
-                "joint-row generalized inertia contribution from all joint accelerations: M_jj * qdd_all_joints"
-            ),
-            "tau_inertia_leg_self": (
-                "selected leg self-coupling contribution computed per recorded side: M_leg,leg * qdd_leg"
-            ),
-            "tau_inertia_other_joints": (
-                "joint acceleration coupling from joints outside the recorded side: M_leg,other * qdd_other"
-            ),
-            "tau_inertia_root_coupling": (
-                "joint-row generalized inertia contribution from finite-differenced floating root velocity over the "
-                "recording interval when available, otherwise PhysX link acceleration order [linear, angular]"
-            ),
-            "tau_inertia_root_coupling_raw": (
-                "joint-row generalized inertia contribution from PhysX link acceleration order [linear, angular] "
-                "at the sample instant"
-            ),
-            "tau_inertia_root_coupling_alt": (
-                "same root coupling diagnostic but with root acceleration order [angular, linear]"
-            ),
-            "tau_inertia_root_coupled_alt": (
-                "tau_inertia_joint_only plus tau_inertia_root_coupling_alt; used to test root coordinate ordering"
-            ),
-            "tau_inertia_full_raw": (
-                "tau_inertia_raw plus tau_inertia_root_coupling_raw, using raw IsaacLab/PhysX acceleration signals"
-            ),
-            "tau_coriolis": (
-                "PhysX actual generalized Coriolis and centrifugal forces for the current articulation state"
-            ),
-            "tau_gravity": "PhysX actual generalized gravity forces for the current articulation pose",
-            "tau_friction_dynamic": "dynamic Coulomb joint-friction model term: -dynamic_friction_coeff * sign(dq)",
-            "tau_friction_viscous": "viscous joint-friction model term: -viscous_friction_coeff * dq",
-            "tau_friction": (
-                "model estimate from configured joint dynamic and viscous friction coefficients; static friction is "
-                "stored in metadata because its active solver value is not exposed as a separated generalized force"
-            ),
-            "tau_solver_joint": (
-                "PhysX DOF projected joint forces: the active component obtained by projecting each link incoming "
-                "joint force onto the joint motion direction; this is the closest solver-measured joint-space force "
-                "signal exposed by the tensor API, not a decomposition by source"
-            ),
-            "tau_actuation": (
-                "PhysX-measured DOF actuation force used in the primary force balance. This is currently the same "
-                "source as tau_physx_actuation and may be zero for implicit actuators because PhysX does not expose "
-                "their solved drive force through this tensor API."
-            ),
-            "tau_actuation_command": (
-                "IsaacLab applied_torque estimate aligned to Isaac joint indices. For implicit actuators this is an "
-                "approximate command/drive estimate, not a measured physical generalized force, and is not subtracted "
-                "in the primary tau_unmodeled balance."
-            ),
-            "tau_actuation_estimated": (
-                "estimated implicit drive generalized force from IsaacLab applied_torque. This is recorded as a "
-                "diagnostic/model candidate because PhysX does not expose the solved implicit drive force as a "
-                "measured tensor force."
-            ),
-            "tau_actuation_estimated_hip": (
-                "estimated implicit drive generalized force only on hip roll, hip lateral, and hip flexion joints. "
-                "Pantograph and knee-flexor estimated drive are excluded because they have not matched the residual "
-                "balance in Forrest diagnostics."
-            ),
-            "tau_actuation_estimated_hip_lateral_flexion": (
-                "estimated implicit drive generalized force only on hip lateral and hip flexion joints. Hip roll is "
-                "excluded because its residual is dominated by limit/solver reaction diagnostics in recent runs."
-            ),
-            "tau_actuation_estimated_passive": (
-                "estimated implicit drive generalized force on passive tendon-chain joints only. This is recorded to "
-                "test whether configured implicit drives or constraints are injecting force on joints that should be "
-                "modeled by tendon/contact terms."
-            ),
-            "tau_physx_actuation": "PhysX DOF actuation forces reported by the articulation tensor API",
-            "tau_solver_constraint_passive": (
-                "selected PhysX solver-projected joint force on passive-chain joints whose residuals previously "
-                "matched solver reactions. This is a diagnostic proxy for internal joint/constraint reactions, not a "
-                "source-separated applied force."
-            ),
-            "tau_solver_constraint_limit": (
-                "PhysX solver-projected joint force recorded only on DOFs whose soft-limit distance is <= 0.05 rad. "
-                "This is the best available diagnostic for joint-limit inner-contact reactions."
-            ),
-            "tau_solver_constraint_internal": (
-                "union of tau_solver_constraint_passive and tau_solver_constraint_limit masks, using the raw "
-                "solver-projected force wherever either diagnostic mask is active"
-            ),
-            "tau_joint_drive_pos_target": "IsaacLab joint position target recorded to audit implicit-drive state",
-            "tau_joint_drive_vel_target": "IsaacLab joint velocity target recorded to audit implicit-drive state",
-            "tau_joint_drive_effort_target": "IsaacLab joint effort target recorded to audit implicit-drive state",
-            "tau_joint_drive_stiffness": "IsaacLab joint drive stiffness at the sample instant",
-            "tau_joint_drive_damping": "IsaacLab joint drive damping at the sample instant",
-            "tau_joint_effort_limit": "IsaacLab/PhysX joint effort limit at the sample instant",
-            "tau_joint_velocity_limit": "IsaacLab soft joint velocity limit at the sample instant",
-            "tau_joint_limit_lower": "IsaacLab soft lower joint-position limit",
-            "tau_joint_limit_upper": "IsaacLab soft upper joint-position limit",
-            "tau_joint_limit_distance_lower": "joint_pos minus soft lower joint limit",
-            "tau_joint_limit_distance_upper": "soft upper joint limit minus joint_pos",
-            "tau_joint_limit_distance_min": "minimum signed distance to either soft joint-position limit",
-            "tau_drive_stiffness": (
-                "implicit-drive stiffness estimate: joint_stiffness * (joint_pos_target - joint_pos). PhysX solves "
-                "implicit drives internally, so this is a model estimate, not a measured solver force."
-            ),
-            "tau_drive_damping": (
-                "implicit-drive damping estimate: joint_damping * (joint_vel_target - joint_vel). This is separate "
-                "from tau_friction_viscous, which uses the configured joint viscous friction coefficient."
-            ),
-            "tau_drive_effort_target": "feed-forward joint effort target sent to the implicit drive",
-            "tau_drive_pd": (
-                "unclipped implicit-drive PD estimate: drive_stiffness + drive_damping + drive_effort_target"
-            ),
-            "tau_drive_pd_clipped": "tau_drive_pd clipped to the configured joint effort limits",
-            "tau_armature_inertia": (
-                "joint armature times raw joint acceleration. The generalized mass matrix should already include "
-                "armature; this is recorded only to detect double-counting or missing-armature hypotheses."
-            ),
-            "tau_contact": (
-                "raw full measured contact projection for tracked contact bodies: tau_contact_force plus "
-                "tau_contact_moment. This is kept for auditing and may contain invalid contact-point moment outliers."
-            ),
-            "tau_contact_force": "linear contact force contribution only, projected with the linear Jacobian block",
-            "tau_contact_moment": (
-                "contact moment contribution only, computed from estimated contact point relative to body origin and "
-                "projected with the angular Jacobian block"
-            ),
-            "tau_contact_validated": (
-                "contact force plus contact moment only when the projected generalized moment/force ratio "
-                "|tau_contact_moment| / |tau_contact_force| is <= 2; otherwise force-only contact is used"
-            ),
-            "tau_contact_digit": "contact projection restricted to digit/toe contact bodies",
-            "tau_contact_digit_force": "linear-force part of tau_contact_digit",
-            "tau_contact_digit_moment": "contact-point moment part of tau_contact_digit",
-            "tau_contact_connector": "contact projection restricted to foot connector bodies",
-            "tau_contact_connector_force": "linear-force part of tau_contact_connector",
-            "tau_contact_connector_moment": "contact-point moment part of tau_contact_connector",
-            "tau_contact_base": "contact projection restricted to base, hip, and differential-cage bodies",
-            "tau_contact_base_force": "linear-force part of tau_contact_base",
-            "tau_contact_base_moment": "contact-point moment part of tau_contact_base",
-            "tau_tendon": (
-                "cached tendon body wrenches projected into joint space with J^T. This is the applied generalized "
-                "force from the wrench actually sent to PhysX; if the wrench cache is unavailable, recording falls "
-                "back to the older model joint-torque cache."
-            ),
-            "tau_tendon_model": "raw tendon model joint-torque cache before mapping to link/body wrenches",
-            "tau_tendon_projection_delta": "tau_tendon minus tau_tendon_model, useful for validating wrench projection",
-            "mass_matrix": (
-                "selected DOF-by-DOF PhysX generalized mass matrix used to recompute filtered inertia offline"
-            ),
-            "tau_unmodeled_full_contact": (
-                "residual using raw full contact: tau_inertia - tau_gravity - tau_coriolis - tau_tendon "
-                "- tau_actuation - tau_contact - tau_friction"
-            ),
-            "tau_unmodeled_contact_force_only": (
-                "residual using contact force only: tau_inertia - tau_gravity - tau_coriolis - tau_tendon "
-                "- tau_actuation - tau_contact_force - tau_friction"
-            ),
-            "tau_unmodeled_contact_validated": (
-                "residual using tau_contact_validated; this is the preferred residual while contact-point moments "
-                "are under validation"
-            ),
-            "tau_unmodeled_quasistatic": (
-                "residual with the inertia term removed: -gravity - coriolis - tendon - actuation "
-                "- contact_validated - friction. This is recorded because inertia signals are still being validated."
-            ),
-            "tau_unmodeled_full_dynamics": (
-                "full inverse-dynamics residual using tau_inertia; equivalent to tau_unmodeled_contact_validated"
-            ),
-            "tau_unmodeled_recording_interval": (
-                "same full inverse-dynamics residual as tau_unmodeled, but using tau_inertia_recording_interval"
-            ),
-            "tau_unmodeled_estimated_actuation": (
-                "full inverse-dynamics residual using tau_actuation_estimated instead of measured tau_actuation"
-            ),
-            "tau_unmodeled_estimated_hip_actuation": (
-                "full inverse-dynamics residual using tau_actuation_estimated_hip instead of measured tau_actuation"
-            ),
-            "tau_unmodeled_estimated_hip_force_contact": (
-                "full inverse-dynamics residual using hip-only estimated actuation and contact_force instead of "
-                "measured actuation and contact_validated. This tests the best current measured/contact hypothesis."
-            ),
-            "tau_unmodeled_estimated_hip_force_contact_solver": (
-                "diagnostic residual using hip-only estimated actuation, contact_force, and selected passive solver "
-                "constraint proxy. This is not the primary physical residual, but it helps identify missing internal "
-                "constraint/limit forces."
-            ),
-            "tau_unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal": (
-                "diagnostic residual using hip lateral/flexion estimated actuation, contact_force, and the combined "
-                "passive-or-limit solver proxy. This tests whether hip-roll should be treated as an internal "
-                "limit/solver reaction instead of a clean actuator force."
-            ),
-            "tau_unmodeled": (
-                "alias of tau_unmodeled_contact_validated. Uses recorded actual-force signs: "
-                "tau_inertia - tau_gravity - tau_coriolis - tau_tendon - tau_actuation - tau_contact_validated "
-                "- tau_friction. "
-                "Gravity, Coriolis/centrifugal, and tendon are treated as potential/bias effects on the required side; "
-                "actuation, contact, and friction are treated as applied generalized forces."
-            ),
-            "tau_inverse_residual": ("alias of tau_unmodeled for the primary inverse-dynamics balance"),
-            "tau_solver_residual": (
-                "solver-projection comparison: tau_solver_joint minus actuation, contact, and friction. "
-                "tau_solver_joint is a projected joint-reaction diagnostic, not a total generalized force."
-            ),
-            "quality_*": (
-                "row-level sysid filtering metrics computed on the recorded side's selected 12 DOFs. "
-                "quality_sysid_residual_norm uses the current best diagnostic residual, while tau_unmodeled remains "
-                "the primary physical balance residual."
-            ),
         }
 
     def _report_dynamics_residual(self) -> None:
         if not self.cfg.record_debug_dynamics or self._debug_db is None or self._debug_row_count == 0:
             return
 
-        term_names = (
-            "inertia",
-            "inertia_recording_interval",
-            "inertia_raw",
-            "inertia_joint_only",
-            "inertia_joint_all",
-            "inertia_leg_self",
-            "inertia_other_joints",
-            "inertia_root_coupling",
-            "inertia_root_coupling_raw",
-            "inertia_root_coupling_alt",
-            "inertia_root_coupled_alt",
-            "inertia_full_raw",
-            "coriolis",
-            "gravity",
-            "friction_dynamic",
-            "friction_viscous",
-            "friction",
-            "solver_joint",
-            "actuation",
-            "actuation_command",
-            "actuation_estimated",
-            "actuation_estimated_hip",
-            "actuation_estimated_hip_lateral_flexion",
-            "actuation_estimated_passive",
-            "physx_actuation",
-            "solver_constraint_passive",
-            "solver_constraint_limit",
-            "solver_constraint_internal",
-            "joint_drive_pos_target",
-            "joint_drive_vel_target",
-            "joint_drive_effort_target",
-            "joint_drive_stiffness",
-            "joint_drive_damping",
-            "joint_effort_limit",
-            "joint_velocity_limit",
-            "joint_limit_lower",
-            "joint_limit_upper",
-            "joint_limit_distance_lower",
-            "joint_limit_distance_upper",
-            "joint_limit_distance_min",
-            "drive_stiffness",
-            "drive_damping",
-            "drive_effort_target",
-            "drive_pd",
-            "drive_pd_clipped",
-            "armature_inertia",
-            "contact",
-            "contact_force",
-            "contact_moment",
-            "contact_validated",
-            "contact_digit",
-            "contact_digit_force",
-            "contact_digit_moment",
-            "contact_connector",
-            "contact_connector_force",
-            "contact_connector_moment",
-            "contact_base",
-            "contact_base_force",
-            "contact_base_moment",
-            "tendon",
-            "tendon_model",
-            "tendon_projection_delta",
-            "unmodeled_quasistatic",
-            "unmodeled_full_dynamics",
-            "unmodeled_recording_interval",
-            "unmodeled_estimated_actuation",
-            "unmodeled_estimated_hip_actuation",
-            "unmodeled_estimated_hip_force_contact",
-            "unmodeled_estimated_hip_force_contact_solver",
-            "unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal",
-            "unmodeled_full_contact",
-            "unmodeled_contact_force_only",
-            "unmodeled_contact_validated",
-            "unmodeled",
-            "inverse_residual",
-            "solver_residual",
+        residual_cols = [f"tau_residual{i}" for i in range(self.num_dofs)]
+        contact_cols = [f"tau_contact_validated{i}" for i in range(self.num_dofs)]
+        actuation_cols = [f"tau_actuation_command{i}" for i in range(self.num_dofs)]
+        candidate_terms = (
+            "residual_with_pantograph_actuation",
+            "residual_with_knee_flexor_actuation",
+            "residual_with_pantograph_and_knee_flexor_actuation",
+            "residual_no_pantograph_actuation",
+            "residual_no_knee_flexor_actuation",
+            "residual_no_pantograph_no_knee_flexor_actuation",
+            "residual_no_pantograph_no_knee_flexor_plus_solver",
         )
-        matrix_term_names = DEBUG_DYNAMICS_MATRIX_TERM_NAMES
-        term_cols = {name: [f"tau_{name}{i}" for i in range(self.num_dofs)] for name in term_names}
-        matrix_cols = {
-            name: [f"{name}{row}_{col}" for row in range(self.num_dofs) for col in range(self.num_dofs)]
-            for name in matrix_term_names
-        }
+        available_candidate_terms = [
+            term
+            for term in candidate_terms
+            if all(f"tau_{term}{i}" in self._debug_columns for i in range(self.num_dofs))
+        ]
+        candidate_cols = [f"tau_{term}{i}" for term in available_candidate_terms for i in range(self.num_dofs)]
         selected_cols = [
             "sample_id",
             "step_index",
-            "time",
             "env_id",
             "side",
-            *(column for name in term_names for column in term_cols[name]),
-            *(column for name in matrix_term_names for column in matrix_cols[name]),
+            *residual_cols,
+            *contact_cols,
+            *actuation_cols,
+            *candidate_cols,
         ]
+        col_index = {name: index for index, name in enumerate(selected_cols)}
         quoted_cols = ", ".join(_quote_identifier(name) for name in selected_cols)
         rows = self._debug_db.execute(f"SELECT {quoted_cols} FROM debug_data ORDER BY sample_id").fetchall()
         if not rows:
@@ -1277,1204 +1021,79 @@ class DataRecording:
         def vector_norm(values: tuple[float, ...]) -> float:
             return math.sqrt(sum(value * value for value in values))
 
-        def add(*vectors: tuple[float, ...]) -> tuple[float, ...]:
-            return tuple(sum(vector[i] for vector in vectors) for i in range(self.num_dofs))
+        residual_norms = []
+        contact_norms = []
+        actuation_norms = []
+        candidate_norms = {term: [] for term in available_candidate_terms}
+        worst = None
+        for row in rows:
+            residual = tuple(float(row[col_index[f"tau_residual{i}"]]) for i in range(self.num_dofs))
+            contact = tuple(float(row[col_index[f"tau_contact_validated{i}"]]) for i in range(self.num_dofs))
+            actuation = tuple(float(row[col_index[f"tau_actuation_command{i}"]]) for i in range(self.num_dofs))
+            residual_norm = vector_norm(residual)
+            residual_norms.append(residual_norm)
+            contact_norms.append(vector_norm(contact))
+            actuation_norms.append(vector_norm(actuation))
+            for term in available_candidate_terms:
+                candidate = tuple(float(row[col_index[f"tau_{term}{i}"]]) for i in range(self.num_dofs))
+                candidate_norms[term].append(vector_norm(candidate))
+            if worst is None or residual_norm > worst[0]:
+                worst = (residual_norm, row, residual)
 
-        def neg(vector: tuple[float, ...]) -> tuple[float, ...]:
-            return tuple(-value for value in vector)
+        def mean(values: list[float]) -> float:
+            return sum(values) / max(len(values), 1)
 
-        def unpack_terms(row: tuple[Any, ...]) -> dict[str, tuple[float, ...]]:
-            offset = 5
-            terms = {"_sample_id": int(row[0])}
-            for name in term_names:
-                terms[name] = tuple(float(value) for value in row[offset : offset + self.num_dofs])
-                offset += self.num_dofs
-            for name in matrix_term_names:
-                values = tuple(float(value) for value in row[offset : offset + self.num_dofs * self.num_dofs])
-                terms[name] = tuple(values[i * self.num_dofs : (i + 1) * self.num_dofs] for i in range(self.num_dofs))
-                offset += self.num_dofs * self.num_dofs
-            return terms
-
-        def primary_required(terms: dict[str, tuple[float, ...]]) -> tuple[float, ...]:
-            return add(terms["inertia"], neg(terms["gravity"]), neg(terms["coriolis"]), neg(terms["tendon"]))
-
-        def primary_applied(terms: dict[str, tuple[float, ...]]) -> tuple[float, ...]:
-            return add(terms["actuation"], terms["contact_validated"], terms["friction"])
-
-        def dynamics_scale(terms: dict[str, tuple[float, ...]], residual: tuple[float, ...]) -> float:
-            return max(
-                vector_norm(primary_required(terms)),
-                vector_norm(primary_applied(terms)),
-                vector_norm(terms["solver_joint"]),
-                1.0e-9,
-            )
-
-        def term_norm_summary(name: str) -> tuple[float, float]:
-            norms = [vector_norm(terms[name]) for _row, terms in unpacked_rows]
-            return sum(norms) / len(norms), max(norms)
-
-        candidates = (
-            (
-                "validated",
-                "Mqdd - gravity - coriolis - tendon - actuation - contact_validated - friction",
-                lambda terms: terms["unmodeled"],
-            ),
-            (
-                "record interval",
-                "Mqdd_record_interval - gravity - coriolis - tendon - actuation - contact_validated - friction",
-                lambda terms: terms["unmodeled_recording_interval"],
-            ),
-            (
-                "quasistatic",
-                "-gravity - coriolis - tendon - actuation - contact_validated - friction",
-                lambda terms: terms["unmodeled_quasistatic"],
-            ),
-            (
-                "full contact",
-                "Mqdd - gravity - coriolis - tendon - actuation - contact - friction",
-                lambda terms: terms["unmodeled_full_contact"],
-            ),
-            (
-                "contact force only",
-                "Mqdd - gravity - coriolis - tendon - actuation - contact_force - friction",
-                lambda terms: terms["unmodeled_contact_force_only"],
-            ),
-            (
-                "flip tendon",
-                "Mqdd - gravity - coriolis + tendon - actuation - contact_validated - friction",
-                lambda terms: add(
-                    terms["inertia"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    terms["tendon"],
-                    neg(terms["actuation"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "flip contact",
-                "Mqdd - gravity - coriolis - tendon - actuation + contact_validated - friction",
-                lambda terms: add(
-                    terms["inertia"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon"]),
-                    neg(terms["actuation"]),
-                    terms["contact_validated"],
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "flip actuation",
-                "Mqdd - gravity - coriolis - tendon + actuation - contact_validated - friction",
-                lambda terms: add(
-                    terms["inertia"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon"]),
-                    terms["actuation"],
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "use command",
-                "Mqdd - gravity - coriolis - tendon - actuation_command - contact_validated - friction",
-                lambda terms: add(
-                    terms["inertia"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon"]),
-                    neg(terms["actuation_command"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "estimated actuation",
-                "Mqdd - gravity - coriolis - tendon - actuation_estimated - contact_validated - friction",
-                lambda terms: terms["unmodeled_estimated_actuation"],
-            ),
-            (
-                "estimated hip act",
-                "Mqdd - gravity - coriolis - tendon - actuation_estimated_hip - contact_validated - friction",
-                lambda terms: terms["unmodeled_estimated_hip_actuation"],
-            ),
-            (
-                "hip act force contact",
-                ("Mqdd - gravity - coriolis - tendon - actuation_estimated_hip - contact_force - friction"),
-                lambda terms: terms["unmodeled_estimated_hip_force_contact"],
-            ),
-            (
-                "hip+solver diag",
-                (
-                    "Mqdd - gravity - coriolis - tendon - "
-                    "actuation_estimated_hip - contact_force - friction - "
-                    "solver_constraint_passive"
-                ),
-                lambda terms: terms["unmodeled_estimated_hip_force_contact_solver"],
-            ),
-            (
-                "hip23+internal",
-                (
-                    "Mqdd - gravity - coriolis - tendon - "
-                    "actuation_estimated_hip_lateral_flexion - contact_force - "
-                    "friction - solver_constraint_internal"
-                ),
-                lambda terms: terms["unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal"],
-            ),
-            (
-                "drive pd clipped",
-                (
-                    "Mqdd - gravity - coriolis - tendon - drive_pd_clipped - "
-                    "contact_force - friction - solver_constraint_internal"
-                ),
-                lambda terms: add(
-                    terms["inertia"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon"]),
-                    neg(terms["drive_pd_clipped"]),
-                    neg(terms["contact_force"]),
-                    neg(terms["friction"]),
-                    neg(terms["solver_constraint_internal"]),
-                ),
-            ),
-            (
-                "hip23+int no fric",
-                (
-                    "Mqdd - gravity - coriolis - tendon - "
-                    "actuation_estimated_hip_lateral_flexion - contact_force - "
-                    "solver_constraint_internal"
-                ),
-                lambda terms: add(
-                    terms["unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal"],
-                    terms["friction"],
-                ),
-            ),
-            (
-                "hip23+int no arm",
-                (
-                    "Mqdd_minus_armature - gravity - coriolis - tendon - "
-                    "actuation_estimated_hip_lateral_flexion - contact_force - "
-                    "friction - solver_constraint_internal"
-                ),
-                lambda terms: add(
-                    terms["unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal"],
-                    neg(terms["armature_inertia"]),
-                ),
-            ),
-            (
-                "comp sign",
-                "Mqdd + gravity + coriolis + tendon - actuation - contact_validated - friction",
-                lambda terms: add(
-                    terms["inertia"],
-                    terms["gravity"],
-                    terms["coriolis"],
-                    terms["tendon"],
-                    neg(terms["actuation"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "solver diag",
-                "solver_projection - actuation - contact_validated - friction",
-                lambda terms: terms["solver_residual"],
-            ),
-            (
-                "solver+command",
-                "solver_projection - actuation_command - contact_validated - friction",
-                lambda terms: add(
-                    terms["solver_joint"],
-                    neg(terms["actuation_command"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "tendon model",
-                "Mqdd - gravity - coriolis - tendon_model - actuation - contact_validated - friction",
-                lambda terms: add(
-                    terms["inertia"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon_model"]),
-                    neg(terms["actuation"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "all-joint inertia",
-                "Mqdd_all_joints - gravity - coriolis - tendon - actuation - contact_validated - friction",
-                lambda terms: add(
-                    terms["inertia_joint_all"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon"]),
-                    neg(terms["actuation"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "leg self inertia",
-                "Mqdd_leg_self - gravity - coriolis - tendon - actuation - contact_validated - friction",
-                lambda terms: add(
-                    terms["inertia_leg_self"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon"]),
-                    neg(terms["actuation"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "base+self inertia",
-                (
-                    "Mqdd_base_coupling + Mqdd_leg_self - gravity - coriolis - "
-                    "tendon - actuation - contact_validated - friction"
-                ),
-                lambda terms: add(
-                    terms["inertia_root_coupling"],
-                    terms["inertia_leg_self"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon"]),
-                    neg(terms["actuation"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "base only inertia",
-                "Mqdd_base_coupling - gravity - coriolis - tendon - actuation - contact_validated - friction",
-                lambda terms: add(
-                    terms["inertia_root_coupling"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon"]),
-                    neg(terms["actuation"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "raw full inertia",
-                "Mqdd_full_raw - gravity - coriolis - tendon - actuation - contact_validated - friction",
-                lambda terms: add(
-                    terms["inertia_full_raw"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon"]),
-                    neg(terms["actuation"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "raw substep inertia",
-                "Mqdd_raw - gravity - coriolis - tendon - actuation - contact_validated - friction",
-                lambda terms: add(
-                    terms["inertia_raw"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon"]),
-                    neg(terms["actuation"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "alt root inertia",
-                "Mqdd_root_order_alt - gravity - coriolis - tendon - actuation - contact_validated - friction",
-                lambda terms: add(
-                    terms["inertia_root_coupled_alt"],
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon"]),
-                    neg(terms["actuation"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-            (
-                "no inertia",
-                "-gravity - coriolis - tendon - actuation - contact_validated - friction",
-                lambda terms: add(
-                    neg(terms["gravity"]),
-                    neg(terms["coriolis"]),
-                    neg(terms["tendon"]),
-                    neg(terms["actuation"]),
-                    neg(terms["contact_validated"]),
-                    neg(terms["friction"]),
-                ),
-            ),
-        )
-
-        rng = random.Random(17)
-        samples: list[tuple[tuple[Any, ...], dict[str, tuple[float, ...]], tuple[float, ...], float]] = []
-        candidate_summaries = []
-        primary_worst = None
-        eps = 1.0e-9
-
-        unpacked_rows = [(row, unpack_terms(row)) for row in rows]
-        filtered_inertia_by_sample = self._filtered_inertia_by_sample(unpacked_rows)
-        if filtered_inertia_by_sample:
-            candidates = (
-                *candidates,
-                (
-                    "central inertia",
-                    "M*central_diff(dq) - gravity - coriolis - tendon - actuation - contact_validated - friction",
-                    lambda terms: add(
-                        filtered_inertia_by_sample.get(int(terms["_sample_id"]), terms["inertia"]),
-                        neg(terms["gravity"]),
-                        neg(terms["coriolis"]),
-                        neg(terms["tendon"]),
-                        neg(terms["actuation"]),
-                        neg(terms["contact_validated"]),
-                        neg(terms["friction"]),
-                    ),
-                ),
-            )
-        for candidate_index, (name, equation, residual_fn) in enumerate(candidates):
-            percentages: list[float] = []
-            residual_norms: list[float] = []
-            worst = None
-            worst_percentage = -1.0
-            max_abs_residual = 0.0
-            for index, (row, terms) in enumerate(unpacked_rows):
-                residual = residual_fn(terms)
-                scale = dynamics_scale(terms, residual)
-                residual_norm = vector_norm(residual)
-                percentage = 100.0 * residual_norm / max(scale, eps)
-                percentages.append(percentage)
-                residual_norms.append(residual_norm)
-                max_abs_residual = max(max_abs_residual, max(abs(value) for value in residual))
-                if percentage > worst_percentage:
-                    worst_percentage = percentage
-                    worst = (row, terms, residual, percentage)
-                if candidate_index == 0:
-                    if len(samples) < 5:
-                        samples.append((row, terms, residual, percentage))
-                    else:
-                        replace_index = rng.randint(0, index)
-                        if replace_index < len(samples):
-                            samples[replace_index] = (row, terms, residual, percentage)
-
-            percentages_sorted = sorted(percentages)
-            residual_norms_sorted = sorted(residual_norms)
-            p95 = percentages_sorted[min(len(percentages_sorted) - 1, int(0.95 * (len(percentages_sorted) - 1)))]
-            mean = sum(percentages) / len(percentages)
-            p95_norm = residual_norms_sorted[
-                min(len(residual_norms_sorted) - 1, int(0.95 * (len(residual_norms_sorted) - 1)))
-            ]
-            candidate_summaries.append(
-                {
-                    "name": name,
-                    "equation": equation,
-                    "mean_percent_of_dynamics_scale": mean,
-                    "p95_percent_of_dynamics_scale": p95,
-                    "max_percent_of_dynamics_scale": worst_percentage,
-                    "mean_residual_norm_nm": sum(residual_norms) / len(residual_norms),
-                    "p95_residual_norm_nm": p95_norm,
-                    "max_residual_norm_nm": max(residual_norms),
-                    "max_abs_residual_nm": max_abs_residual,
-                }
-            )
-            if candidate_index == 0:
-                primary_worst = worst
-
-        primary_summary = candidate_summaries[0]
-        ranked_summaries = sorted(candidate_summaries, key=lambda item: item["mean_percent_of_dynamics_scale"])
+        residual_sorted = sorted(residual_norms)
+        p95_index = min(len(residual_sorted) - 1, int(0.95 * (len(residual_sorted) - 1)))
         self._context_metadata["dynamics_residual_summary"] = {
             "rows": len(rows),
-            "primary": primary_summary,
-            "ranked_hypotheses": ranked_summaries,
+            "equation": "residual = conservative - non_conservative",
+            "mean_residual_norm_nm": mean(residual_norms),
+            "p95_residual_norm_nm": residual_sorted[p95_index],
+            "max_residual_norm_nm": max(residual_norms),
+            "mean_contact_norm_nm": mean(contact_norms),
+            "mean_actuation_norm_nm": mean(actuation_norms),
+            "candidate_residual_norms_nm": {
+                term: {
+                    "mean": mean(norms),
+                    "p95": sorted(norms)[min(len(norms) - 1, int(0.95 * (len(norms) - 1)))],
+                    "max": max(norms),
+                }
+                for term, norms in candidate_norms.items()
+                if norms
+            },
         }
 
-        print("\n[ForrestDynamics] DOF unmodeled-force check")
-        print("  Primary equation:")
-        print("    tau_unmodeled = Mqdd - gravity - coriolis - tendon - actuation - contact_validated - friction")
-        print("    Mqdd is the selected leg rows of the full floating-base inertia: base + leg self + other joints")
-        print("    primary Mqdd uses raw IsaacLab/PhysX root and joint acceleration signals")
-        print("    recording-interval finite-difference inertia is recorded separately for comparison")
-        print("    contact_validated = contact_force + contact_moment only when |moment| / |force| <= 2")
-        print("    raw full-contact and force-only residuals are recorded separately for comparison")
-        print("    gravity/coriolis/tendon are recorded as actual generalized forces, not compensation commands")
-        print("    actuation/contact/friction are measured or estimated applied generalized forces")
-        print("    actuation_command is recorded separately and is not subtracted in the primary balance")
-        print("    actuation_estimated is an IsaacLab implicit-drive estimate and is tested as a diagnostic candidate")
-        print("    actuation_estimated_hip keeps only hip roll/lateral/flexion estimated drive")
-        print("    actuation_estimated_hip_lateral_flexion excludes hip roll to test q1 limit/solver behavior")
-        print("    solver_constraint_passive is a selected passive-chain solver-force diagnostic, not primary physics")
-        print("    solver_constraint_limit records solver-projected force where soft-limit distance <= 0.05 rad")
+        print("\n[ForrestDynamics] Minimal force-balance check")
+        print("  residual = conservative - non_conservative")
+        print("  conservative = inertia + gravity + coriolis + tendon")
+        print("  non_conservative = actuation + contact_validated + friction")
+        print("  dynamics actuation excludes pantograph and knee-flexor diagnostics; sim_data tau is motor-only")
         print(f"  rows: {len(rows):,}")
-        print("  signal norm diagnostics (mean/max N*m):")
-        for name in (
-            "inertia",
-            "inertia_recording_interval",
-            "inertia_raw",
-            "inertia_joint_only",
-            "inertia_joint_all",
-            "inertia_leg_self",
-            "inertia_other_joints",
-            "inertia_root_coupling",
-            "inertia_root_coupling_raw",
-            "inertia_root_coupling_alt",
-            "inertia_root_coupled_alt",
-            "inertia_full_raw",
-            "armature_inertia",
-            "actuation",
-            "actuation_command",
-            "actuation_estimated",
-            "actuation_estimated_hip",
-            "actuation_estimated_hip_lateral_flexion",
-            "actuation_estimated_passive",
-            "solver_constraint_passive",
-            "solver_constraint_limit",
-            "solver_constraint_internal",
-            "drive_stiffness",
-            "drive_damping",
-            "drive_effort_target",
-            "drive_pd",
-            "drive_pd_clipped",
-            "contact",
-            "contact_force",
-            "contact_moment",
-            "contact_validated",
-            "contact_digit",
-            "contact_digit_force",
-            "contact_digit_moment",
-            "contact_connector",
-            "contact_connector_force",
-            "contact_connector_moment",
-            "contact_base",
-            "contact_base_force",
-            "contact_base_moment",
-            "tendon",
-            "tendon_model",
-            "tendon_projection_delta",
-            "unmodeled_quasistatic",
-            "unmodeled_full_dynamics",
-            "unmodeled_recording_interval",
-            "unmodeled_estimated_actuation",
-            "unmodeled_estimated_hip_actuation",
-            "unmodeled_estimated_hip_force_contact",
-            "unmodeled_estimated_hip_force_contact_solver",
-            "unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal",
-            "unmodeled_full_contact",
-            "unmodeled_contact_force_only",
-            "unmodeled_contact_validated",
-        ):
-            mean_norm, max_norm = term_norm_summary(name)
-            print(f"    {name:<18} {mean_norm:8.3f} / {max_norm:8.3f}")
-        self._print_dynamics_quality_gates(unpacked_rows)
-        self._print_dynamics_forensics(unpacked_rows, filtered_inertia_by_sample)
         print(
-            "  primary residual / dynamics scale: "
-            f"mean={primary_summary['mean_percent_of_dynamics_scale']:6.2f}%  "
-            f"p95={primary_summary['p95_percent_of_dynamics_scale']:6.2f}%  "
-            f"max={primary_summary['max_percent_of_dynamics_scale']:6.2f}%"
+            "  residual norm N*m: "
+            f"mean={mean(residual_norms):.3f}, p95={residual_sorted[p95_index]:.3f}, max={max(residual_norms):.3f}"
         )
-        print(f"  primary max |tau_unmodeled_i|: {primary_summary['max_abs_residual_nm']:8.3f} N*m")
-        print("  sign-hypothesis ranking by mean residual:")
-        for summary in ranked_summaries:
-            print(
-                f"    {summary['name']:<14} "
-                f"mean={summary['mean_percent_of_dynamics_scale']:6.2f}%  "
-                f"p95={summary['p95_percent_of_dynamics_scale']:6.2f}%  "
-                f"max={summary['max_percent_of_dynamics_scale']:6.2f}%  "
-                f"mean|r|={summary['mean_residual_norm_nm']:8.3f} N*m  "
-                f"p95|r|={summary['p95_residual_norm_nm']:8.3f} N*m  "
-                f"max|tau|={summary['max_abs_residual_nm']:8.3f} N*m"
-            )
-        print("  random samples:")
-        for row, _terms, residual, percentage in samples:
-            self._print_residual_sample(row, residual, percentage)
-        if primary_worst is not None:
-            print("  worst sample:")
-            row, _terms, residual, percentage = primary_worst
-            self._print_residual_sample(row, residual, percentage)
-        print()
-
-    def _print_residual_sample(self, row: tuple[Any, ...], residual: tuple[float, ...], percentage: float) -> None:
-        max_index = max(range(self.num_dofs), key=lambda i: abs(float(residual[i]))) if self.num_dofs > 0 else 0
-        joint_names = self._joint_names_by_side.get(str(row[4]), ())
-        joint_label = joint_names[max_index] if max_index < len(joint_names) else f"q{max_index}"
-        print(
-            "    "
-            f"sample={int(row[0]):>7} step={int(row[1]):>6} env={int(row[3]):>4} side={row[4]:>5} "
-            f"residual={percentage:6.2f}% max={float(residual[max_index]):+8.3f} N*m "
-            f"at q{max_index} ({joint_label})"
-        )
-
-    def _filtered_inertia_by_sample(
-        self, unpacked_rows: list[tuple[tuple[Any, ...], dict[str, Any]]]
-    ) -> dict[int, tuple[float, ...]]:
-        if self._db is None or not unpacked_rows:
-            return {}
-
-        dq_cols = [f"dq{i}" for i in range(self.num_dofs)]
-        quoted = ", ".join(_quote_identifier(name) for name in dq_cols)
-        sim_rows = self._db.execute(f"SELECT rowid, {quoted} FROM {self.cfg.sim_table_name} ORDER BY rowid").fetchall()
-        if len(sim_rows) < 3:
-            return {}
-
-        times = [float(row[2]) for row, _terms in unpacked_rows]
-        dq_by_sample = {int(rowid) - 1: tuple(float(value) for value in values) for rowid, *values in sim_rows}
-        filtered: dict[int, tuple[float, ...]] = {}
-        for index, (row, terms) in enumerate(unpacked_rows):
-            sample_id = int(row[0])
-            if sample_id not in dq_by_sample:
-                continue
-            prev_same_stream = (
-                index > 0
-                and int(unpacked_rows[index - 1][0][3]) == int(row[3])
-                and str(unpacked_rows[index - 1][0][4]) == str(row[4])
-            )
-            next_same_stream = (
-                index + 1 < len(unpacked_rows)
-                and int(unpacked_rows[index + 1][0][3]) == int(row[3])
-                and str(unpacked_rows[index + 1][0][4]) == str(row[4])
-            )
-            if prev_same_stream and next_same_stream:
-                prev_id, next_id = int(unpacked_rows[index - 1][0][0]), int(unpacked_rows[index + 1][0][0])
-                dt = max(times[index + 1] - times[index - 1], 1.0e-9)
-            elif next_same_stream:
-                prev_id, next_id = sample_id, int(unpacked_rows[index + 1][0][0])
-                dt = max(times[index + 1] - times[index], 1.0e-9)
-            elif prev_same_stream:
-                prev_id, next_id = int(unpacked_rows[index - 1][0][0]), sample_id
-                dt = max(times[index] - times[index - 1], 1.0e-9)
-            else:
-                continue
-            if prev_id not in dq_by_sample or next_id not in dq_by_sample:
-                continue
-            ddq = tuple((dq_by_sample[next_id][i] - dq_by_sample[prev_id][i]) / dt for i in range(self.num_dofs))
-            mass_matrix = terms["mass_matrix"]
-            filtered[sample_id] = tuple(
-                sum(float(mass_matrix[i][j]) * ddq[j] for j in range(self.num_dofs)) for i in range(self.num_dofs)
-            )
-        return filtered
-
-    def _print_dynamics_forensics(
-        self,
-        unpacked_rows: list[tuple[tuple[Any, ...], dict[str, Any]]],
-        filtered_inertia_by_sample: dict[int, tuple[float, ...]],
-    ) -> None:
-        if not unpacked_rows:
-            return
-
-        def vector_norm(values: tuple[float, ...]) -> float:
-            return math.sqrt(sum(value * value for value in values))
-
-        def flatten(name: str) -> list[float]:
-            return [float(value) for _row, terms in unpacked_rows for value in terms[name]]
-
-        def corr(left: list[float], right: list[float]) -> float:
-            if len(left) != len(right) or not left:
-                return float("nan")
-            mean_left = sum(left) / len(left)
-            mean_right = sum(right) / len(right)
-            var_left = sum((value - mean_left) ** 2 for value in left)
-            var_right = sum((value - mean_right) ** 2 for value in right)
-            if var_left <= 1.0e-12 or var_right <= 1.0e-12:
-                return float("nan")
-            cov = sum((a - mean_left) * (b - mean_right) for a, b in zip(left, right))
-            return cov / math.sqrt(var_left * var_right)
-
-        residual = flatten("unmodeled")
-        print("  forensic correlations with tau_unmodeled:")
-        for name in (
-            "inertia",
-            "inertia_recording_interval",
-            "inertia_raw",
-            "inertia_joint_only",
-            "inertia_joint_all",
-            "inertia_leg_self",
-            "inertia_other_joints",
-            "inertia_root_coupling",
-            "inertia_root_coupling_raw",
-            "inertia_root_coupling_alt",
-            "inertia_root_coupled_alt",
-            "inertia_full_raw",
-            "contact",
-            "contact_force",
-            "contact_moment",
-            "contact_validated",
-            "contact_digit",
-            "contact_connector",
-            "contact_base",
-            "tendon",
-            "tendon_model",
-            "actuation_command",
-            "actuation_estimated",
-            "actuation_estimated_hip",
-            "actuation_estimated_hip_lateral_flexion",
-            "actuation_estimated_passive",
-            "solver_constraint_passive",
-            "solver_constraint_limit",
-            "solver_constraint_internal",
-            "drive_stiffness",
-            "drive_damping",
-            "drive_pd_clipped",
-            "friction_dynamic",
-            "friction_viscous",
-            "armature_inertia",
-        ):
-            print(f"    {name:<18} corr={corr(residual, flatten(name)):+6.3f}")
-
-        invalid_contact_rows = []
-        for row, terms in unpacked_rows:
-            contact_force_norm = vector_norm(terms["contact_force"])
-            contact_moment_norm = vector_norm(terms["contact_moment"])
-            projected_moment_ratio = contact_moment_norm / max(contact_force_norm, 1.0e-9)
-            if projected_moment_ratio > 2.0:
-                invalid_contact_rows.append(
-                    (projected_moment_ratio, contact_force_norm, contact_moment_norm, row, terms)
-                )
-        if invalid_contact_rows:
-            invalid_contact_rows.sort(key=lambda item: item[0], reverse=True)
-            print("  invalid contact-moment rows (projected |moment| / |force| > 2):")
-            print(
-                "    "
-                f"count={len(invalid_contact_rows):,} / {len(unpacked_rows):,}  "
-                f"max_ratio={invalid_contact_rows[0][0]:.2f}"
-            )
-            for projected_moment_ratio, contact_force_norm, contact_moment_norm, row, terms in invalid_contact_rows[:5]:
-                max_index = max(range(self.num_dofs), key=lambda i: abs(float(terms["contact_moment"][i])))
-                print(
-                    "    "
-                    f"sample={int(row[0]):>7} step={int(row[1]):>6} time={float(row[2]):7.3f}s "
-                    f"ratio={projected_moment_ratio:6.2f}  "
-                    f"|force|={contact_force_norm:8.3f} N*m  "
-                    f"|moment|={contact_moment_norm:8.3f} N*m  "
-                    f"max_moment=q{max_index}:{float(terms['contact_moment'][max_index]):+8.3f} N*m"
-                )
-        else:
-            print("  invalid contact-moment rows (projected |moment| / |force| > 2): none")
-
-        self._print_residual_attribution(unpacked_rows)
-        self._print_limit_proximity_diagnostics(unpacked_rows)
-
-        energy_by_dof = [0.0 for _ in range(self.num_dofs)]
-        for _row, terms in unpacked_rows:
-            for index, value in enumerate(terms["unmodeled"]):
-                energy_by_dof[index] += float(value) * float(value)
-        total_energy = max(sum(energy_by_dof), 1.0e-12)
-        print("  top residual-energy DOFs:")
-        side = str(unpacked_rows[0][0][4])
-        joint_names = self._joint_names_by_side.get(side, ())
-        for index in sorted(range(self.num_dofs), key=lambda dof: energy_by_dof[dof], reverse=True)[:5]:
-            joint_label = joint_names[index] if index < len(joint_names) else f"q{index}"
-            print(f"    q{index:<2d} {joint_label:<36} {100.0 * energy_by_dof[index] / total_energy:6.2f}%")
-
-        if filtered_inertia_by_sample:
-            deltas = []
-            raw_deltas = []
-            filtered_norms = []
-            original_norms = []
-            raw_norms = []
-            for row, terms in unpacked_rows:
-                sample_id = int(row[0])
-                if sample_id not in filtered_inertia_by_sample:
+        if candidate_norms:
+            print("  candidate residual norms N*m:")
+            for term, norms in candidate_norms.items():
+                if not norms:
                     continue
-                filtered = filtered_inertia_by_sample[sample_id]
-                original = terms["inertia"]
-                recording_interval = terms["inertia_recording_interval"]
-                deltas.append(vector_norm(tuple(filtered[i] - original[i] for i in range(self.num_dofs))))
-                raw_deltas.append(vector_norm(tuple(recording_interval[i] - original[i] for i in range(self.num_dofs))))
-                filtered_norms.append(vector_norm(filtered))
-                original_norms.append(vector_norm(original))
-                raw_norms.append(vector_norm(recording_interval))
-            if deltas:
-                print("  inertia estimator check:")
+                sorted_norms = sorted(norms)
+                candidate_p95_index = min(len(sorted_norms) - 1, int(0.95 * (len(sorted_norms) - 1)))
                 print(
-                    "    M*central_diff(dq) vs recorded tau_inertia: "
-                    f"mean_delta={sum(deltas) / len(deltas):8.3f} N*m  "
-                    f"max_delta={max(deltas):8.3f} N*m  "
-                    f"mean_filtered={sum(filtered_norms) / len(filtered_norms):8.3f} N*m  "
-                    f"mean_recorded={sum(original_norms) / len(original_norms):8.3f} N*m"
+                    f"    {term}: "
+                    f"mean={mean(norms):.3f}, p95={sorted_norms[candidate_p95_index]:.3f}, max={max(norms):.3f}"
                 )
-                print(
-                    "    recording-interval full inertia vs recorded tau_inertia: "
-                    f"mean_delta={sum(raw_deltas) / len(raw_deltas):8.3f} N*m  "
-                    f"max_delta={max(raw_deltas):8.3f} N*m  "
-                    f"mean_record_interval={sum(raw_norms) / len(raw_norms):8.3f} N*m"
-                )
-
-        rows = [terms for _row, terms in unpacked_rows]
-        contact_lag_scores = []
-        for lag in (-2, -1, 1, 2):
-            percentages = []
-            for index, terms in enumerate(rows):
-                shifted_index = index + lag
-                if shifted_index < 0 or shifted_index >= len(rows):
-                    continue
-                residual_lag = tuple(
-                    terms["inertia"][i]
-                    - terms["gravity"][i]
-                    - terms["coriolis"][i]
-                    - terms["tendon"][i]
-                    - terms["actuation"][i]
-                    - rows[shifted_index]["contact_validated"][i]
-                    - terms["friction"][i]
-                    for i in range(self.num_dofs)
-                )
-                scale = max(
-                    vector_norm(terms["inertia"]),
-                    vector_norm(terms["gravity"]),
-                    vector_norm(terms["coriolis"]),
-                    vector_norm(terms["tendon"]),
-                    vector_norm(rows[shifted_index]["contact_validated"]),
-                    vector_norm(terms["friction"]),
-                    1.0,
-                )
-                percentages.append(100.0 * vector_norm(residual_lag) / scale)
-            if percentages:
-                contact_lag_scores.append((lag, sum(percentages) / len(percentages)))
-        if contact_lag_scores:
-            formatted = "  ".join(f"lag {lag:+d}: {score:6.2f}%" for lag, score in contact_lag_scores)
-            print(f"  contact timing check mean residual: {formatted}")
-
-    def _print_dynamics_quality_gates(self, unpacked_rows: list[tuple[tuple[Any, ...], dict[str, Any]]]) -> None:
-        if not unpacked_rows:
-            return
-
-        def vector_norm(values: tuple[float, ...]) -> float:
-            return math.sqrt(sum(float(value) * float(value) for value in values))
-
-        def summary(norms: list[float]) -> tuple[float, float, float, float, float]:
-            if not norms:
-                return 0.0, 0.0, 0.0, 0.0, 0.0
-            sorted_norms = sorted(norms)
-            return (
-                sum(norms) / len(norms),
-                sorted_norms[len(sorted_norms) // 2],
-                sorted_norms[min(len(sorted_norms) - 1, int(0.90 * (len(sorted_norms) - 1)))],
-                sorted_norms[min(len(sorted_norms) - 1, int(0.95 * (len(sorted_norms) - 1)))],
-                sorted_norms[-1],
-            )
-
-        def best_norm(terms: dict[str, tuple[float, ...]]) -> float:
-            return vector_norm(terms["unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal"])
-
-        print("  sysid quality gates using hip23+internal diagnostic residual:")
-        all_norms = [best_norm(terms) for _row, terms in unpacked_rows]
-        mean, median, p90, p95, max_norm = summary(all_norms)
-        print(
-            f"    all rows       rows={len(all_norms):>5}  "
-            f"mean={mean:8.3f} N*m  median={median:8.3f}  p90={p90:8.3f}  p95={p95:8.3f}  max={max_norm:8.3f}"
-        )
-        for threshold in (100.0, 150.0, 200.0, 300.0, 500.0, 1000.0):
-            count = sum(norm <= threshold for norm in all_norms)
-            print(
-                f"    usable <= {threshold:6.1f} N*m: {count:>5} / "
-                f"{len(all_norms):<5} ({100.0 * count / len(all_norms):5.1f}%)"
-            )
-
-        issue_checks = (
-            (
-                "limit penetration >0.02 rad",
-                lambda terms: min(float(value) for value in terms["joint_limit_distance_min"]) < -0.02,
-            ),
-            ("|inertia| >1000 N*m", lambda terms: vector_norm(terms["inertia"]) > 1000.0),
-            ("|solver_internal| >1000 N*m", lambda terms: vector_norm(terms["solver_constraint_internal"]) > 1000.0),
-            ("|command| >1000 N*m", lambda terms: vector_norm(terms["actuation_command"]) > 1000.0),
-            ("|contact_force| >1000 N*m", lambda terms: vector_norm(terms["contact_force"]) > 1000.0),
-        )
-        print("  sysid issue counters:")
-        for label, check in issue_checks:
-            count = sum(1 for _row, terms in unpacked_rows if check(terms))
-            print(
-                f"    {label:<28} rows={count:>5} / {len(unpacked_rows):<5} "
-                f"({100.0 * count / len(unpacked_rows):5.1f}%)"
-            )
-
-        env_ids = sorted({int(row[3]) for row, _terms in unpacked_rows})
-        print("  sysid quality by env:")
-        for env_id in env_ids:
-            norms = [best_norm(terms) for row, terms in unpacked_rows if int(row[3]) == env_id]
-            mean, median, p90, p95, max_norm = summary(norms)
-            print(
-                f"    env={env_id:>4} rows={len(norms):>4}  "
-                f"mean={mean:8.3f}  median={median:8.3f}  p90={p90:8.3f}  p95={p95:8.3f}  max={max_norm:8.3f}"
-            )
-
-        print("  worst sysid diagnostic rows:")
-        worst_rows = sorted(((best_norm(terms), row, terms) for row, terms in unpacked_rows), reverse=True)[:8]
-        joint_names = self._joint_names_by_side.get(str(unpacked_rows[0][0][4]), ())
-        for norm, row, terms in worst_rows:
-            residual = terms["unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal"]
-            max_index = max(range(self.num_dofs), key=lambda dof: abs(float(residual[dof])))
-            joint_label = joint_names[max_index] if max_index < len(joint_names) else f"q{max_index}"
-            print(
-                "    "
-                f"sample={int(row[0]):>7} env={int(row[3]):>4} step={int(row[1]):>6} "
-                f"norm={norm:9.3f} N*m  "
-                f"max=q{max_index} {joint_label:<34} {float(residual[max_index]):+9.3f} N*m  "
-                f"|inertia|={vector_norm(terms['inertia']):8.3f}  "
-                f"|command|={vector_norm(terms['actuation_command']):8.3f}  "
-                f"|solver_int|={vector_norm(terms['solver_constraint_internal']):8.3f}  "
-                f"|contact|={vector_norm(terms['contact_force']):8.3f}"
-            )
-
-    def _print_residual_attribution(self, unpacked_rows: list[tuple[tuple[Any, ...], dict[str, Any]]]) -> None:  # noqa: C901
-        residual_values = [float(value) for _row, terms in unpacked_rows for value in terms["unmodeled"]]
-        residual_energy = sum(value * value for value in residual_values)
-        if residual_energy <= 1.0e-12:
-            return
-
-        def flatten(name: str) -> list[float]:
-            return [float(value) for _row, terms in unpacked_rows for value in terms[name]]
-
-        def fit_subtraction(signal: list[float]) -> tuple[float, float, float]:
-            signal_energy = sum(value * value for value in signal)
-            if signal_energy <= 1.0e-12:
-                return 0.0, 0.0, math.sqrt(residual_energy / max(len(residual_values), 1))
-            alpha = sum(r * s for r, s in zip(residual_values, signal)) / signal_energy
-            after = [r - alpha * s for r, s in zip(residual_values, signal)]
-            after_energy = sum(value * value for value in after)
-            reduction = 100.0 * (1.0 - after_energy / residual_energy)
-            rms_after = math.sqrt(after_energy / max(len(after), 1))
-            return alpha, reduction, rms_after
-
-        def residual_norm(row_terms: dict[str, tuple[float, ...]]) -> float:
-            return math.sqrt(sum(float(value) * float(value) for value in row_terms["unmodeled"]))
-
-        def per_dof_command_fit() -> tuple[float, float, float, list[dict[str, float]]]:
-            before_energy = 0.0
-            after_energy = 0.0
-            active_alphas = []
-            summaries = []
-            for dof in range(self.num_dofs):
-                residual = [float(terms["unmodeled"][dof]) for _row, terms in unpacked_rows]
-                command = [float(terms["actuation_command"][dof]) for _row, terms in unpacked_rows]
-                command_energy = sum(value * value for value in command)
-                residual_dof_energy = sum(value * value for value in residual)
-                command_rms = math.sqrt(command_energy / max(len(command), 1))
-                residual_rms = math.sqrt(residual_dof_energy / max(len(residual), 1))
-                summaries.append(
-                    {
-                        "dof": float(dof),
-                        "alpha": 0.0,
-                        "command_rms": command_rms,
-                        "residual_rms": residual_rms,
-                        "energy_reduction": 0.0,
-                    }
-                )
-                if command_rms <= 1.0:
-                    continue
-                alpha = sum(r * c for r, c in zip(residual, command)) / command_energy
-                after_dof_energy = sum((r - alpha * c) ** 2 for r, c in zip(residual, command))
-                summaries[-1]["alpha"] = alpha
-                summaries[-1]["energy_reduction"] = 100.0 * (1.0 - after_dof_energy / max(residual_dof_energy, 1.0e-12))
-                active_alphas.append(alpha)
-                before_energy += residual_dof_energy
-                after_energy += after_dof_energy
-            reduction = 100.0 * (1.0 - after_energy / max(before_energy, 1.0e-12))
-            mean_abs_alpha = sum(abs(alpha) for alpha in active_alphas) / max(len(active_alphas), 1)
-            max_abs_alpha = max((abs(alpha) for alpha in active_alphas), default=0.0)
-            return mean_abs_alpha, max_abs_alpha, reduction, summaries
-
-        def print_row_subset_summary(name: str, selected: list[dict[str, tuple[float, ...]]]) -> None:
-            if not selected:
-                print(f"    {name:<14} rows=0")
-                return
-            residual_norms = [residual_norm(terms) for terms in selected]
-            contact_norms = [
-                math.sqrt(sum(float(value) * float(value) for value in terms["contact_validated"]))
-                for terms in selected
-            ]
-            command_norms = [
-                math.sqrt(sum(float(value) * float(value) for value in terms["actuation_command"]))
-                for terms in selected
-            ]
-            residual_norms_sorted = sorted(residual_norms)
-            p95 = residual_norms_sorted[
-                min(len(residual_norms_sorted) - 1, int(0.95 * (len(residual_norms_sorted) - 1)))
-            ]
-            print(
-                f"    {name:<14} rows={len(selected):>4}  "
-                f"mean|r|={sum(residual_norms) / len(residual_norms):8.3f} N*m  "
-                f"p95|r|={p95:8.3f} N*m  "
-                f"mean|contact|={sum(contact_norms) / len(contact_norms):8.3f} N*m  "
-                f"mean|command|={sum(command_norms) / len(command_norms):8.3f} N*m"
-            )
-
-        def solve_linear_system(matrix: list[list[float]], vector: list[float]) -> list[float] | None:
-            size = len(vector)
-            augmented = [list(row) + [float(vector[index])] for index, row in enumerate(matrix)]
-            for pivot_index in range(size):
-                pivot_row = max(range(pivot_index, size), key=lambda row: abs(augmented[row][pivot_index]))
-                pivot = augmented[pivot_row][pivot_index]
-                if abs(pivot) <= 1.0e-10:
-                    return None
-                if pivot_row != pivot_index:
-                    augmented[pivot_index], augmented[pivot_row] = augmented[pivot_row], augmented[pivot_index]
-                scale = augmented[pivot_index][pivot_index]
-                for col in range(pivot_index, size + 1):
-                    augmented[pivot_index][col] /= scale
-                for row in range(size):
-                    if row == pivot_index:
-                        continue
-                    factor = augmented[row][pivot_index]
-                    if factor == 0.0:
-                        continue
-                    for col in range(pivot_index, size + 1):
-                        augmented[row][col] -= factor * augmented[pivot_index][col]
-            return [augmented[row][size] for row in range(size)]
-
-        def multivariate_fit(signal_names: tuple[str, ...]) -> tuple[list[float] | None, float, float]:
-            signals = [flatten(name) for name in signal_names]
-            matrix = [
-                [sum(left * right for left, right in zip(signals[row], signals[col])) for col in range(len(signals))]
-                for row in range(len(signals))
-            ]
-            vector = [sum(r * value for r, value in zip(residual_values, signal)) for signal in signals]
-            coefficients = solve_linear_system(matrix, vector)
-            if coefficients is None:
-                return None, 0.0, math.sqrt(residual_energy / max(len(residual_values), 1))
-            after = [
-                residual - sum(coefficients[col] * signals[col][index] for col in range(len(signal_names)))
-                for index, residual in enumerate(residual_values)
-            ]
-            after_energy = sum(value * value for value in after)
-            reduction = 100.0 * (1.0 - after_energy / residual_energy)
-            rms_after = math.sqrt(after_energy / max(len(after), 1))
-            return coefficients, reduction, rms_after
-
-        print("  residual attribution fits (diagnostic only, not used in tau_unmodeled):")
-        for name in (
-            "actuation_command",
-            "contact_force",
-            "contact_moment",
-            "contact_validated",
-            "contact_digit",
-            "contact_digit_force",
-            "contact_digit_moment",
-            "contact_connector",
-            "contact_connector_force",
-            "contact_connector_moment",
-            "contact_base",
-            "contact_base_force",
-            "contact_base_moment",
-            "tendon",
-            "friction_dynamic",
-            "friction_viscous",
-            "actuation_estimated_hip",
-            "actuation_estimated_hip_lateral_flexion",
-            "actuation_estimated_passive",
-            "drive_stiffness",
-            "drive_damping",
-            "drive_pd_clipped",
-            "solver_constraint_passive",
-            "solver_constraint_limit",
-            "solver_constraint_internal",
-            "armature_inertia",
-            "inertia_recording_interval",
-            "inertia_raw",
-        ):
-            alpha, reduction, rms_after = fit_subtraction(flatten(name))
-            print(
-                f"    subtract {name:<26} alpha={alpha:+7.3f}  "
-                f"energy_reduction={reduction:7.2f}%  rms_after={rms_after:8.3f} N*m/dof"
-            )
-        mean_abs_alpha, max_abs_alpha, reduction, dof_command_summaries = per_dof_command_fit()
-        print(
-            "    subtract actuation_command per active-command DOF "
-            f"mean|alpha|={mean_abs_alpha:6.3f}  max|alpha|={max_abs_alpha:6.3f}  "
-            f"energy_reduction={reduction:7.2f}%"
-        )
-        print("  multivariate residual fits (diagnostic only):")
-        for names in (
-            ("actuation_command", "contact_validated"),
-            ("actuation_command", "contact_force", "contact_moment"),
-            ("actuation_command", "contact_validated", "inertia_recording_interval"),
-            ("actuation_estimated_hip", "contact_validated"),
-            ("actuation_estimated_hip", "contact_force", "contact_moment"),
-            ("actuation_estimated_hip", "contact_force", "solver_constraint_passive"),
-            ("actuation_estimated_hip", "contact_validated", "solver_constraint_passive"),
-            ("actuation_estimated_hip", "contact_force", "contact_moment", "solver_constraint_passive"),
-            ("actuation_estimated_hip_lateral_flexion", "contact_force", "solver_constraint_internal"),
-            (
-                "actuation_estimated_hip_lateral_flexion",
-                "contact_digit_force",
-                "contact_connector_force",
-                "contact_base_force",
-                "solver_constraint_internal",
-            ),
-            (
-                "actuation_estimated_hip_lateral_flexion",
-                "contact_force",
-                "contact_moment",
-                "solver_constraint_internal",
-            ),
-            ("drive_pd_clipped", "contact_force", "solver_constraint_internal"),
-            ("drive_stiffness", "drive_damping", "contact_force", "solver_constraint_internal"),
-            ("actuation_estimated_hip_lateral_flexion", "contact_force", "solver_constraint_internal", "friction"),
-            (
-                "actuation_estimated_hip_lateral_flexion",
-                "contact_force",
-                "solver_constraint_internal",
-                "armature_inertia",
-            ),
-        ):
-            coefficients, reduction, rms_after = multivariate_fit(names)
-            if coefficients is None:
-                print(f"    {' + '.join(names)}: singular fit")
-                continue
-            formatted_coefficients = ", ".join(
-                f"{name}={coefficient:+.3f}" for name, coefficient in zip(names, coefficients)
-            )
-            print(
-                f"    subtract {formatted_coefficients}  "
-                f"energy_reduction={reduction:7.2f}%  rms_after={rms_after:8.3f} N*m/dof"
-            )
-        side = str(unpacked_rows[0][0][4])
-        joint_names = self._joint_names_by_side.get(side, ())
-        print("  per-DOF command fit, active command channels only (|command| RMS > 1 N*m):")
-        active_summaries = [item for item in dof_command_summaries if item["command_rms"] > 1.0]
-        active_summaries.sort(key=lambda item: item["energy_reduction"], reverse=True)
-        for item in active_summaries[:8]:
-            dof = int(item["dof"])
-            joint_label = joint_names[dof] if dof < len(joint_names) else f"q{dof}"
-            print(
-                f"    q{dof:<2d} {joint_label:<36} "
-                f"cmd_rms={item['command_rms']:8.3f} N*m  "
-                f"res_rms={item['residual_rms']:8.3f} N*m  "
-                f"alpha={item['alpha']:+7.3f}  "
-                f"energy_reduction={item['energy_reduction']:7.2f}%"
-            )
-
-        print("  per-DOF contact fit after hip23+internal diagnostic:")
-        contact_summaries = []
-        contact_fit_terms = ("contact_force", "contact_digit_force", "contact_connector_force", "contact_base_force")
-        for dof in range(self.num_dofs):
-            final_residual = []
-            for _row, terms in unpacked_rows:
-                best_residual = float(
-                    terms["unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal"][dof]
-                )
-                final_residual.append(best_residual)
-            final_rms = math.sqrt(sum(value * value for value in final_residual) / max(len(final_residual), 1))
-            best_fit = ("none", 0.0, 0.0, final_rms, 0.0)
-            for contact_term in contact_fit_terms:
-                residual_before_contact = []
-                contact_force = []
-                for _row, terms in unpacked_rows:
-                    best_residual = float(
-                        terms["unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal"][dof]
-                    )
-                    contact_value = float(terms[contact_term][dof])
-                    residual_before_contact.append(best_residual + contact_value)
-                    contact_force.append(contact_value)
-                contact_energy = sum(value * value for value in contact_force)
-                before_energy = sum(value * value for value in residual_before_contact)
-                contact_rms = math.sqrt(contact_energy / max(len(contact_force), 1))
-                if contact_energy <= 1.0e-12 or before_energy <= 1.0e-12:
-                    alpha = 0.0
-                    reduction = 0.0
-                    fitted_rms = math.sqrt(before_energy / max(len(residual_before_contact), 1))
-                else:
-                    alpha = sum(r * c for r, c in zip(residual_before_contact, contact_force)) / contact_energy
-                    after = [r - alpha * c for r, c in zip(residual_before_contact, contact_force)]
-                    after_energy = sum(value * value for value in after)
-                    reduction = 100.0 * (1.0 - after_energy / before_energy)
-                    fitted_rms = math.sqrt(after_energy / max(len(after), 1))
-                if reduction > best_fit[2]:
-                    best_fit = (contact_term, alpha, reduction, fitted_rms, contact_rms)
-            contact_summaries.append((final_rms, dof, *best_fit))
-        for final_rms, dof, contact_term, alpha, reduction, fitted_rms, contact_rms in sorted(
-            contact_summaries, reverse=True
-        )[:8]:
-            joint_label = joint_names[dof] if dof < len(joint_names) else f"q{dof}"
-            print(
-                f"    q{dof:<2d} {joint_label:<36} "
-                f"current_rms={final_rms:8.3f} N*m  "
-                f"best_contact={contact_term:<23} rms={contact_rms:8.3f} N*m  "
-                f"best_alpha={alpha:+7.3f}  "
-                f"fit_rms={fitted_rms:8.3f} N*m  "
-                f"energy_reduction={reduction:7.2f}%"
-            )
-
-        contact_rows = []
-        no_contact_rows = []
-        for _row, terms in unpacked_rows:
-            contact_norm = math.sqrt(sum(float(value) * float(value) for value in terms["contact_validated"]))
-            if contact_norm > 1.0:
-                contact_rows.append(terms)
-            else:
-                no_contact_rows.append(terms)
-        print("  residual split by contact activity:")
-        print_row_subset_summary("contact", contact_rows)
-        print_row_subset_summary("no contact", no_contact_rows)
-
-    def _print_limit_proximity_diagnostics(self, unpacked_rows: list[tuple[tuple[Any, ...], dict[str, Any]]]) -> None:
-        if not unpacked_rows:
-            return
-
-        def vector_norm(values: tuple[float, ...]) -> float:
-            return math.sqrt(sum(float(value) * float(value) for value in values))
-
-        side = str(unpacked_rows[0][0][4])
-        joint_names = self._joint_names_by_side.get(side, ())
-        print("  per-DOF joint-limit residual split (limit distance <= 0.05 rad):")
-        limit_summaries = []
-        for dof in range(self.num_dofs):
-            near = [terms for _row, terms in unpacked_rows if float(terms["joint_limit_distance_min"][dof]) <= 0.05]
-            far = [terms for _row, terms in unpacked_rows if float(terms["joint_limit_distance_min"][dof]) > 0.05]
-            if not near:
-                continue
-            near_residual = math.sqrt(sum(float(terms["unmodeled"][dof]) ** 2 for terms in near) / len(near))
-            far_residual = (
-                math.sqrt(sum(float(terms["unmodeled"][dof]) ** 2 for terms in far) / len(far)) if far else 0.0
-            )
-            near_solver = math.sqrt(
-                sum(float(terms["solver_constraint_limit"][dof]) ** 2 for terms in near) / len(near)
-            )
-            min_distance = min(float(terms["joint_limit_distance_min"][dof]) for _row, terms in unpacked_rows)
-            limit_summaries.append((near_residual, dof, len(near), len(far), far_residual, near_solver, min_distance))
-        if limit_summaries:
-            for near_residual, dof, near_count, far_count, far_residual, near_solver, min_distance in sorted(
-                limit_summaries, reverse=True
-            )[:8]:
+        if worst is not None:
+            _, row, residual = worst
+            print(f"  worst sample_id={int(row[0])} step={int(row[1])} env={int(row[2])} side={row[3]}")
+            print("  worst residual by DOF:")
+            joint_names = self._joint_names_by_side.get(str(row[3]), ())
+            for dof, value in enumerate(residual):
                 joint_label = joint_names[dof] if dof < len(joint_names) else f"q{dof}"
-                print(
-                    f"    q{dof:<2d} {joint_label:<36} "
-                    f"near={near_count:>4} far={far_count:>4}  "
-                    f"near_res_rms={near_residual:8.3f} N*m  "
-                    f"far_res_rms={far_residual:8.3f} N*m  "
-                    f"limit_solver_rms={near_solver:8.3f} N*m  "
-                    f"min_dist={min_distance:8.4f} rad"
-                )
-        else:
-            print("    none")
-
-        print("  closest joint-limit distances by DOF:")
-        summaries = []
-        for dof in range(self.num_dofs):
-            min_distance = min(float(terms["joint_limit_distance_min"][dof]) for _row, terms in unpacked_rows)
-            residual_rms = math.sqrt(
-                sum(float(terms["unmodeled"][dof]) ** 2 for _row, terms in unpacked_rows) / len(unpacked_rows)
-            )
-            solver_rms = math.sqrt(
-                sum(float(terms["solver_constraint_limit"][dof]) ** 2 for _row, terms in unpacked_rows)
-                / len(unpacked_rows)
-            )
-            summaries.append((min_distance, residual_rms, solver_rms, dof))
-        for min_distance, residual_rms, solver_rms, dof in sorted(summaries, key=lambda item: item[0])[:6]:
-            joint_label = joint_names[dof] if dof < len(joint_names) else f"q{dof}"
-            print(
-                f"    q{dof:<2d} {joint_label:<36} "
-                f"min_dist={min_distance:8.4f} rad  "
-                f"res_rms={residual_rms:8.3f} N*m  "
-                f"limit_solver_rms={solver_rms:8.3f} N*m"
-            )
+                print(f"    q{dof:<2d} {joint_label:<36} {value:+10.3f} N*m")
+        return
 
     def _joint_metadata(self) -> list[dict[str, Any]]:
         rows = []
@@ -2529,82 +1148,7 @@ def _training_dynamics_data_columns(num_dofs: int) -> list[str]:
 def _debug_dynamics_data_columns(num_dofs: int) -> list[str]:
     return (
         ["sample_id", "step_index", "time", "env_id", "side"]
-        + [f"tau_inertia{i}" for i in range(num_dofs)]
-        + [f"tau_inertia_recording_interval{i}" for i in range(num_dofs)]
-        + [f"tau_inertia_raw{i}" for i in range(num_dofs)]
-        + [f"tau_inertia_joint_only{i}" for i in range(num_dofs)]
-        + [f"tau_inertia_joint_all{i}" for i in range(num_dofs)]
-        + [f"tau_inertia_leg_self{i}" for i in range(num_dofs)]
-        + [f"tau_inertia_other_joints{i}" for i in range(num_dofs)]
-        + [f"tau_inertia_root_coupling{i}" for i in range(num_dofs)]
-        + [f"tau_inertia_root_coupling_raw{i}" for i in range(num_dofs)]
-        + [f"tau_inertia_root_coupling_alt{i}" for i in range(num_dofs)]
-        + [f"tau_inertia_root_coupled_alt{i}" for i in range(num_dofs)]
-        + [f"tau_inertia_full_raw{i}" for i in range(num_dofs)]
-        + [f"tau_coriolis{i}" for i in range(num_dofs)]
-        + [f"tau_gravity{i}" for i in range(num_dofs)]
-        + [f"tau_friction_dynamic{i}" for i in range(num_dofs)]
-        + [f"tau_friction_viscous{i}" for i in range(num_dofs)]
-        + [f"tau_friction{i}" for i in range(num_dofs)]
-        + [f"tau_solver_joint{i}" for i in range(num_dofs)]
-        + [f"tau_actuation{i}" for i in range(num_dofs)]
-        + [f"tau_actuation_command{i}" for i in range(num_dofs)]
-        + [f"tau_actuation_estimated{i}" for i in range(num_dofs)]
-        + [f"tau_actuation_estimated_hip{i}" for i in range(num_dofs)]
-        + [f"tau_actuation_estimated_hip_lateral_flexion{i}" for i in range(num_dofs)]
-        + [f"tau_actuation_estimated_passive{i}" for i in range(num_dofs)]
-        + [f"tau_physx_actuation{i}" for i in range(num_dofs)]
-        + [f"tau_solver_constraint_passive{i}" for i in range(num_dofs)]
-        + [f"tau_solver_constraint_limit{i}" for i in range(num_dofs)]
-        + [f"tau_solver_constraint_internal{i}" for i in range(num_dofs)]
-        + [f"tau_joint_drive_pos_target{i}" for i in range(num_dofs)]
-        + [f"tau_joint_drive_vel_target{i}" for i in range(num_dofs)]
-        + [f"tau_joint_drive_effort_target{i}" for i in range(num_dofs)]
-        + [f"tau_joint_drive_stiffness{i}" for i in range(num_dofs)]
-        + [f"tau_joint_drive_damping{i}" for i in range(num_dofs)]
-        + [f"tau_joint_effort_limit{i}" for i in range(num_dofs)]
-        + [f"tau_joint_velocity_limit{i}" for i in range(num_dofs)]
-        + [f"tau_joint_limit_lower{i}" for i in range(num_dofs)]
-        + [f"tau_joint_limit_upper{i}" for i in range(num_dofs)]
-        + [f"tau_joint_limit_distance_lower{i}" for i in range(num_dofs)]
-        + [f"tau_joint_limit_distance_upper{i}" for i in range(num_dofs)]
-        + [f"tau_joint_limit_distance_min{i}" for i in range(num_dofs)]
-        + [f"tau_drive_stiffness{i}" for i in range(num_dofs)]
-        + [f"tau_drive_damping{i}" for i in range(num_dofs)]
-        + [f"tau_drive_effort_target{i}" for i in range(num_dofs)]
-        + [f"tau_drive_pd{i}" for i in range(num_dofs)]
-        + [f"tau_drive_pd_clipped{i}" for i in range(num_dofs)]
-        + [f"tau_armature_inertia{i}" for i in range(num_dofs)]
-        + [f"tau_contact{i}" for i in range(num_dofs)]
-        + [f"tau_contact_force{i}" for i in range(num_dofs)]
-        + [f"tau_contact_moment{i}" for i in range(num_dofs)]
-        + [f"tau_contact_validated{i}" for i in range(num_dofs)]
-        + [f"tau_contact_digit{i}" for i in range(num_dofs)]
-        + [f"tau_contact_digit_force{i}" for i in range(num_dofs)]
-        + [f"tau_contact_digit_moment{i}" for i in range(num_dofs)]
-        + [f"tau_contact_connector{i}" for i in range(num_dofs)]
-        + [f"tau_contact_connector_force{i}" for i in range(num_dofs)]
-        + [f"tau_contact_connector_moment{i}" for i in range(num_dofs)]
-        + [f"tau_contact_base{i}" for i in range(num_dofs)]
-        + [f"tau_contact_base_force{i}" for i in range(num_dofs)]
-        + [f"tau_contact_base_moment{i}" for i in range(num_dofs)]
-        + [f"tau_tendon{i}" for i in range(num_dofs)]
-        + [f"tau_tendon_model{i}" for i in range(num_dofs)]
-        + [f"tau_tendon_projection_delta{i}" for i in range(num_dofs)]
-        + [f"tau_unmodeled_quasistatic{i}" for i in range(num_dofs)]
-        + [f"tau_unmodeled_full_dynamics{i}" for i in range(num_dofs)]
-        + [f"tau_unmodeled_recording_interval{i}" for i in range(num_dofs)]
-        + [f"tau_unmodeled_estimated_actuation{i}" for i in range(num_dofs)]
-        + [f"tau_unmodeled_estimated_hip_actuation{i}" for i in range(num_dofs)]
-        + [f"tau_unmodeled_estimated_hip_force_contact{i}" for i in range(num_dofs)]
-        + [f"tau_unmodeled_estimated_hip_force_contact_solver{i}" for i in range(num_dofs)]
-        + [f"tau_unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal{i}" for i in range(num_dofs)]
-        + [f"tau_unmodeled_full_contact{i}" for i in range(num_dofs)]
-        + [f"tau_unmodeled_contact_force_only{i}" for i in range(num_dofs)]
-        + [f"tau_unmodeled_contact_validated{i}" for i in range(num_dofs)]
-        + [f"tau_unmodeled{i}" for i in range(num_dofs)]
-        + [f"tau_inverse_residual{i}" for i in range(num_dofs)]
-        + [f"tau_solver_residual{i}" for i in range(num_dofs)]
+        + [f"tau_{name}{i}" for name in DEBUG_DYNAMICS_TERM_NAMES for i in range(num_dofs)]
         + list(DEBUG_DYNAMICS_SCALAR_NAMES)
         + [f"mass_matrix{row}_{col}" for row in range(num_dofs) for col in range(num_dofs)]
     )
@@ -2667,6 +1211,28 @@ def _to_int_list(values) -> list[int]:
 def _tensor_scalar(tensor, joint_index: int) -> float:
     value = tensor[0, joint_index] if tensor.ndim == 2 else tensor[joint_index]
     return float(value.detach().cpu().item())
+
+
+def _normalize_optional_float(value: Any, label: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.lower() in ("", "none", "null"):
+            return None
+        value = stripped
+    return float(value)
+
+
+def motor_torque_tensor(robot):
+    """Return applied motor torque with all non-motor joints explicitly zeroed."""
+
+    tau = robot.data.applied_torque * 0.0
+    motor_names = set(actuated_joint_names)
+    motor_indices = [index for index, joint_name in enumerate(robot.joint_names) if joint_name in motor_names]
+    if motor_indices:
+        tau[:, motor_indices] = robot.data.applied_torque[:, motor_indices]
+    return tau
 
 
 def _jsonable_config(cfg: DataRecordingConfig) -> dict[str, Any]:

@@ -15,6 +15,19 @@ import sys
 from pathlib import Path
 from typing import Any
 
+ACTUATED_JOINT_NAMES = (
+    "l0_acetabulofemoral_roll",
+    "l1_acetabulofemoral_lateral",
+    "l2_pseudo_acetabulofemoral_flexion",
+    "r0_acetabulofemoral_roll",
+    "r1_acetabulofemoral_lateral",
+    "r2_pseudo_acetabulofemoral_flexion",
+    "l8_knee_flexor",
+    "r8_knee_flexor",
+)
+
+FORCE_BALANCE_TOLERANCE = 1.0e-3
+
 
 class ValidationError(RuntimeError):
     """Raised when a recording violates the expected schema or data contract."""
@@ -24,7 +37,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("recording", help="Recording output directory or SQLite database path.")
     parser.add_argument("--metadata", type=str, default=None, help="Metadata JSON path. Defaults to metadata.json.")
-    parser.add_argument("--num_dofs", type=int, default=5, help="Expected number of generalized coordinates.")
+    parser.add_argument(
+        "--num_dofs",
+        type=int,
+        default=None,
+        help="Expected number of generalized coordinates. Defaults to metadata num_dofs.",
+    )
     parser.add_argument("--table_name", type=str, default=None, help="Override the sim_data table name.")
     parser.add_argument(
         "--max_fd_error",
@@ -113,6 +131,15 @@ def resolve_dynamics_path(recording: Path, metadata: dict[str, Any]) -> Path | N
     return recording.with_name(Path(str(dynamics_path)).name)
 
 
+def resolve_debug_path(recording: Path, metadata: dict[str, Any]) -> Path | None:
+    debug_path = metadata.get("debug_sqlite_path")
+    if debug_path is None:
+        return None
+    if recording.is_dir():
+        return recording / Path(str(debug_path)).name
+    return recording.with_name(Path(str(debug_path)).name)
+
+
 def validate_dynamics_db(path: Path, num_dofs: int, expected_rows: int) -> str:
     if not path.exists():
         raise ValidationError(f"Dynamics database is listed in metadata but does not exist: {path}")
@@ -135,7 +162,157 @@ def validate_dynamics_db(path: Path, num_dofs: int, expected_rows: int) -> str:
     for row in rows:
         numeric_rows.append(tuple(float(value) for value in row if not isinstance(value, str)))
     require_finite(numeric_rows, "dynamics_data")
-    return f"Validated dynamics: {path} ({len(rows)} rows)"
+    col_index = {name: index for index, name in enumerate(expected_columns)}
+    max_external_error = 0.0
+    for row in rows:
+        for dof_index in range(num_dofs):
+            external = float(row[col_index[f"tau_external{dof_index}"]])
+            components = (
+                float(row[col_index[f"tau_actuation{dof_index}"]])
+                + float(row[col_index[f"tau_contact{dof_index}"]])
+                + float(row[col_index[f"tau_friction{dof_index}"]])
+            )
+            max_external_error = max(max_external_error, abs(external - components))
+    if max_external_error > 1.0e-4:
+        raise ValidationError(
+            f"dynamics_data violates tau_external = tau_actuation + tau_contact + tau_friction: "
+            f"max error {max_external_error:.6e}"
+        )
+
+    return f"Validated dynamics: {path} ({len(rows)} rows, external max error {max_external_error:.3e})"
+
+
+def load_dynamics_streams(
+    path: Path, sim_rows: list[tuple[int, tuple[float, ...]]]
+) -> list[list[tuple[int, tuple[float, ...]]]]:
+    if not path.exists():
+        return [sim_rows]
+    sample_by_id = {sample_id: row for sample_id, row in sim_rows}
+    streams: dict[tuple[int, str], list[tuple[int, tuple[float, ...]]]] = {}
+    with sqlite3.connect(path) as db:
+        if not table_exists(db, "dynamics_data"):
+            return [sim_rows]
+        rows = db.execute(
+            "SELECT sample_id, step_index, env_id, side FROM dynamics_data ORDER BY env_id, side, step_index"
+        ).fetchall()
+    for sample_id, step_index, env_id, side in rows:
+        sample_id = int(sample_id)
+        if sample_id not in sample_by_id:
+            raise ValidationError(f"dynamics_data sample_id {sample_id} is missing from sim_data.")
+        streams.setdefault((int(env_id), str(side)), []).append((int(step_index), sample_by_id[sample_id]))
+    return list(streams.values()) or [sim_rows]
+
+
+def validate_debug_db(path: Path, metadata: dict[str, Any], num_dofs: int) -> str | None:
+    if int(metadata.get("debug_row_count", 0)) == 0:
+        return None
+    if not path.exists():
+        raise ValidationError(f"Debug database is listed in metadata but does not exist: {path}")
+
+    table_name = metadata.get("debug_table_name", "debug_data")
+    with sqlite3.connect(path) as db:
+        if not table_exists(db, table_name):
+            raise ValidationError(f"Missing {table_name} table in {path}")
+        columns = table_columns(db, table_name)
+        terms = (
+            "inertia",
+            "gravity",
+            "coriolis",
+            "tendon",
+            "actuation_command",
+            "contact_validated",
+            "friction",
+            "residual",
+        )
+        required = [f"tau_{term}{dof_index}" for term in terms for dof_index in range(num_dofs)]
+        missing = [column for column in required if column not in columns]
+        if missing:
+            raise ValidationError(f"Debug database is missing force-balance columns: {missing}")
+        pantograph_columns = [
+            f"tau_{term}{dof_index}"
+            for term in (
+                "pantograph_spring",
+                "pantograph_damping",
+                "pantograph_actuation",
+                "pantograph_applied_actuation",
+                "pantograph_computed_actuation",
+                "pantograph_reconstructed_actuation",
+                "pantograph_actuation_error",
+            )
+            for dof_index in range(num_dofs)
+        ]
+        selected_columns = required + [column for column in pantograph_columns if column in columns]
+        select_columns = ", ".join(quote_identifier(name) for name in selected_columns)
+        rows = db.execute(f"SELECT {select_columns} FROM {quote_identifier(table_name)} ORDER BY sample_id").fetchall()
+
+    require_finite([tuple(float(value) for value in row) for row in rows], table_name)
+    col_index = {name: index for index, name in enumerate(selected_columns)}
+    max_residual_error = 0.0
+    for row in rows:
+        for dof_index in range(num_dofs):
+            conservative = (
+                float(row[col_index[f"tau_inertia{dof_index}"]])
+                + float(row[col_index[f"tau_gravity{dof_index}"]])
+                + float(row[col_index[f"tau_coriolis{dof_index}"]])
+                + float(row[col_index[f"tau_tendon{dof_index}"]])
+            )
+            non_conservative = (
+                float(row[col_index[f"tau_actuation_command{dof_index}"]])
+                + float(row[col_index[f"tau_contact_validated{dof_index}"]])
+                + float(row[col_index[f"tau_friction{dof_index}"]])
+            )
+            residual = float(row[col_index[f"tau_residual{dof_index}"]])
+            max_residual_error = max(max_residual_error, abs(residual - (conservative - non_conservative)))
+    if max_residual_error > FORCE_BALANCE_TOLERANCE:
+        raise ValidationError(
+            "Debug database violates residual = "
+            "inertia + gravity + coriolis + tendon - actuation - contact - friction: "
+            f"max error {max_residual_error:.6e}"
+        )
+
+    max_pantograph_leakage = max(
+        validate_pantograph_columns(rows, selected_columns, metadata, num_dofs, "pantograph_spring"),
+        validate_pantograph_columns(rows, selected_columns, metadata, num_dofs, "pantograph_damping"),
+        validate_pantograph_columns(rows, selected_columns, metadata, num_dofs, "pantograph_actuation"),
+        validate_pantograph_columns(rows, selected_columns, metadata, num_dofs, "pantograph_applied_actuation"),
+        validate_pantograph_columns(rows, selected_columns, metadata, num_dofs, "pantograph_computed_actuation"),
+        validate_pantograph_columns(rows, selected_columns, metadata, num_dofs, "pantograph_reconstructed_actuation"),
+        validate_pantograph_columns(rows, selected_columns, metadata, num_dofs, "pantograph_actuation_error"),
+    )
+
+    return (
+        f"Validated debug force balance: {path} ({len(rows)} rows, residual max error {max_residual_error:.3e}, "
+        f"pantograph leakage {max_pantograph_leakage:.3e})"
+    )
+
+
+def validate_pantograph_columns(
+    rows: list[tuple[Any, ...]],
+    columns: list[str],
+    metadata: dict[str, Any],
+    num_dofs: int,
+    term_name: str,
+) -> float:
+    term_columns = [f"tau_{term_name}{dof_index}" for dof_index in range(num_dofs)]
+    if any(column not in columns for column in term_columns):
+        return 0.0
+
+    mappings = sorted(metadata.get("joint_mappings", []), key=lambda item: int(item.get("q_index", -1)))
+    if len(mappings) != num_dofs:
+        raise ValidationError("Metadata joint_mappings length does not match num_dofs.")
+
+    col_index = {name: index for index, name in enumerate(columns)}
+    max_leakage = 0.0
+    for mapping in mappings:
+        q_index = int(mapping["q_index"])
+        joint_name = str(mapping["joint_name"])
+        if joint_name in ("lp1_pantograph", "rp1_pantograph"):
+            continue
+        column = f"tau_{term_name}{q_index}"
+        max_leakage = max(max_leakage, max(abs(float(row[col_index[column]])) for row in rows))
+    if max_leakage > 1.0e-9:
+        raise ValidationError(f"{term_name} has nonzero values on non-pantograph joints: {max_leakage:.6e}")
+    return max_leakage
 
 
 def require_finite(rows: list[tuple[float, ...]], label: str) -> None:
@@ -143,6 +320,27 @@ def require_finite(rows: list[tuple[float, ...]], label: str) -> None:
         for col_index, value in enumerate(row):
             if not math.isfinite(value):
                 raise ValidationError(f"{label} contains non-finite value at row {row_index}, column {col_index}.")
+
+
+def validate_motor_tau(rows: list[tuple[float, ...]], metadata: dict[str, Any], num_dofs: int) -> None:
+    if metadata.get("tau_source") != "motor_torque":
+        return
+    motor_names = set(ACTUATED_JOINT_NAMES)
+    mappings = sorted(metadata.get("joint_mappings", []), key=lambda item: int(item.get("q_index", -1)))
+    if len(mappings) != num_dofs:
+        raise ValidationError("Metadata joint_mappings length does not match num_dofs.")
+
+    tau_offset = 3 * num_dofs
+    for mapping in mappings:
+        q_index = int(mapping["q_index"])
+        joint_name = str(mapping["joint_name"])
+        if joint_name in motor_names:
+            continue
+        max_abs_tau = max(abs(row[tau_offset + q_index]) for row in rows)
+        if max_abs_tau > 1.0e-9:
+            raise ValidationError(
+                f"motor_torque tau has nonzero value on non-motor joint {joint_name} (q{q_index}): {max_abs_tau:.6e}"
+            )
 
 
 def compute_stats(rows: list[tuple[float, ...]], columns: list[str]) -> list[tuple[str, float, float, float, float]]:
@@ -158,35 +356,40 @@ def compute_stats(rows: list[tuple[float, ...]], columns: list[str]) -> list[tup
 
 
 def finite_difference_report(
-    sim_rows: list[tuple[int, tuple[float, ...]]],
+    streams: list[list[tuple[int, tuple[float, ...]]]],
     num_dofs: int,
     sample_dt: float,
 ) -> dict[str, tuple[float, float, int] | None]:
     return {
-        "q_to_dq": derivative_residual(sim_rows, 0, num_dofs, num_dofs, sample_dt),
-        "dq_to_ddq": derivative_residual(sim_rows, num_dofs, 2 * num_dofs, num_dofs, sample_dt),
+        "q_to_dq": derivative_residual(streams, 0, num_dofs, num_dofs, sample_dt),
+        "dq_to_ddq": derivative_residual(streams, num_dofs, 2 * num_dofs, num_dofs, sample_dt),
     }
 
 
 def derivative_residual(
-    sim_rows: list[tuple[int, tuple[float, ...]]],
+    streams: list[list[tuple[int, tuple[float, ...]]]],
     value_offset: int,
     derivative_offset: int,
     num_dofs: int,
     sample_dt: float,
 ):
     residuals = []
-    if len(sim_rows) < 3 or sample_dt <= 0.0:
+    if sample_dt <= 0.0:
         return None
     central_dt = 2.0 * sample_dt
-    for index in range(1, len(sim_rows) - 1):
-        _, values_prev = sim_rows[index - 1]
-        _, values = sim_rows[index]
-        _, values_next = sim_rows[index + 1]
-        for dof_index in range(num_dofs):
-            estimated = (values_next[value_offset + dof_index] - values_prev[value_offset + dof_index]) / central_dt
-            actual = values[derivative_offset + dof_index]
-            residuals.append(actual - estimated)
+    for sim_rows in streams:
+        if len(sim_rows) < 3:
+            continue
+        for index in range(1, len(sim_rows) - 1):
+            step_prev, values_prev = sim_rows[index - 1]
+            step, values = sim_rows[index]
+            step_next, values_next = sim_rows[index + 1]
+            if step - step_prev != 1 or step_next - step != 1:
+                continue
+            for dof_index in range(num_dofs):
+                estimated = (values_next[value_offset + dof_index] - values_prev[value_offset + dof_index]) / central_dt
+                actual = values[derivative_offset + dof_index]
+                residuals.append(actual - estimated)
 
     if not residuals:
         return None
@@ -219,7 +422,8 @@ def validate(args) -> None:
         raise ValidationError(f"SQLite database does not exist: {sqlite_path}")
 
     table_name = args.table_name or metadata.get("sim_table_name", "sim_data")
-    expected_columns = expected_sim_columns(args.num_dofs)
+    num_dofs = args.num_dofs if args.num_dofs is not None else int(metadata.get("num_dofs", 5))
+    expected_columns = expected_sim_columns(num_dofs)
 
     with sqlite3.connect(sqlite_path) as db:
         if not table_exists(db, table_name):
@@ -242,13 +446,13 @@ def validate(args) -> None:
 
         values = [row_values for _, row_values in sim_rows]
         require_finite(values, "sim_data")
+        validate_motor_tau(values, metadata, num_dofs)
         sim_dt = float(metadata.get("sim_dt", 0.0))
         sampling_stride = int(metadata.get("config", {}).get("sampling_stride", 1))
-        fd_report = finite_difference_report(sim_rows, args.num_dofs, sim_dt * sampling_stride)
         stats = compute_stats(values, expected_columns)
 
-    if int(metadata.get("num_dofs", -1)) != args.num_dofs:
-        raise ValidationError(f"Metadata num_dofs={metadata.get('num_dofs')} does not match expected {args.num_dofs}.")
+    if int(metadata.get("num_dofs", -1)) != num_dofs:
+        raise ValidationError(f"Metadata num_dofs={metadata.get('num_dofs')} does not match expected {num_dofs}.")
     if metadata.get("sim_columns") != expected_columns:
         raise ValidationError("Metadata sim_columns do not match the SQLite sim_data schema.")
     if int(metadata.get("row_count", -1)) != len(sim_rows):
@@ -269,13 +473,25 @@ def validate(args) -> None:
     dynamics_report = None
     dynamics_path = resolve_dynamics_path(Path(args.recording), metadata)
     if dynamics_path is not None:
-        dynamics_report = validate_dynamics_db(dynamics_path, args.num_dofs, len(sim_rows))
+        dynamics_report = validate_dynamics_db(dynamics_path, num_dofs, len(sim_rows))
+        fd_streams = load_dynamics_streams(dynamics_path, sim_rows)
+    else:
+        fd_streams = [sim_rows]
+    sim_dt = float(metadata.get("sim_dt", 0.0))
+    sampling_stride = int(metadata.get("config", {}).get("sampling_stride", 1))
+    fd_report = finite_difference_report(fd_streams, num_dofs, sim_dt * sampling_stride)
+    debug_report = None
+    debug_path = resolve_debug_path(Path(args.recording), metadata)
+    if debug_path is not None:
+        debug_report = validate_debug_db(debug_path, metadata, num_dofs)
 
     print(f"Validated recording: {sqlite_path}")
     print(f"Metadata: {metadata_path}")
     print(f"sim_data rows: {len(sim_rows)}")
     if dynamics_report is not None:
         print(dynamics_report)
+    if debug_report is not None:
+        print(debug_report)
 
     for label, report in fd_report.items():
         if report is None:
@@ -292,7 +508,7 @@ def validate(args) -> None:
 
     if args.check_identix:
         print("\nIdentix SystemDataset:")
-        print(check_identix_loader(sqlite_path, table_name, args.num_dofs, args.identix_repo))
+        print(check_identix_loader(sqlite_path, table_name, num_dofs, args.identix_repo))
 
 
 def main() -> int:

@@ -15,6 +15,19 @@ from isaaclab.app import AppLauncher
 # local imports
 import cli_args  # isort: skip
 
+
+_RECORD_FILTER_DEFAULT = object()
+
+
+def _record_filter_residual_threshold(value: str | None) -> float | None:
+    if value is None:
+        return None
+    stripped = str(value).strip()
+    if stripped.lower() in ("", "none", "null"):
+        return None
+    return float(stripped)
+
+
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
@@ -90,9 +103,15 @@ parser.add_argument(
 )
 parser.add_argument(
     "--record_filter_residual_threshold",
-    type=float,
-    default=None,
-    help="Only export samples whose debug/sysid residual norm is <= this N*m threshold. Defaults to recording.yaml.",
+    type=_record_filter_residual_threshold,
+    nargs="?",
+    const=None,
+    default=_RECORD_FILTER_DEFAULT,
+    metavar="N|none",
+    help=(
+        "Only export samples whose residual norm is <= this N*m threshold. Use 'none' or pass the flag without a "
+        "value to disable filtering. Defaults to recording.yaml."
+    ),
 )
 parser.add_argument(
     "--record_overwrite",
@@ -254,9 +273,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 ),
                 residual_filter_threshold=(
                     args_cli.record_filter_residual_threshold
-                    if args_cli.record_filter_residual_threshold is not None
+                    if args_cli.record_filter_residual_threshold is not _RECORD_FILTER_DEFAULT
                     else recording_params.residual_filter_threshold
                 ),
+                kinematic_consistency_threshold=recording_params.kinematic_consistency_threshold,
+                kinematic_drop_before=recording_params.kinematic_drop_before,
+                kinematic_drop_after=recording_params.kinematic_drop_after,
                 max_steps=args_cli.record_max_steps,
             ),
             task_name=args_cli.task,
@@ -323,7 +345,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 actions = policy(obs)
                 # env stepping
                 obs, _, dones, _ = env.step(actions)
-                if forrest_recorder is not None and not forrest_recorder.record_after_step():
+                if forrest_recorder is not None and not forrest_recorder.record_after_step(dones=dones):
                     break
                 # reset recurrent states for episodes that have terminated
                 if version.parse(installed_version) >= version.parse("4.0.0"):

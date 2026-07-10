@@ -121,7 +121,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--record_tau_source",
-    choices=("controller_plus_ground", "applied_torque", "computed_torque", "zero"),
+    choices=("motor_torque", "controller_plus_ground", "applied_torque", "computed_torque", "zero"),
     default=None,
     help="Torque tensor used for tau0..tauN in sim_data.",
 )
@@ -210,7 +210,7 @@ from isaaclab.assets import Articulation
 from isaaclab.sensors import ContactSensor, ContactSensorCfg
 from isaaclab.sensors.camera import TiledCamera, TiledCameraCfg
 from isaaclab.sim import SimulationContext
-from isaaclab.tendons.data_recording import DataRecording, DataRecordingConfig
+from isaaclab.tendons.data_recording import DataRecording, DataRecordingConfig, motor_torque_tensor
 from isaaclab.tendons.manager import TendonManager
 from isaaclab.tendons.models.analytic.constants import joint_names_left, joint_names_right
 from isaaclab.tendons.models.analytic.tendon_data import TendonData
@@ -583,9 +583,10 @@ def recording_tau_tensor(
     actuated_joint_indices: list[int],
     tau_source: str,
 ):
+    if tau_source == "motor_torque":
+        return motor_torque_tensor(robot)
     if tau_source == "controller_plus_ground":
-        tau = torch.zeros_like(robot.data.joint_pos)
-        tau[:, actuated_joint_indices] = robot.data.applied_torque[:, actuated_joint_indices]
+        tau = motor_torque_tensor(robot)
         tau += projected_contact_sensor_torque(robot, contact_sensor, contact_body_names)
         return tau
     if tau_source == "applied_torque":
@@ -659,30 +660,16 @@ def recording_dynamics_terms(
     friction = friction_dynamic + friction_viscous
     solver_joint = robot.root_physx_view.get_dof_projected_joint_forces()
     physx_actuation = robot.root_physx_view.get_dof_actuation_forces()
-    actuation = physx_actuation
-    actuation_command = robot.data.applied_torque
-    actuation_estimated = actuation_command
-    actuation_estimated_hip = estimated_hip_actuation(robot, actuation_command)
-    actuation_estimated_hip_lateral_flexion = estimated_hip_lateral_flexion_actuation(robot, actuation_command)
-    actuation_estimated_passive = estimated_passive_actuation(robot, actuation_command)
-    joint_drive_pos_target = robot.data.joint_pos_target
-    joint_drive_vel_target = robot.data.joint_vel_target
-    joint_drive_effort_target = robot.data.joint_effort_target
-    joint_drive_stiffness = robot.data.joint_stiffness
-    joint_drive_damping = robot.data.joint_damping
-    joint_effort_limit = robot.data.joint_effort_limits
-    joint_velocity_limit = robot.data.soft_joint_vel_limits
+    pantograph_spring = pantograph_spring_torque(robot)
+    pantograph_damping = pantograph_damping_torque(robot)
+    pantograph_actuation = pantograph_actuation_torque(robot)
+    actuation_command = motor_torque_tensor(robot) + pantograph_actuation
+    actuation = actuation_command
     joint_limit_lower = robot.data.soft_joint_pos_limits[:, :, 0]
     joint_limit_upper = robot.data.soft_joint_pos_limits[:, :, 1]
     joint_limit_distance_lower = robot.data.joint_pos - joint_limit_lower
     joint_limit_distance_upper = joint_limit_upper - robot.data.joint_pos
     joint_limit_distance_min = torch.minimum(joint_limit_distance_lower, joint_limit_distance_upper)
-    drive_stiffness = joint_drive_stiffness * (joint_drive_pos_target - robot.data.joint_pos)
-    drive_damping = joint_drive_damping * (joint_drive_vel_target - robot.data.joint_vel)
-    drive_effort_target = joint_drive_effort_target
-    drive_pd = drive_stiffness + drive_damping + drive_effort_target
-    drive_pd_clipped = torch.clamp(drive_pd, -joint_effort_limit, joint_effort_limit)
-    armature_inertia = robot.data.joint_armature * raw_joint_acc
     solver_constraint_passive = passive_solver_constraint(robot, solver_joint)
     solver_constraint_limit = torch.where(
         joint_limit_distance_min <= 0.05, solver_joint, torch.zeros_like(solver_joint)
@@ -714,36 +701,9 @@ def recording_dynamics_terms(
     tendon = projected_tendon_wrench_torque(robot, tendon_manager)
     tendon_model = tendon_joint_torque_tensor(robot, tendon_manager)
     tendon_projection_delta = tendon - tendon_model
-    required_forces = inertia - gravity - coriolis - tendon
-    required_forces_recording_interval = inertia_recording_interval - gravity - coriolis - tendon
-    applied_full_contact = actuation + contact + friction
-    applied_force_only = actuation + contact_force + friction
-    applied_validated = actuation + contact_validated + friction
-    applied_estimated_actuation = actuation_estimated + contact_validated + friction
-    applied_estimated_hip_actuation = actuation_estimated_hip + contact_validated + friction
-    applied_estimated_hip_force_contact = actuation_estimated_hip + contact_force + friction
-    applied_estimated_hip_force_contact_solver = (
-        actuation_estimated_hip + contact_force + friction + solver_constraint_passive
-    )
-    applied_estimated_hip_lateral_flexion_force_contact_solver_internal = (
-        actuation_estimated_hip_lateral_flexion + contact_force + friction + solver_constraint_internal
-    )
-    unmodeled_quasistatic = -gravity - coriolis - tendon - applied_validated
-    unmodeled_full_contact = required_forces - applied_full_contact
-    unmodeled_contact_force_only = required_forces - applied_force_only
-    unmodeled_contact_validated = required_forces - applied_validated
-    unmodeled_estimated_actuation = required_forces - applied_estimated_actuation
-    unmodeled_estimated_hip_actuation = required_forces - applied_estimated_hip_actuation
-    unmodeled_estimated_hip_force_contact = required_forces - applied_estimated_hip_force_contact
-    unmodeled_estimated_hip_force_contact_solver = required_forces - applied_estimated_hip_force_contact_solver
-    unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal = (
-        required_forces - applied_estimated_hip_lateral_flexion_force_contact_solver_internal
-    )
-    unmodeled_full_dynamics = unmodeled_contact_validated
-    unmodeled_recording_interval = required_forces_recording_interval - applied_validated
-    unmodeled = unmodeled_contact_validated
-    inverse_residual = unmodeled
-    solver_residual = solver_joint - applied_validated
+    conservative = inertia + gravity + coriolis + tendon
+    non_conservative = actuation_command + contact_validated + friction
+    residual = conservative - non_conservative
 
     return {
         "inertia": inertia,
@@ -763,59 +723,23 @@ def recording_dynamics_terms(
         "friction_dynamic": friction_dynamic,
         "friction_viscous": friction_viscous,
         "friction": friction,
+        "pantograph_damping": pantograph_damping,
         "solver_joint": solver_joint,
         "actuation": actuation,
         "actuation_command": actuation_command,
-        "actuation_estimated": actuation_estimated,
-        "actuation_estimated_hip": actuation_estimated_hip,
-        "actuation_estimated_hip_lateral_flexion": actuation_estimated_hip_lateral_flexion,
-        "actuation_estimated_passive": actuation_estimated_passive,
+        "pantograph_actuation": pantograph_actuation,
         "physx_actuation": physx_actuation,
-        "solver_constraint_passive": solver_constraint_passive,
-        "solver_constraint_limit": solver_constraint_limit,
         "solver_constraint_internal": solver_constraint_internal,
-        "joint_drive_pos_target": joint_drive_pos_target,
-        "joint_drive_vel_target": joint_drive_vel_target,
-        "joint_drive_effort_target": joint_drive_effort_target,
-        "joint_drive_stiffness": joint_drive_stiffness,
-        "joint_drive_damping": joint_drive_damping,
-        "joint_effort_limit": joint_effort_limit,
-        "joint_velocity_limit": joint_velocity_limit,
-        "joint_limit_lower": joint_limit_lower,
-        "joint_limit_upper": joint_limit_upper,
-        "joint_limit_distance_lower": joint_limit_distance_lower,
-        "joint_limit_distance_upper": joint_limit_distance_upper,
-        "joint_limit_distance_min": joint_limit_distance_min,
-        "drive_stiffness": drive_stiffness,
-        "drive_damping": drive_damping,
-        "drive_effort_target": drive_effort_target,
-        "drive_pd": drive_pd,
-        "drive_pd_clipped": drive_pd_clipped,
-        "armature_inertia": armature_inertia,
         "contact": contact,
         "contact_force": contact_force,
         "contact_moment": contact_moment,
         "contact_validated": contact_validated,
         **contact_groups,
         "tendon": tendon,
+        "pantograph_spring": pantograph_spring,
         "tendon_model": tendon_model,
         "tendon_projection_delta": tendon_projection_delta,
-        "unmodeled_quasistatic": unmodeled_quasistatic,
-        "unmodeled_full_dynamics": unmodeled_full_dynamics,
-        "unmodeled_recording_interval": unmodeled_recording_interval,
-        "unmodeled_estimated_actuation": unmodeled_estimated_actuation,
-        "unmodeled_estimated_hip_actuation": unmodeled_estimated_hip_actuation,
-        "unmodeled_estimated_hip_force_contact": unmodeled_estimated_hip_force_contact,
-        "unmodeled_estimated_hip_force_contact_solver": unmodeled_estimated_hip_force_contact_solver,
-        "unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal": (
-            unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal
-        ),
-        "unmodeled_full_contact": unmodeled_full_contact,
-        "unmodeled_contact_force_only": unmodeled_contact_force_only,
-        "unmodeled_contact_validated": unmodeled_contact_validated,
-        "unmodeled": unmodeled,
-        "inverse_residual": inverse_residual,
-        "solver_residual": solver_residual,
+        "residual": residual,
         "mass_matrix": mass_matrices,
         "joint_acc_for_inertia": joint_acc,
     }
@@ -893,6 +817,54 @@ def tendon_joint_torque_tensor(robot, tendon_manager: TendonManager):
     return tendon
 
 
+def pantograph_spring_torque(robot):
+    spring = torch.zeros_like(robot.data.joint_pos)
+    pantograph_indices = [
+        index
+        for index, joint_name in enumerate(robot.joint_names)
+        if joint_name in ("lp1_pantograph", "rp1_pantograph")
+    ]
+    if not pantograph_indices:
+        return spring
+
+    stiffness = robot.data.joint_stiffness[:, pantograph_indices]
+    target = robot.data.joint_pos_target[:, pantograph_indices]
+    position = robot.data.joint_pos[:, pantograph_indices]
+    spring[:, pantograph_indices] = stiffness * (position - target)
+    return spring
+
+
+def pantograph_damping_torque(robot):
+    damping_torque = torch.zeros_like(robot.data.joint_pos)
+    pantograph_indices = [
+        index
+        for index, joint_name in enumerate(robot.joint_names)
+        if joint_name in ("lp1_pantograph", "rp1_pantograph")
+    ]
+    if not pantograph_indices:
+        return damping_torque
+
+    damping = robot.data.joint_damping[:, pantograph_indices]
+    target_velocity = robot.data.joint_vel_target[:, pantograph_indices]
+    velocity = robot.data.joint_vel[:, pantograph_indices]
+    damping_torque[:, pantograph_indices] = damping * (target_velocity - velocity)
+    return damping_torque
+
+
+def pantograph_actuation_torque(robot):
+    actuation = torch.zeros_like(robot.data.joint_pos)
+    pantograph_indices = [
+        index
+        for index, joint_name in enumerate(robot.joint_names)
+        if joint_name in ("lp1_pantograph", "rp1_pantograph")
+    ]
+    if not pantograph_indices:
+        return actuation
+
+    actuation[:, pantograph_indices] = robot.data.applied_torque[:, pantograph_indices]
+    return actuation
+
+
 def projected_tendon_wrench_torque(robot, tendon_manager: TendonManager):
     link_torques = getattr(tendon_manager, "cached_tendon_link_torques", None)
     link_forces = getattr(tendon_manager, "cached_tendon_forces", None)
@@ -924,19 +896,21 @@ def projected_tendon_wrench_torque(robot, tendon_manager: TendonManager):
         tau_tendon += torch.bmm(jacobian_linear.transpose(1, 2), force_world.unsqueeze(-1)).squeeze(-1)
         tau_tendon += torch.bmm(jacobian_angular.transpose(1, 2), torque_world.unsqueeze(-1)).squeeze(-1)
 
-    return tau_tendon
+    # The cached link wrenches are opposite the generalized-force sign used by
+    # cached_tendon_joint_torques and the database force-balance convention.
+    return -tau_tendon
 
 
 def _actual_generalized_force(robot, joint_ids: list[int], *, force_api_name: str, compensation_api_name: str):
     try:
-        compensation = getattr(robot.root_physx_view, compensation_api_name)()
-        generalized_joint_ids = joint_ids if robot.is_fixed_base else [joint_id + 6 for joint_id in joint_ids]
-        return -compensation[:, generalized_joint_ids]
+        return getattr(robot.root_physx_view, force_api_name)()[:, joint_ids]
     except Exception:
         pass
 
     try:
-        return getattr(robot.root_physx_view, force_api_name)()[:, joint_ids]
+        compensation = getattr(robot.root_physx_view, compensation_api_name)()
+        generalized_joint_ids = joint_ids if robot.is_fixed_base else [joint_id + 6 for joint_id in joint_ids]
+        return -compensation[:, generalized_joint_ids]
     except Exception:
         raise
 
@@ -1012,6 +986,9 @@ def main():  # noqa: C901
     sim.step()
     robot.update(sim.get_physics_dt())
     time.sleep(0.1)
+    previous_record_joint_vel = robot.data.joint_vel.clone()
+    previous_record_root_vel = robot.data.root_com_vel_w.clone()
+    previous_record_time = 0.0
 
     actuated_dof_specs = make_actuated_dof_specs(robot_cfg)
     actuated_joint_indices = find_actuated_joint_indices(robot, actuated_dof_specs)
@@ -1062,6 +1039,8 @@ def main():  # noqa: C901
                 tau_source=args_cli.record_tau_source,
                 record_tendons=bool(args_cli.record_tendons and not args_cli.jit),
                 record_dynamics=bool(args_cli.record_dynamics),
+                record_debug_dynamics=bool(FORREST_PARAMS.recording.record_debug_dynamics),
+                residual_filter_threshold=FORREST_PARAMS.recording.residual_filter_threshold,
                 sqlite_filename=FORREST_PARAMS.recording.kinematics_db_filename,
                 tendon_sqlite_filename=FORREST_PARAMS.recording.tendons_db_filename,
                 dynamics_sqlite_filename=FORREST_PARAMS.recording.dynamics_db_filename,
@@ -1103,6 +1082,9 @@ def main():  # noqa: C901
                 robot.update(0.0)
                 tendon_manager.reset_damping_state()
                 initial_joint_positions = robot.data.joint_pos[:, actuated_joint_indices].clone()
+                previous_record_joint_vel = robot.data.joint_vel.clone()
+                previous_record_root_vel = robot.data.root_com_vel_w.clone()
+                previous_record_time = 0.0
                 iteration = 0
                 wall_start = time.perf_counter()
                 if calibration_state.should_stop():
@@ -1173,6 +1155,12 @@ def main():  # noqa: C901
             recorded_time = (iteration + 1) * sim.get_physics_dt()
 
             if data_recorder is not None:
+                record_dt = max(float(recorded_time) - float(previous_record_time), 1.0e-9)
+                joint_acc_recording = (robot.data.joint_vel - previous_record_joint_vel) / record_dt
+                root_acc_recording = (robot.data.root_com_vel_w - previous_record_root_vel) / record_dt
+                previous_record_joint_vel = robot.data.joint_vel.clone()
+                previous_record_root_vel = robot.data.root_com_vel_w.clone()
+                previous_record_time = float(recorded_time)
                 tau_override = recording_tau_tensor(
                     robot,
                     contact_sensor,
@@ -1180,24 +1168,37 @@ def main():  # noqa: C901
                     actuated_joint_indices,
                     args_cli.record_tau_source,
                 )
+                dynamics_terms = None
+                if (
+                    data_recorder.cfg.record_dynamics
+                    or data_recorder.cfg.record_debug_dynamics
+                    or data_recorder.cfg.residual_filter_threshold is not None
+                ):
+                    dynamics_terms = recording_dynamics_terms(
+                        robot,
+                        contact_sensor,
+                        contact_body_names,
+                        tendon_manager,
+                        joint_acc_for_inertia=joint_acc_recording,
+                        root_acc_for_inertia=root_acc_recording,
+                    )
                 data_recorder.record_step(
                     step_index=iteration + 1,
                     sim_time=recorded_time,
                     robot=robot,
                     extra_context={"controller_time": controller_t},
                     tau_override=tau_override,
+                    ddq_override=joint_acc_recording,
+                    dynamics_terms=dynamics_terms,
                 )
                 if data_recorder.cfg.record_dynamics:
+                    if dynamics_terms is None:
+                        raise RuntimeError("Internal error: dynamics terms were not computed for dynamics recording.")
                     data_recorder.record_dynamics_step(
                         step_index=iteration + 1,
                         sim_time=recorded_time,
                         robot=robot,
-                        dynamics_terms=recording_dynamics_terms(
-                            robot,
-                            contact_sensor,
-                            contact_body_names,
-                            tendon_manager,
-                        ),
+                        dynamics_terms=dynamics_terms,
                         tau_input=tau_override,
                     )
 

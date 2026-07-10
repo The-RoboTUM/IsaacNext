@@ -15,7 +15,7 @@ from typing import Any
 import torch
 
 from isaaclab.sensors import ContactSensor
-from isaaclab.tendons.data_recording import DataRecording, DataRecordingConfig
+from isaaclab.tendons.data_recording import DataRecording, DataRecordingConfig, motor_torque_tensor
 from isaaclab.tendons.parameter_loader import ForrestParameterConfig
 from isaaclab.utils.math import quat_apply
 
@@ -40,6 +40,9 @@ class ForrestRLRecordingOptions:
     record_dynamics: bool = True
     record_debug_dynamics: bool = False
     residual_filter_threshold: float | None = None
+    kinematic_consistency_threshold: float | None = 0.2
+    kinematic_drop_before: int = 3
+    kinematic_drop_after: int = 3
     max_steps: int | None = None
     contact_sensor_name: str = "contact_forces"
     robot_name: str = "robot"
@@ -71,6 +74,15 @@ class ForrestRLRecorder:
         self._previous_record_joint_vel = self.robot.data.joint_vel.clone()
         self._previous_record_root_vel = self.robot.data.root_com_vel_w.clone()
         self._previous_record_time = 0.0
+        self._previous_kinematic_joint_pos = self.robot.data.joint_pos.clone()
+        self._previous_kinematic_joint_vel = self.robot.data.joint_vel.clone()
+        self._previous_kinematic_time = 0.0
+        self._record_env_ids = tuple(options.env_ids) if options.env_ids is not None else tuple(range(env.num_envs))
+        self._retired_env_ids: set[int] = set()
+        self._retired_env_reasons: dict[int, str] = {}
+        self._skip_remaining_by_env: dict[int, int] = {}
+        self._dropped_kinematic_rows = 0
+        self._skipped_kinematic_rows = 0
 
         output_dir = options.output_dir or _timestamped_output_dir(params.run.output_dir)
         self.recorder = DataRecording(
@@ -114,14 +126,26 @@ class ForrestRLRecorder:
                 "physics_dt": float(env.physics_dt),
                 "step_dt": float(env.step_dt),
                 "decimation": int(env.cfg.decimation),
+                "reset_sample_policy": "drop local frame window around done/reset samples",
+                "kinematic_consistency_threshold_rad": options.kinematic_consistency_threshold,
+                "kinematic_consistency_policy": "drop local frame window around inconsistent recorded-joint q/dq steps",
+                "kinematic_drop_before": int(options.kinematic_drop_before),
+                "kinematic_drop_after": int(options.kinematic_drop_after),
             },
+        )
+        self._record_joint_indices = sorted(
+            {
+                joint_index
+                for side in self.recorder._selected_sides()
+                for joint_index in self.recorder._joint_indices_by_side[side]
+            }
         )
 
     @property
     def output_dir(self) -> Path:
         return self.recorder.output_dir
 
-    def record_after_step(self) -> bool:
+    def record_after_step(self, *, dones=None) -> bool:
         """Record the current post-step env state. Returns false once max_steps is reached."""
 
         if self._closed:
@@ -131,6 +155,26 @@ class ForrestRLRecorder:
 
         self.step_index += 1
         sim_time = self.step_index * float(self.env.step_dt)
+        done_env_ids = {env_id for env_id in _done_env_ids(dones) if env_id in self._record_env_ids}
+        inconsistent_env_ids = self._inconsistent_kinematic_env_ids(sim_time)
+        new_unreliable_env_ids = done_env_ids | inconsistent_env_ids
+        if new_unreliable_env_ids:
+            self._dropped_kinematic_rows += self.recorder.drop_recent_samples(
+                new_unreliable_env_ids,
+                count=int(self.options.kinematic_drop_before),
+            )
+            for env_id in new_unreliable_env_ids:
+                self._skip_remaining_by_env[env_id] = max(
+                    self._skip_remaining_by_env.get(env_id, 0),
+                    int(self.options.kinematic_drop_after),
+                )
+
+        skip_env_ids = {
+            env_id
+            for env_id in self._record_env_ids
+            if self._skip_remaining_by_env.get(env_id, 0) > 0 or env_id in new_unreliable_env_ids
+        }
+        self._skipped_kinematic_rows += len(skip_env_ids)
         tau_input = self._tau_input_tensor()
         joint_acc_recording, root_acc_recording = self._recording_accelerations(sim_time)
         dynamics_terms = None
@@ -158,6 +202,7 @@ class ForrestRLRecorder:
             tau_override=tau_input,
             ddq_override=joint_acc_recording,
             dynamics_terms=dynamics_terms,
+            skip_env_ids=skip_env_ids,
         )
         if self.recorder.cfg.record_dynamics or self.recorder.cfg.record_debug_dynamics:
             if dynamics_terms is None:
@@ -168,8 +213,11 @@ class ForrestRLRecorder:
                 robot=self.robot,
                 dynamics_terms=dynamics_terms,
                 tau_input=tau_input,
+                skip_env_ids=skip_env_ids,
             )
-        return self.options.max_steps is None or self.step_index < self.options.max_steps
+        self._decrement_skip_windows(skip_env_ids - new_unreliable_env_ids)
+        within_max_steps = self.options.max_steps is None or self.step_index < self.options.max_steps
+        return within_max_steps
 
     def _recording_accelerations(self, sim_time: float):
         joint_vel = self.robot.data.joint_vel
@@ -185,6 +233,8 @@ class ForrestRLRecorder:
     def close(self) -> None:
         if self._closed:
             return
+        self.recorder._context_metadata["dropped_kinematic_rows"] = int(self._dropped_kinematic_rows)
+        self.recorder._context_metadata["skipped_kinematic_rows"] = int(self._skipped_kinematic_rows)
         self.recorder.close()
         self._closed = True
 
@@ -192,8 +242,7 @@ class ForrestRLRecorder:
         if self.params.recording.tau_source != "controller_plus_ground":
             return _tau_source_tensor(self.robot, self.params.recording.tau_source)
 
-        tau = torch.zeros_like(self.robot.data.joint_pos)
-        tau[:, self.actuated_joint_indices] = self.robot.data.applied_torque[:, self.actuated_joint_indices]
+        tau = motor_torque_tensor(self.robot)
         if self.contact_sensor is not None:
             contact_force, contact_moment = _projected_contact_sensor_torque_parts(
                 self.robot, self.contact_sensor, self.contact_body_names
@@ -204,6 +253,45 @@ class ForrestRLRecorder:
             tau += contact_force + torch.where(contact_moment_valid, contact_moment, torch.zeros_like(contact_moment))
         return tau
 
+    def _inconsistent_kinematic_env_ids(self, sim_time: float) -> set[int]:
+        threshold = self.options.kinematic_consistency_threshold
+        if threshold is None:
+            self._update_previous_kinematic_state(sim_time)
+            return set()
+
+        dt = float(sim_time) - float(self._previous_kinematic_time)
+        if dt <= 1.0e-9:
+            self._update_previous_kinematic_state(sim_time)
+            return set()
+
+        joint_indices = self._record_joint_indices
+        current_pos = self.robot.data.joint_pos[:, joint_indices]
+        current_vel = self.robot.data.joint_vel[:, joint_indices]
+        previous_pos = self._previous_kinematic_joint_pos[:, joint_indices]
+        previous_vel = self._previous_kinematic_joint_vel[:, joint_indices]
+        position_error = current_pos - previous_pos - 0.5 * (previous_vel + current_vel) * dt
+        max_error = position_error.abs().amax(dim=1)
+        bad_env_ids = {
+            int(env_id)
+            for env_id in torch.nonzero(max_error > float(threshold), as_tuple=False).flatten().cpu().tolist()
+            if int(env_id) in self._record_env_ids and int(env_id) not in self._retired_env_ids
+        }
+        self._update_previous_kinematic_state(sim_time)
+        return bad_env_ids
+
+    def _update_previous_kinematic_state(self, sim_time: float) -> None:
+        self._previous_kinematic_joint_pos = self.robot.data.joint_pos.clone()
+        self._previous_kinematic_joint_vel = self.robot.data.joint_vel.clone()
+        self._previous_kinematic_time = float(sim_time)
+
+    def _decrement_skip_windows(self, skipped_env_ids: set[int]) -> None:
+        for env_id in skipped_env_ids:
+            remaining = self._skip_remaining_by_env.get(env_id, 0)
+            if remaining <= 1:
+                self._skip_remaining_by_env.pop(env_id, None)
+            else:
+                self._skip_remaining_by_env[env_id] = remaining - 1
+
 
 def parse_env_ids(value: str | None) -> tuple[int, ...] | None:
     """Parse comma-separated env ids from CLI."""
@@ -211,6 +299,20 @@ def parse_env_ids(value: str | None) -> tuple[int, ...] | None:
     if value is None or value.strip() == "":
         return None
     return tuple(int(item.strip()) for item in value.split(",") if item.strip())
+
+
+def _done_env_ids(dones) -> set[int]:
+    if dones is None:
+        return set()
+    if isinstance(dones, torch.Tensor):
+        done_tensor = dones.detach().to(dtype=torch.bool)
+        if done_tensor.ndim == 0:
+            return {0} if bool(done_tensor.item()) else set()
+        if done_tensor.ndim > 1:
+            done_tensor = done_tensor.reshape(done_tensor.shape[0], -1).any(dim=1)
+        return {int(index) for index in torch.nonzero(done_tensor, as_tuple=False).flatten().cpu().tolist()}
+
+    return {index for index, done in enumerate(dones) if bool(done)}
 
 
 def _timestamped_output_dir(root: str | Path) -> str:
@@ -234,6 +336,8 @@ def _actuated_joint_indices(robot) -> list[int]:
 
 
 def _tau_source_tensor(robot, tau_source: str):
+    if tau_source == "motor_torque":
+        return motor_torque_tensor(robot)
     if tau_source == "applied_torque":
         return robot.data.applied_torque
     if tau_source == "computed_torque":
@@ -389,7 +493,13 @@ def _dynamics_terms(
     friction_dynamic = -dynamic * torch.sign(robot.data.joint_vel)
     friction_viscous = -viscous * robot.data.joint_vel
     friction = friction_dynamic + friction_viscous
-    actuation_command = robot.data.applied_torque
+    pantograph_spring = _pantograph_spring_torque(robot)
+    pantograph_damping = _pantograph_damping_torque(robot)
+    pantograph_applied_actuation = _pantograph_actuation_torque(robot)
+    pantograph_actuation = pantograph_applied_actuation
+    motor_actuation = motor_torque_tensor(robot)
+    knee_flexor_actuation = _knee_flexor_actuation_torque(robot, motor_actuation)
+    actuation_command = motor_actuation - knee_flexor_actuation
     if contact_sensor is not None:
         contact_force, contact_moment = _projected_contact_sensor_torque_parts(
             robot, contact_sensor, contact_body_names
@@ -413,36 +523,32 @@ def _dynamics_terms(
             "coriolis": coriolis,
             "gravity": gravity,
             "friction": friction,
+            "motor_actuation": motor_actuation,
+            "knee_flexor_actuation": knee_flexor_actuation,
             "actuation_command": actuation_command,
             "contact_validated": contact_validated,
             "tendon": tendon,
+            "pantograph_spring": pantograph_spring,
+            "pantograph_damping": pantograph_damping,
+            "pantograph_actuation": pantograph_actuation,
+            "pantograph_applied_actuation": pantograph_applied_actuation,
         }
 
     solver_joint = robot.root_physx_view.get_dof_projected_joint_forces()
     physx_actuation = robot.root_physx_view.get_dof_actuation_forces()
-    actuation = physx_actuation
-    actuation_estimated = actuation_command
-    actuation_estimated_hip = _estimated_hip_actuation(robot, actuation_command)
-    actuation_estimated_hip_lateral_flexion = _estimated_hip_lateral_flexion_actuation(robot, actuation_command)
-    actuation_estimated_passive = _estimated_passive_actuation(robot, actuation_command)
-    joint_drive_pos_target = robot.data.joint_pos_target
-    joint_drive_vel_target = robot.data.joint_vel_target
-    joint_drive_effort_target = robot.data.joint_effort_target
-    joint_drive_stiffness = robot.data.joint_stiffness
-    joint_drive_damping = robot.data.joint_damping
-    joint_effort_limit = robot.data.joint_effort_limits
-    joint_velocity_limit = robot.data.soft_joint_vel_limits
+    pantograph_computed_actuation = _pantograph_computed_actuation_torque(robot)
+    pantograph_reconstructed_actuation = _pantograph_reconstructed_actuation_torque(
+        robot,
+        pantograph_spring=pantograph_spring,
+        pantograph_damping=pantograph_damping,
+    )
+    pantograph_actuation_error = pantograph_applied_actuation - pantograph_reconstructed_actuation
+    actuation = actuation_command
     joint_limit_lower = robot.data.soft_joint_pos_limits[:, :, 0]
     joint_limit_upper = robot.data.soft_joint_pos_limits[:, :, 1]
     joint_limit_distance_lower = robot.data.joint_pos - joint_limit_lower
     joint_limit_distance_upper = joint_limit_upper - robot.data.joint_pos
     joint_limit_distance_min = torch.minimum(joint_limit_distance_lower, joint_limit_distance_upper)
-    drive_stiffness = joint_drive_stiffness * (joint_drive_pos_target - robot.data.joint_pos)
-    drive_damping = joint_drive_damping * (joint_drive_vel_target - robot.data.joint_vel)
-    drive_effort_target = joint_drive_effort_target
-    drive_pd = drive_stiffness + drive_damping + drive_effort_target
-    drive_pd_clipped = torch.clamp(drive_pd, -joint_effort_limit, joint_effort_limit)
-    armature_inertia = robot.data.joint_armature * raw_joint_acc
     solver_constraint_passive = _passive_solver_constraint(robot, solver_joint)
     solver_constraint_limit = torch.where(
         joint_limit_distance_min <= 0.05, solver_joint, torch.zeros_like(solver_joint)
@@ -456,36 +562,23 @@ def _dynamics_terms(
         contact_groups = _projected_contact_sensor_torque_groups(robot, contact_sensor, contact_body_names)
     else:
         contact_groups = _zero_contact_sensor_torque_groups(robot)
-    required_forces = inertia - gravity - coriolis - tendon
-    required_forces_recording_interval = inertia_recording_interval - gravity - coriolis - tendon
-    applied_full_contact = actuation + contact + friction
-    applied_force_only = actuation + contact_force + friction
-    applied_validated = actuation + contact_validated + friction
-    applied_estimated_actuation = actuation_estimated + contact_validated + friction
-    applied_estimated_hip_actuation = actuation_estimated_hip + contact_validated + friction
-    applied_estimated_hip_force_contact = actuation_estimated_hip + contact_force + friction
-    applied_estimated_hip_force_contact_solver = (
-        actuation_estimated_hip + contact_force + friction + solver_constraint_passive
+    conservative = inertia + gravity + coriolis + tendon
+    non_conservative = actuation_command + contact_validated + friction
+    residual = conservative - non_conservative
+    with_pantograph_actuation = actuation_command + pantograph_actuation
+    with_knee_flexor_actuation = actuation_command + knee_flexor_actuation
+    with_pantograph_and_knee_flexor_actuation = actuation_command + pantograph_actuation + knee_flexor_actuation
+    residual_with_pantograph_actuation = conservative - (with_pantograph_actuation + contact_validated + friction)
+    residual_with_knee_flexor_actuation = conservative - (with_knee_flexor_actuation + contact_validated + friction)
+    residual_with_pantograph_and_knee_flexor_actuation = conservative - (
+        with_pantograph_and_knee_flexor_actuation + contact_validated + friction
     )
-    applied_estimated_hip_lateral_flexion_force_contact_solver_internal = (
-        actuation_estimated_hip_lateral_flexion + contact_force + friction + solver_constraint_internal
+    residual_no_pantograph_actuation = residual
+    residual_no_knee_flexor_actuation = residual
+    residual_no_pantograph_no_knee_flexor_actuation = residual
+    residual_no_pantograph_no_knee_flexor_plus_solver = conservative - (
+        actuation_command + contact_validated + friction + solver_constraint_internal
     )
-    unmodeled_quasistatic = -gravity - coriolis - tendon - applied_validated
-    unmodeled_full_contact = required_forces - applied_full_contact
-    unmodeled_contact_force_only = required_forces - applied_force_only
-    unmodeled_contact_validated = required_forces - applied_validated
-    unmodeled_estimated_actuation = required_forces - applied_estimated_actuation
-    unmodeled_estimated_hip_actuation = required_forces - applied_estimated_hip_actuation
-    unmodeled_estimated_hip_force_contact = required_forces - applied_estimated_hip_force_contact
-    unmodeled_estimated_hip_force_contact_solver = required_forces - applied_estimated_hip_force_contact_solver
-    unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal = (
-        required_forces - applied_estimated_hip_lateral_flexion_force_contact_solver_internal
-    )
-    unmodeled_full_dynamics = unmodeled_contact_validated
-    unmodeled_recording_interval = required_forces_recording_interval - applied_validated
-    unmodeled = unmodeled_contact_validated
-    inverse_residual = unmodeled
-    solver_residual = solver_joint - applied_validated
 
     return {
         "inertia": inertia,
@@ -505,59 +598,36 @@ def _dynamics_terms(
         "friction_dynamic": friction_dynamic,
         "friction_viscous": friction_viscous,
         "friction": friction,
+        "motor_actuation": motor_actuation,
+        "knee_flexor_actuation": knee_flexor_actuation,
+        "pantograph_damping": pantograph_damping,
         "solver_joint": solver_joint,
         "actuation": actuation,
         "actuation_command": actuation_command,
-        "actuation_estimated": actuation_estimated,
-        "actuation_estimated_hip": actuation_estimated_hip,
-        "actuation_estimated_hip_lateral_flexion": actuation_estimated_hip_lateral_flexion,
-        "actuation_estimated_passive": actuation_estimated_passive,
+        "pantograph_actuation": pantograph_actuation,
+        "pantograph_applied_actuation": pantograph_applied_actuation,
+        "pantograph_computed_actuation": pantograph_computed_actuation,
+        "pantograph_reconstructed_actuation": pantograph_reconstructed_actuation,
+        "pantograph_actuation_error": pantograph_actuation_error,
         "physx_actuation": physx_actuation,
-        "solver_constraint_passive": solver_constraint_passive,
-        "solver_constraint_limit": solver_constraint_limit,
         "solver_constraint_internal": solver_constraint_internal,
-        "joint_drive_pos_target": joint_drive_pos_target,
-        "joint_drive_vel_target": joint_drive_vel_target,
-        "joint_drive_effort_target": joint_drive_effort_target,
-        "joint_drive_stiffness": joint_drive_stiffness,
-        "joint_drive_damping": joint_drive_damping,
-        "joint_effort_limit": joint_effort_limit,
-        "joint_velocity_limit": joint_velocity_limit,
-        "joint_limit_lower": joint_limit_lower,
-        "joint_limit_upper": joint_limit_upper,
-        "joint_limit_distance_lower": joint_limit_distance_lower,
-        "joint_limit_distance_upper": joint_limit_distance_upper,
-        "joint_limit_distance_min": joint_limit_distance_min,
-        "drive_stiffness": drive_stiffness,
-        "drive_damping": drive_damping,
-        "drive_effort_target": drive_effort_target,
-        "drive_pd": drive_pd,
-        "drive_pd_clipped": drive_pd_clipped,
-        "armature_inertia": armature_inertia,
         "contact": contact,
         "contact_force": contact_force,
         "contact_moment": contact_moment,
         "contact_validated": contact_validated,
         **contact_groups,
         "tendon": tendon,
+        "pantograph_spring": pantograph_spring,
         "tendon_model": tendon_model,
         "tendon_projection_delta": tendon_projection_delta,
-        "unmodeled_quasistatic": unmodeled_quasistatic,
-        "unmodeled_full_dynamics": unmodeled_full_dynamics,
-        "unmodeled_recording_interval": unmodeled_recording_interval,
-        "unmodeled_estimated_actuation": unmodeled_estimated_actuation,
-        "unmodeled_estimated_hip_actuation": unmodeled_estimated_hip_actuation,
-        "unmodeled_estimated_hip_force_contact": unmodeled_estimated_hip_force_contact,
-        "unmodeled_estimated_hip_force_contact_solver": unmodeled_estimated_hip_force_contact_solver,
-        "unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal": (
-            unmodeled_estimated_hip_lateral_flexion_force_contact_solver_internal
-        ),
-        "unmodeled_full_contact": unmodeled_full_contact,
-        "unmodeled_contact_force_only": unmodeled_contact_force_only,
-        "unmodeled_contact_validated": unmodeled_contact_validated,
-        "unmodeled": unmodeled,
-        "inverse_residual": inverse_residual,
-        "solver_residual": solver_residual,
+        "residual": residual,
+        "residual_with_pantograph_actuation": residual_with_pantograph_actuation,
+        "residual_with_knee_flexor_actuation": residual_with_knee_flexor_actuation,
+        "residual_with_pantograph_and_knee_flexor_actuation": residual_with_pantograph_and_knee_flexor_actuation,
+        "residual_no_pantograph_actuation": residual_no_pantograph_actuation,
+        "residual_no_knee_flexor_actuation": residual_no_knee_flexor_actuation,
+        "residual_no_pantograph_no_knee_flexor_actuation": residual_no_pantograph_no_knee_flexor_actuation,
+        "residual_no_pantograph_no_knee_flexor_plus_solver": residual_no_pantograph_no_knee_flexor_plus_solver,
         "mass_matrix": mass_matrices,
         "joint_acc_for_inertia": joint_acc,
     }
@@ -652,6 +722,102 @@ def _tendon_joint_torque_tensor(robot, tendon_manager):
     return tendon
 
 
+def _pantograph_spring_torque(robot):
+    spring = torch.zeros_like(robot.data.joint_pos)
+    pantograph_indices = [
+        index
+        for index, joint_name in enumerate(robot.joint_names)
+        if joint_name in ("lp1_pantograph", "rp1_pantograph")
+    ]
+    if not pantograph_indices:
+        return spring
+
+    stiffness = robot.data.joint_stiffness[:, pantograph_indices]
+    target = robot.data.joint_pos_target[:, pantograph_indices]
+    position = robot.data.joint_pos[:, pantograph_indices]
+    spring[:, pantograph_indices] = stiffness * (position - target)
+    return spring
+
+
+def _pantograph_damping_torque(robot):
+    damping_torque = torch.zeros_like(robot.data.joint_pos)
+    pantograph_indices = [
+        index
+        for index, joint_name in enumerate(robot.joint_names)
+        if joint_name in ("lp1_pantograph", "rp1_pantograph")
+    ]
+    if not pantograph_indices:
+        return damping_torque
+
+    damping = robot.data.joint_damping[:, pantograph_indices]
+    target_velocity = robot.data.joint_vel_target[:, pantograph_indices]
+    velocity = robot.data.joint_vel[:, pantograph_indices]
+    damping_torque[:, pantograph_indices] = damping * (target_velocity - velocity)
+    return damping_torque
+
+
+def _pantograph_actuation_torque(robot):
+    actuation = torch.zeros_like(robot.data.joint_pos)
+    pantograph_indices = [
+        index
+        for index, joint_name in enumerate(robot.joint_names)
+        if joint_name in ("lp1_pantograph", "rp1_pantograph")
+    ]
+    if not pantograph_indices:
+        return actuation
+
+    actuation[:, pantograph_indices] = robot.data.applied_torque[:, pantograph_indices]
+    return actuation
+
+
+def _pantograph_computed_actuation_torque(robot):
+    actuation = torch.zeros_like(robot.data.joint_pos)
+    pantograph_indices = [
+        index
+        for index, joint_name in enumerate(robot.joint_names)
+        if joint_name in ("lp1_pantograph", "rp1_pantograph")
+    ]
+    if not pantograph_indices:
+        return actuation
+
+    actuation[:, pantograph_indices] = robot.data.computed_torque[:, pantograph_indices]
+    return actuation
+
+
+def _pantograph_reconstructed_actuation_torque(
+    robot,
+    *,
+    pantograph_spring: torch.Tensor,
+    pantograph_damping: torch.Tensor,
+):
+    actuation = -pantograph_spring + pantograph_damping
+    pantograph_indices = [
+        index
+        for index, joint_name in enumerate(robot.joint_names)
+        if joint_name in ("lp1_pantograph", "rp1_pantograph")
+    ]
+    if not pantograph_indices:
+        return torch.zeros_like(robot.data.joint_pos)
+
+    effort_target = torch.zeros_like(robot.data.joint_pos)
+    effort_target[:, pantograph_indices] = robot.data.joint_effort_target[:, pantograph_indices]
+    return actuation + effort_target
+
+
+def _knee_flexor_actuation_torque(robot, actuation: torch.Tensor):
+    knee_flexor = torch.zeros_like(actuation)
+    knee_flexor_indices = [
+        index
+        for index, joint_name in enumerate(robot.joint_names)
+        if joint_name in ("l8_knee_flexor", "r8_knee_flexor")
+    ]
+    if not knee_flexor_indices:
+        return knee_flexor
+
+    knee_flexor[:, knee_flexor_indices] = actuation[:, knee_flexor_indices]
+    return knee_flexor
+
+
 def _projected_tendon_wrench_torque(robot, tendon_manager):
     if tendon_manager is None:
         return torch.zeros_like(robot.data.joint_pos)
@@ -686,18 +852,25 @@ def _projected_tendon_wrench_torque(robot, tendon_manager):
         tau_tendon += torch.bmm(jacobian_linear.transpose(1, 2), force_world.unsqueeze(-1)).squeeze(-1)
         tau_tendon += torch.bmm(jacobian_angular.transpose(1, 2), torque_world.unsqueeze(-1)).squeeze(-1)
 
-    return tau_tendon
+    # The cached link wrenches are opposite the generalized-force sign used by
+    # cached_tendon_joint_torques and the database force-balance convention.
+    return -tau_tendon
 
 
-def _actual_generalized_force(robot, joint_ids: list[int], *, force_api_name: str, compensation_api_name: str):
+def _actual_generalized_force(
+    robot,
+    joint_ids: list[int],
+    *,
+    force_api_name: str,
+    compensation_api_name: str,
+):
     try:
-        compensation = getattr(robot.root_physx_view, compensation_api_name)()
-        generalized_joint_ids = joint_ids if robot.is_fixed_base else [joint_id + 6 for joint_id in joint_ids]
-        return -compensation[:, generalized_joint_ids]
+        return _compensation_generalized_force(robot, joint_ids, compensation_api_name=compensation_api_name)
     except Exception:
-        pass
-
-    try:
         return getattr(robot.root_physx_view, force_api_name)()[:, joint_ids]
-    except Exception:
-        raise
+
+
+def _compensation_generalized_force(robot, joint_ids: list[int], *, compensation_api_name: str):
+    compensation = getattr(robot.root_physx_view, compensation_api_name)()
+    generalized_joint_ids = joint_ids if robot.is_fixed_base else [joint_id + 6 for joint_id in joint_ids]
+    return compensation[:, generalized_joint_ids]

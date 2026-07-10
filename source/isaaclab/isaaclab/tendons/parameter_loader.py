@@ -668,7 +668,7 @@ class RecordingParameters:
     env_ids: tuple[int, ...] | None = None
     joint_set: str = "real_leg_joints"
     body_set: str = "tendon_chain_links"
-    tau_source: str = "controller_plus_ground"
+    tau_source: str = "motor_torque"
     stride: int = 1
     start_time: float = 0.0
     overwrite: bool = False
@@ -677,6 +677,9 @@ class RecordingParameters:
     record_dynamics: bool = True
     record_debug_dynamics: bool = False
     residual_filter_threshold: float | None = None
+    kinematic_consistency_threshold: float | None = 0.2
+    kinematic_drop_before: int = 3
+    kinematic_drop_after: int = 3
     kinematics_db_filename: str = "forrest_kinematics.db"
     tendons_db_filename: str = "forrest_tendons.db"
     dynamics_db_filename: str = "forrest_dynamics.db"
