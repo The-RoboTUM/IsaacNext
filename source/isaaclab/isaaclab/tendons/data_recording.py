@@ -611,6 +611,39 @@ class DataRecording:
                     self._debug_row_count -= drop_count
         return dropped
 
+    def trim_to_row_count(self, target_row_count: int) -> int:
+        """Trim buffered rows deterministically from the end until row_count matches target."""
+
+        surplus = self._row_count - int(target_row_count)
+        if surplus <= 0:
+            return 0
+
+        removed = 0
+        for env_id in reversed(self._selected_env_ids):
+            for side in reversed(self._selected_sides()):
+                if surplus <= 0:
+                    return removed
+                key = (int(env_id), side)
+                sim_rows = self._sim_rows_by_stream.get(key)
+                if not sim_rows:
+                    continue
+                drop_count = min(surplus, len(sim_rows))
+                del sim_rows[-drop_count:]
+                self._row_count -= drop_count
+                removed += drop_count
+                surplus -= drop_count
+
+                dynamics_rows = self._dynamics_rows_by_stream.get(key)
+                if dynamics_rows:
+                    del dynamics_rows[-drop_count:]
+                    self._dynamics_row_count -= drop_count
+
+                debug_rows = self._debug_rows_by_stream.get(key)
+                if debug_rows:
+                    del debug_rows[-drop_count:]
+                    self._debug_row_count -= drop_count
+        return removed
+
     def close(self) -> None:
         """Flush rows, write metadata, and close the SQLite connection."""
 

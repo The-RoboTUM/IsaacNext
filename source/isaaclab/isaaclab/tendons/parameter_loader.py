@@ -677,9 +677,9 @@ class RecordingParameters:
     record_dynamics: bool = True
     record_debug_dynamics: bool = False
     residual_filter_threshold: float | None = None
-    kinematic_consistency_threshold: float | None = 0.2
-    kinematic_drop_before: int = 3
-    kinematic_drop_after: int = 3
+    kinematic_consistency_threshold: float | None = 10.0
+    kinematic_drop_before: int = 1
+    kinematic_drop_after: int = 1
     kinematics_db_filename: str = "forrest_kinematics.db"
     tendons_db_filename: str = "forrest_tendons.db"
     dynamics_db_filename: str = "forrest_dynamics.db"

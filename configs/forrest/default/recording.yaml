@@ -19,9 +19,9 @@ recording:
   record_dynamics: true
   record_debug_dynamics: false
   residual_filter_threshold: none
-  kinematic_consistency_threshold: 0.2
-  kinematic_drop_before: 3
-  kinematic_drop_after: 3
+  kinematic_consistency_threshold: 10.0
+  kinematic_drop_before: 1
+  kinematic_drop_after: 1
   kinematics_db_filename: forrest_kinematics.db
   tendons_db_filename: forrest_tendons.db
   dynamics_db_filename: forrest_dynamics.db

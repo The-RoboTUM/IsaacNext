@@ -40,9 +40,9 @@ class ForrestRLRecordingOptions:
     record_dynamics: bool = True
     record_debug_dynamics: bool = False
     residual_filter_threshold: float | None = None
-    kinematic_consistency_threshold: float | None = 0.2
-    kinematic_drop_before: int = 3
-    kinematic_drop_after: int = 3
+    kinematic_consistency_threshold: float | None = 10.0
+    kinematic_drop_before: int = 1
+    kinematic_drop_after: int = 1
     max_steps: int | None = None
     contact_sensor_name: str = "contact_forces"
     robot_name: str = "robot"
@@ -83,6 +83,7 @@ class ForrestRLRecorder:
         self._skip_remaining_by_env: dict[int, int] = {}
         self._dropped_kinematic_rows = 0
         self._skipped_kinematic_rows = 0
+        self._target_row_count = self._compute_target_row_count()
 
         output_dir = options.output_dir or _timestamped_output_dir(params.run.output_dir)
         self.recorder = DataRecording(
@@ -131,6 +132,11 @@ class ForrestRLRecorder:
                 "kinematic_consistency_policy": "drop local frame window around inconsistent recorded-joint q/dq steps",
                 "kinematic_drop_before": int(options.kinematic_drop_before),
                 "kinematic_drop_after": int(options.kinematic_drop_after),
+                "target_row_count": self._target_row_count,
+                "target_row_count_policy": (
+                    "record_max_steps defines target potential rows after stride/start filters; recording continues "
+                    "past that step count until row_count reaches the target"
+                ),
             },
         )
         self._record_joint_indices = sorted(
@@ -145,12 +151,33 @@ class ForrestRLRecorder:
     def output_dir(self) -> Path:
         return self.recorder.output_dir
 
+    def _compute_target_row_count(self) -> int | None:
+        if self.options.max_steps is None:
+            return None
+
+        sampled_steps = 0
+        stride = max(int(self.options.stride), 1)
+        start_time = float(self.options.start_time)
+        step_dt = float(self.env.step_dt)
+        for step_index in range(1, int(self.options.max_steps) + 1):
+            if step_index % stride != 0:
+                continue
+            if step_index * step_dt < start_time:
+                continue
+            sampled_steps += 1
+
+        side_count = 2 if self.options.side == "both" else 1
+        return sampled_steps * len(self._record_env_ids) * side_count
+
+    def _target_row_count_reached(self) -> bool:
+        return self._target_row_count is not None and self.recorder._row_count >= self._target_row_count
+
     def record_after_step(self, *, dones=None) -> bool:
-        """Record the current post-step env state. Returns false once max_steps is reached."""
+        """Record the current post-step env state. Returns false once the row target is reached."""
 
         if self._closed:
             return False
-        if self.options.max_steps is not None and self.step_index >= self.options.max_steps:
+        if self._target_row_count_reached():
             return False
 
         self.step_index += 1
@@ -215,9 +242,13 @@ class ForrestRLRecorder:
                 tau_input=tau_input,
                 skip_env_ids=skip_env_ids,
             )
+        if self._target_row_count is not None and self.recorder._row_count > self._target_row_count:
+            trimmed = self.recorder.trim_to_row_count(self._target_row_count)
+            self.recorder._context_metadata["target_row_count_trimmed_rows"] = int(
+                self.recorder._context_metadata.get("target_row_count_trimmed_rows", 0)
+            ) + int(trimmed)
         self._decrement_skip_windows(skip_env_ids - new_unreliable_env_ids)
-        within_max_steps = self.options.max_steps is None or self.step_index < self.options.max_steps
-        return within_max_steps
+        return not self._target_row_count_reached()
 
     def _recording_accelerations(self, sim_time: float):
         joint_vel = self.robot.data.joint_vel
@@ -235,6 +266,9 @@ class ForrestRLRecorder:
             return
         self.recorder._context_metadata["dropped_kinematic_rows"] = int(self._dropped_kinematic_rows)
         self.recorder._context_metadata["skipped_kinematic_rows"] = int(self._skipped_kinematic_rows)
+        self.recorder._context_metadata["actual_recording_steps"] = int(self.step_index)
+        self.recorder._context_metadata["target_row_count"] = self._target_row_count
+        self.recorder._context_metadata["target_row_count_reached"] = self._target_row_count_reached()
         self.recorder.close()
         self._closed = True
 
