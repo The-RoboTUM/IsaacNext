@@ -485,6 +485,11 @@ class ContactSensor(SensorBase):
             block_starts = counts.cumsum(0) - counts
             deltas = torch.arange(row_ids.numel(), device=counts.device) - block_starts.repeat_interleave(counts)
             flat_idx = starts[row_ids] + deltas
+            valid = flat_idx < contact_data.shape[0]
+            if not torch.all(valid):
+                row_ids = row_ids[valid]
+                flat_idx = flat_idx[valid]
+                counts = torch.bincount(row_ids, minlength=n_rows)
 
             pts = contact_data.index_select(0, flat_idx)
             agg = agg.zero_().index_add_(0, row_ids, pts)

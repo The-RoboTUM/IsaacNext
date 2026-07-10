@@ -675,9 +675,12 @@ class RecordingParameters:
     record_spatial_state: bool = False
     record_tendons: bool = True
     record_dynamics: bool = True
+    record_debug_dynamics: bool = False
+    residual_filter_threshold: float | None = None
     kinematics_db_filename: str = "forrest_kinematics.db"
     tendons_db_filename: str = "forrest_tendons.db"
     dynamics_db_filename: str = "forrest_dynamics.db"
+    debug_dynamics_db_filename: str = "debug.db"
     metadata_filename: str = "metadata.json"
     viz_vars_filename: str = "viz_vars.json"
 

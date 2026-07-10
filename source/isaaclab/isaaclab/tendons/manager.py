@@ -78,6 +78,7 @@ class TendonManager:
         self._cached_link_torques = None
         self._cached_forces = None
         self._cached_body_ids = None
+        self._cached_joint_torques = None
 
     def _compute_torques_from_energy(self, joint_angles: torch.Tensor, energy: torch.Tensor):
         if not torch.is_grad_enabled():
@@ -199,12 +200,14 @@ class TendonManager:
             info = None
 
         link_torques = self.torque_mapper.joint_to_link_torques(left, right, batch_size=batch_size)
+        forces = self.robot_io.empty_external_forces()
 
         self.robot.permanent_wrench_composer.set_forces_and_torques(
-            forces=self.robot_io.empty_external_forces(),
+            forces=forces,
             torques=link_torques,
             body_ids=self.link_indices_left_right,
         )
+        self._cache_tendon_wrenches(left, right, link_torques, forces)
         return info
 
     def apply_debug(self, dt: float = 0.0):
@@ -238,9 +241,7 @@ class TendonManager:
             profiler.record_elapsed("tendon/torque_mapping_jit", t2 - t1)
             profiler.record_elapsed("tendon/external_forces", t3 - t2)
             profiler.record_elapsed("tendon/set_wrenches", t4 - t3)
-        self._cached_link_torques = link_torques
-        self._cached_forces = forces
-        self._cached_body_ids = self.link_indices_left_right
+        self._cache_tendon_wrenches(left, right, link_torques, forces)
         return left, right
 
     def reapply_cached_jit(self) -> bool:
@@ -276,6 +277,38 @@ class TendonManager:
         self._cached_link_torques = None
         self._cached_forces = None
         self._cached_body_ids = None
+        self._cached_joint_torques = None
+
+    def _cache_tendon_wrenches(
+        self,
+        left: torch.Tensor,
+        right: torch.Tensor,
+        link_torques: torch.Tensor,
+        forces: torch.Tensor,
+    ) -> None:
+        joint_torques = torch.zeros_like(self.robot.data.joint_pos)
+        joint_torques[:, self.joint_indices_left] = left
+        joint_torques[:, self.joint_indices_right] = right
+        self._cached_joint_torques = joint_torques
+        self._cached_link_torques = link_torques
+        self._cached_forces = forces
+        self._cached_body_ids = self.link_indices_left_right
+
+    @property
+    def cached_tendon_link_torques(self) -> torch.Tensor | None:
+        return self._cached_link_torques
+
+    @property
+    def cached_tendon_forces(self) -> torch.Tensor | None:
+        return self._cached_forces
+
+    @property
+    def cached_tendon_body_ids(self):
+        return self._cached_body_ids
+
+    @property
+    def cached_tendon_joint_torques(self) -> torch.Tensor | None:
+        return self._cached_joint_torques
 
     def _store_delta_lengths(self, deltas: dict[str, torch.Tensor]):
         self._prev_delta_lengths = {name: delta.detach().clone() for name, delta in deltas.items()}

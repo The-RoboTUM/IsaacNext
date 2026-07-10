@@ -17,8 +17,11 @@ recording:
   record_spatial_state: false
   record_tendons: false
   record_dynamics: true
+  record_debug_dynamics: false
+  residual_filter_threshold: 100
   kinematics_db_filename: forrest_kinematics.db
   tendons_db_filename: forrest_tendons.db
   dynamics_db_filename: forrest_dynamics.db
+  debug_dynamics_db_filename: debug.db
   metadata_filename: metadata.json
   viz_vars_filename: viz_vars.json

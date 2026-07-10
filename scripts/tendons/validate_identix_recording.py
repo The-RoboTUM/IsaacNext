@@ -56,13 +56,10 @@ def expected_sim_columns(num_dofs: int) -> list[str]:
 
 
 def expected_dynamics_columns(num_dofs: int) -> list[str]:
-    return (
-        ["sample_id", "step_index", "time", "env_id", "side"]
-        + [f"tau_inertia{i}" for i in range(num_dofs)]
-        + [f"tau_coriolis{i}" for i in range(num_dofs)]
-        + [f"tau_gravity{i}" for i in range(num_dofs)]
-        + [f"tau_friction{i}" for i in range(num_dofs)]
-    )
+    terms = ("inertia", "coriolis", "gravity", "tendon", "actuation", "contact", "friction", "external")
+    return ["sample_id", "step_index", "time", "env_id", "side"] + [
+        f"tau_{term}{i}" for term in terms for i in range(num_dofs)
+    ]
 
 
 def quote_identifier(name: str) -> str:

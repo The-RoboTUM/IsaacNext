@@ -83,6 +83,18 @@ parser.add_argument(
     help="Write forrest_dynamics.db during play. Defaults to recording.yaml.",
 )
 parser.add_argument(
+    "--record_debug_dynamics",
+    action=argparse.BooleanOptionalAction,
+    default=None,
+    help="Write debug.db and print the detailed Forrest dynamics residual report. Defaults to recording.yaml.",
+)
+parser.add_argument(
+    "--record_filter_residual_threshold",
+    type=float,
+    default=None,
+    help="Only export samples whose debug/sysid residual norm is <= this N*m threshold. Defaults to recording.yaml.",
+)
+parser.add_argument(
     "--record_overwrite",
     action="store_true",
     help="Overwrite an existing Forrest recording output directory.",
@@ -235,6 +247,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     if args_cli.record_dynamics is not None
                     else recording_params.record_dynamics
                 ),
+                record_debug_dynamics=(
+                    args_cli.record_debug_dynamics
+                    if args_cli.record_debug_dynamics is not None
+                    else recording_params.record_debug_dynamics
+                ),
+                residual_filter_threshold=(
+                    args_cli.record_filter_residual_threshold
+                    if args_cli.record_filter_residual_threshold is not None
+                    else recording_params.residual_filter_threshold
+                ),
                 max_steps=args_cli.record_max_steps,
             ),
             task_name=args_cli.task,
@@ -336,14 +358,13 @@ def _configure_recording_contact_sensor(env_cfg) -> None:
 
     sensor_cfg.track_contact_points = True
     sensor_cfg.track_friction_forces = True
-    sensor_cfg.max_contact_data_count_per_prim = max(int(sensor_cfg.max_contact_data_count_per_prim), 16)
+    sensor_cfg.max_contact_data_count_per_prim = max(int(sensor_cfg.max_contact_data_count_per_prim), 64)
 
     terrain_cfg = getattr(scene_cfg, "terrain", None)
     terrain_path = getattr(terrain_cfg, "prim_path", "/World/ground")
     terrain_filters = [
-        f"{terrain_path}/terrain",
-        f"{terrain_path}/terrain.*",
         f"{terrain_path}/terrain/GroundPlane/CollisionPlane",
+        f"{terrain_path}/terrain/mesh",
     ]
     filters = list(sensor_cfg.filter_prim_paths_expr or [])
     for terrain_filter in terrain_filters:
