@@ -6,22 +6,24 @@
 recording:
   enabled: false
   output_dir: null
-  side: left
+  side: full
   env_ids: null
   joint_set: real_leg_joints
   body_set: tendon_chain_links
-  tau_source: motor_torque
+  tau_source: actuation_command
+  ddq_source: physx_raw
   stride: 1
   start_time: 0.0
   overwrite: false
+  record_base_state: true
   record_spatial_state: false
   record_tendons: false
   record_dynamics: true
   record_debug_dynamics: false
   residual_filter_threshold: none
-  kinematic_consistency_threshold: 10.0
+  kinematic_consistency_threshold: 1.0
   kinematic_drop_before: 1
-  kinematic_drop_after: 1
+  kinematic_drop_after: 2
   kinematics_db_filename: forrest_kinematics.db
   tendons_db_filename: forrest_tendons.db
   dynamics_db_filename: forrest_dynamics.db

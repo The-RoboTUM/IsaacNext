@@ -30,6 +30,8 @@ training:
       - "s45_digit_assy_1"  # Right/left foot digit body.
       - "s45_digit_assy_2"  # Right/left foot digit body.
       - "base_assy_v2_1"  # Base body used for undesired contact/termination checks.
+      - "s23_assy_1"  # Internal self-collision link tracked for sysid/contact diagnostics.
+      - "s23_assy_2"  # Internal self-collision link tracked for sysid/contact diagnostics.
       #      - "outside_hip_v2_assy_axial_left_1"  # Hip side body tracked for contact.
       #      - "outside_hip_v2_assy_axial_1"  # Hip side body tracked for contact.
       #      - "differential_cage_assy_small_motor_1"  # Base/hip drivetrain body tracked for contact.

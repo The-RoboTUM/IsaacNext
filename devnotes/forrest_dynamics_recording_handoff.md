@@ -91,20 +91,11 @@ Important lesson: considering the floating base matters. However, the measured `
 
 ### Coriolis / Centrifugal
 
-`tau_coriolis` is acquired from the PhysX generalized force APIs where available. The sign is converted into the actual generalized force convention used by the production equation.
-
-Older compensation APIs printed deprecation warnings:
-
-```text
-getCoriolisAndCentrifugalCompensationForces
-getGravityCompensationForces
-```
-
-The implementation should prefer the newer force APIs when available and fall back only when necessary.
+`tau_coriolis` is acquired from the PhysX direct generalized Coriolis/centrifugal force API when it is available, then projected to joint coordinates. The compensation-derived term is still recorded as a debug/fallback convention check. The residual audits showed that the direct generalized-force source is the simulator-consistent physical convention for the production balance.
 
 ### Gravity
 
-`tau_gravity` is acquired from PhysX generalized gravity force APIs, again saved as an actual generalized force, not a compensation command.
+`tau_gravity` is the exported gravity-identification term. It uses the PhysX direct generalized joint gravity force when available, plus the floating-base gravity wrench inferred from the compensation API, so the base-frame gravity load is represented in the full-coordinate residual without moving measured contact into `tau`.
 
 ### Tendon
 

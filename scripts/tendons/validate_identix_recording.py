@@ -25,6 +25,14 @@ ACTUATED_JOINT_NAMES = (
     "l8_knee_flexor",
     "r8_knee_flexor",
 )
+ACTUATION_COMMAND_JOINT_NAMES = (
+    "l0_acetabulofemoral_roll",
+    "l1_acetabulofemoral_lateral",
+    "l2_pseudo_acetabulofemoral_flexion",
+    "r0_acetabulofemoral_roll",
+    "r1_acetabulofemoral_lateral",
+    "r2_pseudo_acetabulofemoral_flexion",
+)
 
 FORCE_BALANCE_TOLERANCE = 1.0e-3
 
@@ -48,7 +56,7 @@ def parse_args():
         "--max_fd_error",
         type=float,
         default=None,
-        help="Optional max allowed central-difference residual for q->dq and dq->ddq.",
+        help="Optional max allowed adjacent-step kinematic residual for q_step and ddq_backward.",
     )
     parser.add_argument(
         "--check_identix",
@@ -74,7 +82,18 @@ def expected_sim_columns(num_dofs: int) -> list[str]:
 
 
 def expected_dynamics_columns(num_dofs: int) -> list[str]:
-    terms = ("inertia", "coriolis", "gravity", "tendon", "actuation", "contact", "friction", "external")
+    terms = (
+        "inertia",
+        "coriolis",
+        "gravity",
+        "tendon",
+        "actuation",
+        "contact",
+        "friction",
+        "solver_constraint_internal",
+        "residual",
+        "external",
+    )
     return ["sample_id", "step_index", "time", "env_id", "side"] + [
         f"tau_{term}{i}" for term in terms for i in range(num_dofs)
     ]
@@ -88,8 +107,8 @@ def resolve_paths(recording: Path, metadata_arg: str | None) -> tuple[Path, Path
     if recording.is_dir():
         metadata_path = Path(metadata_arg) if metadata_arg is not None else recording / "metadata.json"
         metadata = load_metadata(metadata_path)
-        sqlite_name = Path(str(metadata.get("sqlite_path", "forrest_kinematics.db"))).name
-        sqlite_path = recording / sqlite_name
+        sqlite_path_value = Path(str(metadata.get("sqlite_path", "forrest_kinematics.db")))
+        sqlite_path = sqlite_path_value if sqlite_path_value.is_absolute() else recording / sqlite_path_value.name
         return sqlite_path, metadata_path, metadata
 
     metadata_path = Path(metadata_arg) if metadata_arg is not None else recording.with_name("metadata.json")
@@ -126,21 +145,32 @@ def resolve_dynamics_path(recording: Path, metadata: dict[str, Any]) -> Path | N
     dynamics_path = metadata.get("dynamics_sqlite_path")
     if dynamics_path is None:
         return None
+    dynamics_path = Path(str(dynamics_path))
+    if dynamics_path.is_absolute():
+        return dynamics_path
     if recording.is_dir():
-        return recording / Path(str(dynamics_path)).name
-    return recording.with_name(Path(str(dynamics_path)).name)
+        return recording / dynamics_path.name
+    return recording.with_name(dynamics_path.name)
 
 
 def resolve_debug_path(recording: Path, metadata: dict[str, Any]) -> Path | None:
     debug_path = metadata.get("debug_sqlite_path")
     if debug_path is None:
         return None
+    debug_path = Path(str(debug_path))
+    if debug_path.is_absolute():
+        return debug_path
     if recording.is_dir():
-        return recording / Path(str(debug_path)).name
-    return recording.with_name(Path(str(debug_path)).name)
+        return recording / debug_path.name
+    return recording.with_name(debug_path.name)
 
 
-def validate_dynamics_db(path: Path, num_dofs: int, expected_rows: int) -> str:
+def validate_dynamics_db(
+    path: Path,
+    num_dofs: int,
+    sim_rows: list[tuple[int, tuple[float, ...]]],
+    metadata: dict[str, Any],
+) -> str:
     if not path.exists():
         raise ValidationError(f"Dynamics database is listed in metadata but does not exist: {path}")
 
@@ -156,30 +186,62 @@ def validate_dynamics_db(path: Path, num_dofs: int, expected_rows: int) -> str:
         select_columns = ", ".join(quote_identifier(name) for name in expected_columns)
         rows = db.execute(f"SELECT {select_columns} FROM dynamics_data ORDER BY sample_id").fetchall()
 
-    if len(rows) != expected_rows:
-        raise ValidationError(f"dynamics_data has {len(rows)} rows; expected {expected_rows}.")
+    if len(rows) != len(sim_rows):
+        raise ValidationError(f"dynamics_data has {len(rows)} rows; expected {len(sim_rows)}.")
     numeric_rows = []
     for row in rows:
         numeric_rows.append(tuple(float(value) for value in row if not isinstance(value, str)))
     require_finite(numeric_rows, "dynamics_data")
     col_index = {name: index for index, name in enumerate(expected_columns)}
     max_external_error = 0.0
+    max_residual_error = 0.0
+    max_sim_tau_error = 0.0
+    tau_offset = 3 * num_dofs
+    validate_sim_tau_as_actuation = metadata.get("tau_source") == "actuation_command"
     for row in rows:
+        sample_id = int(row[col_index["sample_id"]])
+        if sample_id >= len(sim_rows):
+            raise ValidationError(f"dynamics_data sample_id {sample_id} is outside sim_data row count {len(sim_rows)}.")
+        sim_sample_id, sim_values = sim_rows[sample_id]
+        if sim_sample_id != sample_id:
+            raise ValidationError(f"sim_data row {sim_sample_id} does not align with dynamics sample_id {sample_id}.")
         for dof_index in range(num_dofs):
             external = float(row[col_index[f"tau_external{dof_index}"]])
+            actuation = float(row[col_index[f"tau_actuation{dof_index}"]])
             components = (
-                float(row[col_index[f"tau_actuation{dof_index}"]])
+                actuation
                 + float(row[col_index[f"tau_contact{dof_index}"]])
                 + float(row[col_index[f"tau_friction{dof_index}"]])
             )
             max_external_error = max(max_external_error, abs(external - components))
-    if max_external_error > 1.0e-4:
+            conservative = (
+                float(row[col_index[f"tau_inertia{dof_index}"]])
+                + float(row[col_index[f"tau_gravity{dof_index}"]])
+                + float(row[col_index[f"tau_coriolis{dof_index}"]])
+                + float(row[col_index[f"tau_tendon{dof_index}"]])
+            )
+            residual = float(row[col_index[f"tau_residual{dof_index}"]])
+            max_residual_error = max(max_residual_error, abs(residual - (conservative - external)))
+            if validate_sim_tau_as_actuation:
+                max_sim_tau_error = max(max_sim_tau_error, abs(sim_values[tau_offset + dof_index] - actuation))
+    if max_external_error > FORCE_BALANCE_TOLERANCE:
         raise ValidationError(
             f"dynamics_data violates tau_external = tau_actuation + tau_contact + tau_friction: "
             f"max error {max_external_error:.6e}"
         )
+    if validate_sim_tau_as_actuation and max_sim_tau_error > FORCE_BALANCE_TOLERANCE:
+        raise ValidationError(
+            f"sim_data violates Identix tau convention tau = tau_actuation: max error {max_sim_tau_error:.6e}"
+        )
+    if max_residual_error > FORCE_BALANCE_TOLERANCE:
+        raise ValidationError(
+            "dynamics_data violates tau_residual = "
+            "tau_inertia + tau_gravity + tau_coriolis + tau_tendon - tau_external: "
+            f"max error {max_residual_error:.6e}"
+        )
 
-    return f"Validated dynamics: {path} ({len(rows)} rows, external max error {max_external_error:.3e})"
+    sim_tau_report = f", sim tau actuation max error {max_sim_tau_error:.3e}" if validate_sim_tau_as_actuation else ""
+    return f"Validated dynamics: {path} ({len(rows)} rows, external max error {max_external_error:.3e}{sim_tau_report})"
 
 
 def load_dynamics_streams(
@@ -216,15 +278,21 @@ def validate_debug_db(path: Path, metadata: dict[str, Any], num_dofs: int) -> st
         columns = table_columns(db, table_name)
         terms = (
             "inertia",
-            "gravity",
             "coriolis",
             "tendon",
             "actuation_command",
-            "contact_validated",
             "friction",
             "residual",
         )
+        gravity_balance_term = "gravity_identification"
+        if any(f"tau_{gravity_balance_term}{dof_index}" not in columns for dof_index in range(num_dofs)):
+            gravity_balance_term = "gravity"
+        contact_balance_term = "contact_identification"
+        if any(f"tau_{contact_balance_term}{dof_index}" not in columns for dof_index in range(num_dofs)):
+            contact_balance_term = "contact_validated"
         required = [f"tau_{term}{dof_index}" for term in terms for dof_index in range(num_dofs)]
+        required += [f"tau_{gravity_balance_term}{dof_index}" for dof_index in range(num_dofs)]
+        required += [f"tau_{contact_balance_term}{dof_index}" for dof_index in range(num_dofs)]
         missing = [column for column in required if column not in columns]
         if missing:
             raise ValidationError(f"Debug database is missing force-balance columns: {missing}")
@@ -252,13 +320,13 @@ def validate_debug_db(path: Path, metadata: dict[str, Any], num_dofs: int) -> st
         for dof_index in range(num_dofs):
             conservative = (
                 float(row[col_index[f"tau_inertia{dof_index}"]])
-                + float(row[col_index[f"tau_gravity{dof_index}"]])
+                + float(row[col_index[f"tau_{gravity_balance_term}{dof_index}"]])
                 + float(row[col_index[f"tau_coriolis{dof_index}"]])
                 + float(row[col_index[f"tau_tendon{dof_index}"]])
             )
             non_conservative = (
                 float(row[col_index[f"tau_actuation_command{dof_index}"]])
-                + float(row[col_index[f"tau_contact_validated{dof_index}"]])
+                + float(row[col_index[f"tau_{contact_balance_term}{dof_index}"]])
                 + float(row[col_index[f"tau_friction{dof_index}"]])
             )
             residual = float(row[col_index[f"tau_residual{dof_index}"]])
@@ -297,15 +365,15 @@ def validate_pantograph_columns(
     if any(column not in columns for column in term_columns):
         return 0.0
 
-    mappings = sorted(metadata.get("joint_mappings", []), key=lambda item: int(item.get("q_index", -1)))
+    mappings = recording_coordinate_mappings(metadata, num_dofs)
     if len(mappings) != num_dofs:
-        raise ValidationError("Metadata joint_mappings length does not match num_dofs.")
+        raise ValidationError("Metadata coordinate_mappings length does not match num_dofs.")
 
     col_index = {name: index for index, name in enumerate(columns)}
     max_leakage = 0.0
     for mapping in mappings:
         q_index = int(mapping["q_index"])
-        joint_name = str(mapping["joint_name"])
+        joint_name = str(mapping.get("joint_name") or mapping.get("coordinate_name"))
         if joint_name in ("lp1_pantograph", "rp1_pantograph"):
             continue
         column = f"tau_{term_name}{q_index}"
@@ -322,24 +390,65 @@ def require_finite(rows: list[tuple[float, ...]], label: str) -> None:
                 raise ValidationError(f"{label} contains non-finite value at row {row_index}, column {col_index}.")
 
 
+def recording_coordinate_mappings(metadata: dict[str, Any], num_dofs: int) -> list[dict[str, Any]]:
+    mappings = metadata.get("coordinate_mappings")
+    if mappings is None:
+        mappings = metadata.get("joint_mappings", [])
+    sorted_mappings = sorted(mappings, key=lambda item: int(item.get("q_index", -1)))
+    if len(sorted_mappings) != num_dofs:
+        by_side: dict[str, list[dict[str, Any]]] = {}
+        for mapping in sorted_mappings:
+            by_side.setdefault(str(mapping.get("side", "")), []).append(mapping)
+        matching_side_mappings = [side_mappings for side_mappings in by_side.values() if len(side_mappings) == num_dofs]
+        if not matching_side_mappings:
+            raise ValidationError(
+                f"Metadata coordinate mapping length {len(sorted_mappings)} does not match num_dofs={num_dofs}."
+            )
+        sorted_mappings = sorted(matching_side_mappings[0], key=lambda item: int(item.get("q_index", -1)))
+    expected_indices = list(range(num_dofs))
+    actual_indices = [int(mapping.get("q_index", -1)) for mapping in sorted_mappings]
+    if actual_indices != expected_indices:
+        raise ValidationError(f"Coordinate q_index values must be contiguous {expected_indices}; got {actual_indices}.")
+    return sorted_mappings
+
+
 def validate_motor_tau(rows: list[tuple[float, ...]], metadata: dict[str, Any], num_dofs: int) -> None:
     if metadata.get("tau_source") != "motor_torque":
         return
     motor_names = set(ACTUATED_JOINT_NAMES)
-    mappings = sorted(metadata.get("joint_mappings", []), key=lambda item: int(item.get("q_index", -1)))
-    if len(mappings) != num_dofs:
-        raise ValidationError("Metadata joint_mappings length does not match num_dofs.")
+    mappings = recording_coordinate_mappings(metadata, num_dofs)
 
     tau_offset = 3 * num_dofs
     for mapping in mappings:
         q_index = int(mapping["q_index"])
-        joint_name = str(mapping["joint_name"])
-        if joint_name in motor_names:
+        coordinate_name = str(mapping.get("joint_name") or mapping.get("coordinate_name"))
+        if coordinate_name in motor_names:
             continue
         max_abs_tau = max(abs(row[tau_offset + q_index]) for row in rows)
         if max_abs_tau > 1.0e-9:
             raise ValidationError(
-                f"motor_torque tau has nonzero value on non-motor joint {joint_name} (q{q_index}): {max_abs_tau:.6e}"
+                f"motor_torque tau has nonzero value on non-motor coordinate {coordinate_name} "
+                f"(q{q_index}): {max_abs_tau:.6e}"
+            )
+
+
+def validate_actuation_command_tau(rows: list[tuple[float, ...]], metadata: dict[str, Any], num_dofs: int) -> None:
+    if metadata.get("tau_source") != "actuation_command":
+        return
+    command_names = set(ACTUATION_COMMAND_JOINT_NAMES)
+    mappings = recording_coordinate_mappings(metadata, num_dofs)
+
+    tau_offset = 3 * num_dofs
+    for mapping in mappings:
+        q_index = int(mapping["q_index"])
+        coordinate_name = str(mapping.get("joint_name") or mapping.get("coordinate_name"))
+        if coordinate_name in command_names:
+            continue
+        max_abs_tau = max(abs(row[tau_offset + q_index]) for row in rows)
+        if max_abs_tau > 1.0e-9:
+            raise ValidationError(
+                f"actuation_command tau has nonzero value on non-command coordinate {coordinate_name} "
+                f"(q{q_index}): {max_abs_tau:.6e}"
             )
 
 
@@ -355,40 +464,85 @@ def compute_stats(rows: list[tuple[float, ...]], columns: list[str]) -> list[tup
     return stats
 
 
-def finite_difference_report(
+def kinematic_residual_report(
     streams: list[list[tuple[int, tuple[float, ...]]]],
     num_dofs: int,
-    sample_dt: float,
+    sim_dt: float,
+    mappings: list[dict[str, Any]],
 ) -> dict[str, tuple[float, float, int] | None]:
     return {
-        "q_to_dq": derivative_residual(streams, 0, num_dofs, num_dofs, sample_dt),
-        "dq_to_ddq": derivative_residual(streams, num_dofs, 2 * num_dofs, num_dofs, sample_dt),
+        "q_step": q_step_residual(streams, num_dofs, sim_dt, mappings),
+        "ddq_backward": ddq_backward_residual(streams, num_dofs, sim_dt),
     }
 
 
-def derivative_residual(
+def q_step_residual(
     streams: list[list[tuple[int, tuple[float, ...]]]],
-    value_offset: int,
-    derivative_offset: int,
     num_dofs: int,
-    sample_dt: float,
+    sim_dt: float,
+    mappings: list[dict[str, Any]],
 ):
     residuals = []
-    if sample_dt <= 0.0:
+    if sim_dt <= 0.0:
         return None
-    central_dt = 2.0 * sample_dt
+    skip_q_indices = {
+        int(mapping["q_index"])
+        for mapping in mappings
+        if mapping.get("coordinate_type") == "floating_base"
+        and str(mapping.get("coordinate_name")) in {"base_roll", "base_pitch", "base_yaw"}
+    }
+    angular_q_indices = {
+        int(mapping["q_index"])
+        for mapping in mappings
+        if int(mapping["q_index"]) not in skip_q_indices and mapping.get("q_unit", mapping.get("units")) == "rad"
+    }
     for sim_rows in streams:
-        if len(sim_rows) < 3:
+        if len(sim_rows) < 2:
             continue
-        for index in range(1, len(sim_rows) - 1):
+        for index in range(1, len(sim_rows)):
             step_prev, values_prev = sim_rows[index - 1]
             step, values = sim_rows[index]
-            step_next, values_next = sim_rows[index + 1]
-            if step - step_prev != 1 or step_next - step != 1:
+            step_delta = step - step_prev
+            if step_delta != 1:
                 continue
+            dt = float(step_delta) * sim_dt
             for dof_index in range(num_dofs):
-                estimated = (values_next[value_offset + dof_index] - values_prev[value_offset + dof_index]) / central_dt
-                actual = values[derivative_offset + dof_index]
+                if dof_index in skip_q_indices:
+                    continue
+                q_delta = values[dof_index] - values_prev[dof_index]
+                if dof_index in angular_q_indices:
+                    q_delta = wrap_to_pi(q_delta)
+                expected_delta = 0.5 * (values_prev[num_dofs + dof_index] + values[num_dofs + dof_index]) * dt
+                residuals.append(q_delta - expected_delta)
+
+    if not residuals:
+        return None
+    rms = math.sqrt(sum(value * value for value in residuals) / len(residuals))
+    max_abs = max(abs(value) for value in residuals)
+    return rms, max_abs, len(residuals)
+
+
+def ddq_backward_residual(
+    streams: list[list[tuple[int, tuple[float, ...]]]],
+    num_dofs: int,
+    sim_dt: float,
+):
+    residuals = []
+    if sim_dt <= 0.0:
+        return None
+    for sim_rows in streams:
+        if len(sim_rows) < 2:
+            continue
+        for index in range(1, len(sim_rows)):
+            step_prev, values_prev = sim_rows[index - 1]
+            step, values = sim_rows[index]
+            step_delta = step - step_prev
+            if step_delta != 1:
+                continue
+            dt = float(step_delta) * sim_dt
+            for dof_index in range(num_dofs):
+                estimated = (values[num_dofs + dof_index] - values_prev[num_dofs + dof_index]) / dt
+                actual = values[2 * num_dofs + dof_index]
                 residuals.append(actual - estimated)
 
     if not residuals:
@@ -396,6 +550,10 @@ def derivative_residual(
     rms = math.sqrt(sum(value * value for value in residuals) / len(residuals))
     max_abs = max(abs(value) for value in residuals)
     return rms, max_abs, len(residuals)
+
+
+def wrap_to_pi(value: float) -> float:
+    return (float(value) + math.pi) % (2.0 * math.pi) - math.pi
 
 
 def check_identix_loader(sqlite_path: Path, table_name: str, num_dofs: int, identix_repo: str | None) -> str:
@@ -447,8 +605,7 @@ def validate(args) -> None:
         values = [row_values for _, row_values in sim_rows]
         require_finite(values, "sim_data")
         validate_motor_tau(values, metadata, num_dofs)
-        sim_dt = float(metadata.get("sim_dt", 0.0))
-        sampling_stride = int(metadata.get("config", {}).get("sampling_stride", 1))
+        validate_actuation_command_tau(values, metadata, num_dofs)
         stats = compute_stats(values, expected_columns)
 
     if int(metadata.get("num_dofs", -1)) != num_dofs:
@@ -463,23 +620,29 @@ def validate(args) -> None:
             raise ValidationError(
                 f"Metadata dynamics_row_count={expected_dynamics_rows} does not match {len(sim_rows)} sim rows."
             )
-    expected_units = {"q": "rad", "dq": "rad/s", "ddq": "rad/s^2", "tau": "N*m"}
-    if metadata.get("sim_units") != expected_units:
-        raise ValidationError(f"Metadata sim_units must be {expected_units}; got {metadata.get('sim_units')}.")
-    for mapping in metadata.get("joint_mappings", []):
-        if mapping.get("units") != "rad":
-            raise ValidationError(f"Joint mapping has non-radian units: {mapping}")
+    mappings = recording_coordinate_mappings(metadata, num_dofs)
+    if any(mapping.get("coordinate_type") == "floating_base" for mapping in mappings):
+        for key in ("q_unit", "dq_unit", "ddq_unit", "tau_unit"):
+            missing = [mapping for mapping in mappings if key not in mapping]
+            if missing:
+                raise ValidationError(f"Coordinate mappings are missing {key}: {missing[:3]}")
+    else:
+        expected_units = {"q": "rad", "dq": "rad/s", "ddq": "rad/s^2", "tau": "N*m"}
+        if metadata.get("sim_units") != expected_units:
+            raise ValidationError(f"Metadata sim_units must be {expected_units}; got {metadata.get('sim_units')}.")
+        for mapping in mappings:
+            if mapping.get("units", mapping.get("q_unit")) != "rad":
+                raise ValidationError(f"Joint coordinate has non-radian units: {mapping}")
 
     dynamics_report = None
     dynamics_path = resolve_dynamics_path(Path(args.recording), metadata)
     if dynamics_path is not None:
-        dynamics_report = validate_dynamics_db(dynamics_path, num_dofs, len(sim_rows))
+        dynamics_report = validate_dynamics_db(dynamics_path, num_dofs, sim_rows, metadata)
         fd_streams = load_dynamics_streams(dynamics_path, sim_rows)
     else:
         fd_streams = [sim_rows]
     sim_dt = float(metadata.get("sim_dt", 0.0))
-    sampling_stride = int(metadata.get("config", {}).get("sampling_stride", 1))
-    fd_report = finite_difference_report(fd_streams, num_dofs, sim_dt * sampling_stride)
+    fd_report = kinematic_residual_report(fd_streams, num_dofs, sim_dt, mappings)
     debug_report = None
     debug_path = resolve_debug_path(Path(args.recording), metadata)
     if debug_path is not None:
@@ -495,7 +658,7 @@ def validate(args) -> None:
 
     for label, report in fd_report.items():
         if report is None:
-            print(f"{label}: not enough samples for central differences")
+            print(f"{label}: not enough adjacent one-step samples")
             continue
         rms, max_abs, count = report
         print(f"{label}: rms={rms:.6e}, max_abs={max_abs:.6e}, residuals={count}")

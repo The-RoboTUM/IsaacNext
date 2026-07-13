@@ -97,9 +97,9 @@ parser.add_argument(
 )
 parser.add_argument(
     "--record_side",
-    choices=("left", "right", "both"),
+    choices=("left", "right", "both", "full"),
     default=None,
-    help="Leg side to record. 'both' stores each side as separate samples.",
+    help="Leg side to record. 'both' stores each side as separate samples; 'full' stores base plus both legs.",
 )
 parser.add_argument(
     "--record_joint_set",
@@ -121,7 +121,14 @@ parser.add_argument(
 )
 parser.add_argument(
     "--record_tau_source",
-    choices=("motor_torque", "controller_plus_ground", "applied_torque", "computed_torque", "zero"),
+    choices=(
+        "actuation_command",
+        "motor_torque",
+        "controller_plus_ground",
+        "applied_torque",
+        "computed_torque",
+        "zero",
+    ),
     default=None,
     help="Torque tensor used for tau0..tauN in sim_data.",
 )
@@ -197,6 +204,11 @@ if args_cli.record_output_dir is None:
 if args_cli.record_output_dir is None:
     datestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     args_cli.record_output_dir = str(Path(args_cli.output_dir) / f"forrest_dbs_{datestamp}")
+if args_cli.record_identix:
+    physx_tensor_log_filter = "--/log/channels/omni.physx.tensors.plugin=error"
+    kit_args = getattr(args_cli, "kit_args", "") or ""
+    if "--/log/channels/omni.physx.tensors.plugin=" not in kit_args:
+        args_cli.kit_args = f"{kit_args} {physx_tensor_log_filter}".strip()
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -210,10 +222,24 @@ from isaaclab.assets import Articulation
 from isaaclab.sensors import ContactSensor, ContactSensorCfg
 from isaaclab.sensors.camera import TiledCamera, TiledCameraCfg
 from isaaclab.sim import SimulationContext
-from isaaclab.tendons.data_recording import DataRecording, DataRecordingConfig, motor_torque_tensor
+from isaaclab.tendons.data_recording import (
+    DataRecording,
+    DataRecordingConfig,
+    actuation_command_tensor,
+    motor_torque_tensor,
+)
 from isaaclab.tendons.manager import TendonManager
 from isaaclab.tendons.models.analytic.constants import joint_names_left, joint_names_right
 from isaaclab.tendons.models.analytic.tendon_data import TendonData
+from isaaclab.tendons.rl_recording import (
+    _dynamics_terms as shared_recording_dynamics_terms,
+)
+from isaaclab.tendons.rl_recording import (
+    _joint_to_full_generalized as shared_joint_to_full_generalized,
+)
+from isaaclab.tendons.rl_recording import (
+    _projected_contact_sensor_torque as shared_projected_contact_sensor_torque,
+)
 from isaaclab.tendons.runner import (
     configure_base_constraint,
     controller_command_tensor,
@@ -228,6 +254,7 @@ CONTACT_GROUP_PATTERNS = {
     "digit": ("digit",),
     "connector": ("foot_connector",),
     "base": ("base", "hip", "differential_cage"),
+    "self_collision": ("s23",),
 }
 
 if args_cli.calibration:
@@ -435,8 +462,11 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
     if args.record_identix:
         print(f"Recording output:  {args.record_output_dir}")
         print(f"Recording side:    {args.record_side}")
+        recording_base = FORREST_PARAMS.recording.record_base_state or args.record_side == "full"
+        print(f"Recording base:    {'on' if recording_base else 'off'}")
         print(f"Recording stride:  {args.record_stride}")
         print(f"Recording tau:     {args.record_tau_source}")
+        print(f"Recording ddq:     {FORREST_PARAMS.recording.ddq_source}")
         print(f"Recording tendons: {'on' if args.record_tendons and not args.jit else 'off'}")
         print(f"Recording dynamics:{'on' if args.record_dynamics else 'off'}")
     print(f"Calibration UI:    {'on' if args.calibration else 'off'}")
@@ -537,7 +567,8 @@ def projected_contact_sensor_torque_parts(robot, contact_sensor: ContactSensor, 
         force = forces_world[:, local_foot_index, :]
         body_pos = robot.data.body_pos_w[:, int(body_index), :]
         if contact_pos_world is not None:
-            moment = torch.cross(contact_pos_world[:, local_foot_index, :] - body_pos, force, dim=1)
+            # Match the contact sensor force sign to the angular Jacobian wrench convention.
+            moment = torch.cross(force, contact_pos_world[:, local_foot_index, :] - body_pos, dim=1)
         else:
             moment = torch.zeros_like(force)
         tau_force += torch.bmm(jacobian_linear.transpose(1, 2), force.unsqueeze(-1)).squeeze(-1)
@@ -583,11 +614,13 @@ def recording_tau_tensor(
     actuated_joint_indices: list[int],
     tau_source: str,
 ):
+    if tau_source == "actuation_command":
+        return actuation_command_tensor(robot)
     if tau_source == "motor_torque":
         return motor_torque_tensor(robot)
     if tau_source == "controller_plus_ground":
-        tau = motor_torque_tensor(robot)
-        tau += projected_contact_sensor_torque(robot, contact_sensor, contact_body_names)
+        tau = shared_joint_to_full_generalized(robot, motor_torque_tensor(robot))
+        tau += shared_projected_contact_sensor_torque(robot, contact_sensor, contact_body_names)
         return tau
     if tau_source == "applied_torque":
         return robot.data.applied_torque
@@ -605,144 +638,21 @@ def recording_dynamics_terms(
     tendon_manager: TendonManager,
     joint_acc_for_inertia=None,
     root_acc_for_inertia=None,
+    ddq_source: str = "physx_raw",
+    include_debug: bool = False,
 ):
     """Compute full-joint inverse-dynamics terms exposed by PhysX for recording."""
 
-    num_joints = robot.data.joint_pos.shape[1]
-    joint_ids = list(range(num_joints))
-
-    mass_matrices_full = robot.root_physx_view.get_generalized_mass_matrices()
-    mass_matrices = mass_matrices_full if robot.is_fixed_base else mass_matrices_full[:, 6:, 6:]
-    raw_joint_acc = robot.data.joint_acc
-    joint_acc = raw_joint_acc if joint_acc_for_inertia is None else joint_acc_for_inertia
-    inertia_joint_all = torch.bmm(mass_matrices, joint_acc.unsqueeze(-1)).squeeze(-1)
-    inertia_joint_only = inertia_joint_all
-    inertia_leg_self = torch.zeros_like(inertia_joint_all)
-    inertia_other_joints = torch.zeros_like(inertia_joint_all)
-    inertia_raw = torch.bmm(mass_matrices, raw_joint_acc.unsqueeze(-1)).squeeze(-1)
-    if robot.is_fixed_base:
-        inertia_root_coupling = torch.zeros_like(inertia_joint_all)
-        inertia_root_coupling_raw = torch.zeros_like(inertia_joint_all)
-        inertia_root_coupling_alt = torch.zeros_like(inertia_joint_all)
-        inertia_root_coupled_alt = inertia_joint_all
-        inertia_full_raw = inertia_raw
-        inertia_recording_interval = inertia_joint_all
-    else:
-        link_accelerations = robot.root_physx_view.get_link_accelerations()
-        root_acc_raw = link_accelerations[:, 0, :]
-        root_acc = root_acc_raw if root_acc_for_inertia is None else root_acc_for_inertia
-        root_acc_alt = torch.cat((root_acc_raw[:, 3:6], root_acc_raw[:, 0:3]), dim=1)
-        inertia_root_coupling = torch.bmm(mass_matrices_full[:, 6:, :6], root_acc.unsqueeze(-1)).squeeze(-1)
-        inertia_root_coupling_raw = torch.bmm(mass_matrices_full[:, 6:, :6], root_acc_raw.unsqueeze(-1)).squeeze(-1)
-        inertia_root_coupling_alt = torch.bmm(mass_matrices_full[:, 6:, :6], root_acc_alt.unsqueeze(-1)).squeeze(-1)
-        inertia_recording_interval = inertia_root_coupling + inertia_joint_all
-        inertia_root_coupled_alt = inertia_root_coupling_alt + inertia_joint_all
-        inertia_full_raw = inertia_root_coupling_raw + inertia_raw
-    inertia = inertia_full_raw
-
-    coriolis = _actual_generalized_force(
+    return shared_recording_dynamics_terms(
         robot,
-        joint_ids,
-        force_api_name="get_coriolis_and_centrifugal_forces",
-        compensation_api_name="get_coriolis_and_centrifugal_compensation_forces",
+        contact_sensor=contact_sensor,
+        contact_body_names=contact_body_names,
+        tendon_manager=tendon_manager,
+        joint_acc_for_inertia=joint_acc_for_inertia,
+        root_acc_for_inertia=root_acc_for_inertia,
+        ddq_source=ddq_source,
+        include_debug=include_debug,
     )
-    gravity = _actual_generalized_force(
-        robot,
-        joint_ids,
-        force_api_name="get_generalized_gravity_forces",
-        compensation_api_name="get_gravity_compensation_forces",
-    )
-
-    dynamic = robot.data.joint_dynamic_friction_coeff
-    viscous = robot.data.joint_viscous_friction_coeff
-    friction_dynamic = -dynamic * torch.sign(robot.data.joint_vel)
-    friction_viscous = -viscous * robot.data.joint_vel
-    friction = friction_dynamic + friction_viscous
-    solver_joint = robot.root_physx_view.get_dof_projected_joint_forces()
-    physx_actuation = robot.root_physx_view.get_dof_actuation_forces()
-    pantograph_spring = pantograph_spring_torque(robot)
-    pantograph_damping = pantograph_damping_torque(robot)
-    pantograph_actuation = pantograph_actuation_torque(robot)
-    actuation_command = motor_torque_tensor(robot) + pantograph_actuation
-    actuation = actuation_command
-    joint_limit_lower = robot.data.soft_joint_pos_limits[:, :, 0]
-    joint_limit_upper = robot.data.soft_joint_pos_limits[:, :, 1]
-    joint_limit_distance_lower = robot.data.joint_pos - joint_limit_lower
-    joint_limit_distance_upper = joint_limit_upper - robot.data.joint_pos
-    joint_limit_distance_min = torch.minimum(joint_limit_distance_lower, joint_limit_distance_upper)
-    solver_constraint_passive = passive_solver_constraint(robot, solver_joint)
-    solver_constraint_limit = torch.where(
-        joint_limit_distance_min <= 0.05, solver_joint, torch.zeros_like(solver_joint)
-    )
-    solver_constraint_internal = torch.where(
-        (solver_constraint_passive != 0.0) | (solver_constraint_limit != 0.0),
-        solver_joint,
-        torch.zeros_like(solver_joint),
-    )
-    contact_force, contact_moment = projected_contact_sensor_torque_parts(
-        robot,
-        contact_sensor,
-        contact_body_names,
-    )
-    contact_groups = projected_contact_sensor_torque_groups(
-        robot,
-        contact_sensor,
-        contact_body_names,
-    )
-    contact = contact_force + contact_moment
-    contact_force_norm = torch.linalg.norm(contact_force, dim=-1, keepdim=True)
-    contact_moment_norm = torch.linalg.norm(contact_moment, dim=-1, keepdim=True)
-    contact_moment_valid = contact_moment_norm <= 2.0 * torch.clamp(contact_force_norm, min=1.0e-6)
-    contact_validated = contact_force + torch.where(
-        contact_moment_valid,
-        contact_moment,
-        torch.zeros_like(contact_moment),
-    )
-    tendon = projected_tendon_wrench_torque(robot, tendon_manager)
-    tendon_model = tendon_joint_torque_tensor(robot, tendon_manager)
-    tendon_projection_delta = tendon - tendon_model
-    conservative = inertia + gravity + coriolis + tendon
-    non_conservative = actuation_command + contact_validated + friction
-    residual = conservative - non_conservative
-
-    return {
-        "inertia": inertia,
-        "inertia_recording_interval": inertia_recording_interval,
-        "inertia_raw": inertia_raw,
-        "inertia_joint_only": inertia_joint_only,
-        "inertia_joint_all": inertia_joint_all,
-        "inertia_leg_self": inertia_leg_self,
-        "inertia_other_joints": inertia_other_joints,
-        "inertia_root_coupling": inertia_root_coupling,
-        "inertia_root_coupling_raw": inertia_root_coupling_raw,
-        "inertia_root_coupling_alt": inertia_root_coupling_alt,
-        "inertia_root_coupled_alt": inertia_root_coupled_alt,
-        "inertia_full_raw": inertia_full_raw,
-        "coriolis": coriolis,
-        "gravity": gravity,
-        "friction_dynamic": friction_dynamic,
-        "friction_viscous": friction_viscous,
-        "friction": friction,
-        "pantograph_damping": pantograph_damping,
-        "solver_joint": solver_joint,
-        "actuation": actuation,
-        "actuation_command": actuation_command,
-        "pantograph_actuation": pantograph_actuation,
-        "physx_actuation": physx_actuation,
-        "solver_constraint_internal": solver_constraint_internal,
-        "contact": contact,
-        "contact_force": contact_force,
-        "contact_moment": contact_moment,
-        "contact_validated": contact_validated,
-        **contact_groups,
-        "tendon": tendon,
-        "pantograph_spring": pantograph_spring,
-        "tendon_model": tendon_model,
-        "tendon_projection_delta": tendon_projection_delta,
-        "residual": residual,
-        "mass_matrix": mass_matrices,
-        "joint_acc_for_inertia": joint_acc,
-    }
 
 
 def estimated_hip_actuation(robot, actuation_command: torch.Tensor) -> torch.Tensor:
@@ -903,16 +813,17 @@ def projected_tendon_wrench_torque(robot, tendon_manager: TendonManager):
 
 def _actual_generalized_force(robot, joint_ids: list[int], *, force_api_name: str, compensation_api_name: str):
     try:
-        return getattr(robot.root_physx_view, force_api_name)()[:, joint_ids]
+        force = getattr(robot.root_physx_view, force_api_name)()
+        generalized_joint_ids = joint_ids if robot.is_fixed_base else [joint_id + 6 for joint_id in joint_ids]
+        if force.shape[-1] > max(generalized_joint_ids, default=-1):
+            return force[:, generalized_joint_ids]
+        return force[:, joint_ids]
     except Exception:
         pass
 
-    try:
-        compensation = getattr(robot.root_physx_view, compensation_api_name)()
-        generalized_joint_ids = joint_ids if robot.is_fixed_base else [joint_id + 6 for joint_id in joint_ids]
-        return -compensation[:, generalized_joint_ids]
-    except Exception:
-        raise
+    compensation = getattr(robot.root_physx_view, compensation_api_name)()
+    generalized_joint_ids = joint_ids if robot.is_fixed_base else [joint_id + 6 for joint_id in joint_ids]
+    return -compensation[:, generalized_joint_ids]
 
 
 def record_side_policy(record_side: str) -> str:
@@ -922,6 +833,8 @@ def record_side_policy(record_side: str) -> str:
         return "right_only"
     if record_side == "both":
         return "both_as_samples"
+    if record_side == "full":
+        return "full_robot"
     raise ValueError(f"Unsupported record side: {record_side}")
 
 
@@ -949,6 +862,8 @@ def main():  # noqa: C901
     robot_cfg = get_forrest_cfg(FORREST_PARAMS).replace(prim_path="/World/Bot")
     robot = Articulation(robot_cfg)
     contact_body_names = FORREST_PARAMS.training.contacts.contact_sensor_body_names
+    contact_filter_paths = ["/World/defaultGroundPlane/GroundPlane/CollisionPlane"]
+    contact_filter_paths.extend(f"{robot_cfg.prim_path}/{body_name}" for body_name in contact_body_names)
     contact_sensor = ContactSensor(
         ContactSensorCfg(
             prim_path=f"{robot_cfg.prim_path}/{body_name_regex(contact_body_names)}",
@@ -957,8 +872,8 @@ def main():  # noqa: C901
             track_air_time=False,
             track_contact_points=True,
             track_friction_forces=True,
-            max_contact_data_count_per_prim=16,
-            filter_prim_paths_expr=["/World/defaultGroundPlane/GroundPlane/CollisionPlane"],
+            max_contact_data_count_per_prim=256,
+            filter_prim_paths_expr=contact_filter_paths,
         )
     )
 
@@ -1031,12 +946,14 @@ def main():  # noqa: C901
                 joint_set=args_cli.record_joint_set,
                 side_policy=record_side_policy(args_cli.record_side),
                 body_set=args_cli.record_body_set,
+                record_base_state=bool(FORREST_PARAMS.recording.record_base_state or args_cli.record_side == "full"),
                 record_spatial_state=args_cli.record_spatial_state,
                 sampling_stride=args_cli.record_stride,
                 startup_skip_seconds=args_cli.record_start_time,
                 constraint_mode=args_cli.constraint_mode,
                 controller=args_cli.controller,
                 tau_source=args_cli.record_tau_source,
+                ddq_source=FORREST_PARAMS.recording.ddq_source,
                 record_tendons=bool(args_cli.record_tendons and not args_cli.jit),
                 record_dynamics=bool(args_cli.record_dynamics),
                 record_debug_dynamics=bool(FORREST_PARAMS.recording.record_debug_dynamics),
@@ -1181,6 +1098,11 @@ def main():  # noqa: C901
                         tendon_manager,
                         joint_acc_for_inertia=joint_acc_recording,
                         root_acc_for_inertia=root_acc_recording,
+                        ddq_source=data_recorder.cfg.ddq_source,
+                        include_debug=(
+                            data_recorder.cfg.record_debug_dynamics
+                            or data_recorder.cfg.residual_filter_threshold is not None
+                        ),
                     )
                 data_recorder.record_step(
                     step_index=iteration + 1,
@@ -1188,7 +1110,7 @@ def main():  # noqa: C901
                     robot=robot,
                     extra_context={"controller_time": controller_t},
                     tau_override=tau_override,
-                    ddq_override=joint_acc_recording,
+                    ddq_override={"joint_acc": joint_acc_recording, "root_acc": root_acc_recording},
                     dynamics_terms=dynamics_terms,
                 )
                 if data_recorder.cfg.record_dynamics:

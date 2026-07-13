@@ -582,6 +582,8 @@ class ContactParameters:
         "s45_digit_assy_1",
         "s45_digit_assy_2",
         "base_assy_v2_1",
+        "s23_assy_1",
+        "s23_assy_2",
         "outside_hip_v2_assy_axial_left_1",
         "outside_hip_v2_assy_axial_1",
         "differential_cage_assy_small_motor_1",
@@ -664,22 +666,24 @@ class RecordingParameters:
 
     enabled: bool = False
     output_dir: str | None = None
-    side: str = "left"
+    side: str = "full"
     env_ids: tuple[int, ...] | None = None
     joint_set: str = "real_leg_joints"
     body_set: str = "tendon_chain_links"
-    tau_source: str = "motor_torque"
+    tau_source: str = "actuation_command"
+    ddq_source: str = "physx_raw"
     stride: int = 1
     start_time: float = 0.0
     overwrite: bool = False
+    record_base_state: bool = False
     record_spatial_state: bool = False
     record_tendons: bool = True
     record_dynamics: bool = True
     record_debug_dynamics: bool = False
     residual_filter_threshold: float | None = None
-    kinematic_consistency_threshold: float | None = 10.0
+    kinematic_consistency_threshold: float | None = 1.0
     kinematic_drop_before: int = 1
-    kinematic_drop_after: int = 1
+    kinematic_drop_after: int = 2
     kinematics_db_filename: str = "forrest_kinematics.db"
     tendons_db_filename: str = "forrest_tendons.db"
     dynamics_db_filename: str = "forrest_dynamics.db"

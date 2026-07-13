@@ -61,9 +61,9 @@ parser.add_argument(
 )
 parser.add_argument(
     "--record_side",
-    choices=("left", "right", "both"),
+    choices=("left", "right", "both", "full"),
     default=None,
-    help="Forrest leg side to record. Defaults to recording.yaml.",
+    help="Forrest side/model to record. 'full' records base plus both legs. Defaults to recording.yaml.",
 )
 parser.add_argument(
     "--record_env_ids",
@@ -127,6 +127,11 @@ args_cli, hydra_args = parser.parse_known_args()
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
+if args_cli.record_forrest_dbs:
+    physx_tensor_log_filter = "--/log/channels/omni.physx.tensors.plugin=error"
+    kit_args = getattr(args_cli, "kit_args", "") or ""
+    if "--/log/channels/omni.physx.tensors.plugin=" not in kit_args:
+        args_cli.kit_args = f"{kit_args} {physx_tensor_log_filter}".strip()
 
 # clear out sys.argv for Hydra
 sys.argv = [sys.argv[0]] + hydra_args
@@ -200,7 +205,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env_cfg.seed = agent_cfg.seed
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
     if args_cli.record_forrest_dbs:
-        _configure_recording_contact_sensor(env_cfg)
+        _configure_forrest_recording_env(env_cfg)
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
@@ -370,16 +375,31 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env.close()
 
 
-def _configure_recording_contact_sensor(env_cfg) -> None:
-    """Enable full contact data needed by Forrest database recording during play."""
+def _configure_forrest_recording_env(env_cfg) -> None:
+    """Enable physically complete Forrest data needed by database recording during play."""
+
+    from isaaclab.sensors import ContactSensorCfg
+
+    events_cfg = getattr(env_cfg, "events", None)
+    if events_cfg is not None:
+        for event_name in ("base_com", "base_external_force_torque", "push_robot", "add_base_mass"):
+            if getattr(events_cfg, event_name, None) is not None:
+                setattr(events_cfg, event_name, None)
 
     scene_cfg = getattr(env_cfg, "scene", None)
     sensor_cfg = getattr(scene_cfg, "contact_forces", None)
-    if sensor_cfg is None:
+    if scene_cfg is None or sensor_cfg is None:
         return
 
-    sensor_cfg.track_contact_points = True
-    sensor_cfg.track_friction_forces = True
+    params = load_forrest_parameter_config()
+    contact_body_names = _recording_contact_body_names(params)
+    robot_cfg = getattr(scene_cfg, "robot", None)
+    robot_prim_path = getattr(robot_cfg, "prim_path", "/World/envs/env_.*/Robot")
+
+    # Keep the main multi-body sensor available for air-time/reward bookkeeping, but do not use it for
+    # filtered contact-point/friction data. IsaacLab documents filtered contact reporting as reliable only
+    # when the sensor prim path resolves to one body per environment.
+    sensor_cfg.prim_path = f"{robot_prim_path}/{_body_name_regex_for_recording(contact_body_names)}"
     sensor_cfg.max_contact_data_count_per_prim = max(int(sensor_cfg.max_contact_data_count_per_prim), 64)
 
     terrain_cfg = getattr(scene_cfg, "terrain", None)
@@ -387,12 +407,54 @@ def _configure_recording_contact_sensor(env_cfg) -> None:
     terrain_filters = [
         f"{terrain_path}/terrain/GroundPlane/CollisionPlane",
         f"{terrain_path}/terrain/mesh",
+        f"{terrain_path}/terrain/.*",
+        f"{terrain_path}/.*",
+        "/World/defaultGroundPlane/GroundPlane/CollisionPlane",
     ]
-    filters = list(sensor_cfg.filter_prim_paths_expr or [])
-    for terrain_filter in terrain_filters:
-        if terrain_filter not in filters:
-            filters.append(terrain_filter)
-    sensor_cfg.filter_prim_paths_expr = filters
+    for body_name in contact_body_names:
+        sensor_name = f"contact_forces_detail_{_safe_contact_sensor_suffix(body_name)}"
+        if hasattr(scene_cfg, sensor_name):
+            continue
+        body_filters = [
+            f"{robot_prim_path}/{other_body_name}"
+            for other_body_name in contact_body_names
+            if other_body_name != body_name
+        ]
+        setattr(
+            scene_cfg,
+            sensor_name,
+            ContactSensorCfg(
+                prim_path=f"{robot_prim_path}/{body_name}",
+                update_period=sensor_cfg.update_period,
+                history_length=1,
+                debug_vis=False,
+                track_air_time=False,
+                track_contact_points=True,
+                track_friction_forces=True,
+                max_contact_data_count_per_prim=256,
+                filter_prim_paths_expr=[*terrain_filters, *body_filters],
+            ),
+        )
+
+
+def _recording_contact_body_names(params) -> tuple[str, ...]:
+    names: list[str] = []
+    for body_name in params.training.contacts.contact_sensor_body_names:
+        if body_name not in names:
+            names.append(body_name)
+    for body_name in params.physics.articulation.selective_self_collision_body_names:
+        if body_name not in names:
+            names.append(body_name)
+    return tuple(names)
+
+
+def _body_name_regex_for_recording(body_names: tuple[str, ...]) -> str:
+    escaped = [name.replace(".", r"\.") for name in body_names]
+    return "(" + "|".join(escaped) + ")"
+
+
+def _safe_contact_sensor_suffix(body_name: str) -> str:
+    return "".join(character if character.isalnum() else "_" for character in body_name)
 
 
 if __name__ == "__main__":
