@@ -42,6 +42,18 @@ parser.add_argument(
     help="Simulation duration in seconds.",
 )
 parser.add_argument(
+    "--num_envs",
+    type=int,
+    default=None,
+    help="Number of parallel simulation environments to create for recording.",
+)
+parser.add_argument(
+    "--env_spacing",
+    type=float,
+    default=None,
+    help="Spacing between cloned environments.",
+)
+parser.add_argument(
     "--status_interval",
     type=int,
     default=None,
@@ -158,6 +170,7 @@ parser.add_argument(
 )
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
+CONSTRAINED_BASE_MODES = ("boom", "static", "static_boom")
 
 FORREST_PARAMS = load_forrest_parameter_config(args_cli.parameters_file)
 args_cli.video_output = args_cli.video_output or FORREST_PARAMS.run.video_output
@@ -199,6 +212,8 @@ args_cli.record_dynamics = (
     args_cli.record_dynamics if args_cli.record_dynamics is not None else FORREST_PARAMS.recording.record_dynamics
 )
 args_cli.record_overwrite = bool(args_cli.record_overwrite or FORREST_PARAMS.recording.overwrite)
+recording_base = bool(FORREST_PARAMS.recording.record_base_state or args_cli.record_side == "full")
+record_stabilization_contact = bool(recording_base and args_cli.constraint_mode in CONSTRAINED_BASE_MODES)
 if args_cli.record_output_dir is None:
     args_cli.record_output_dir = FORREST_PARAMS.recording.output_dir
 if args_cli.record_output_dir is None:
@@ -218,7 +233,8 @@ import torch
 import carb
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import Articulation
+from isaaclab.assets import AssetBaseCfg
+from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.sensors import ContactSensor, ContactSensorCfg
 from isaaclab.sensors.camera import TiledCamera, TiledCameraCfg
 from isaaclab.sim import SimulationContext
@@ -241,13 +257,14 @@ from isaaclab.tendons.rl_recording import (
     _projected_contact_sensor_torque as shared_projected_contact_sensor_torque,
 )
 from isaaclab.tendons.runner import (
-    configure_base_constraint,
+    configure_scene_base_constraints,
     controller_command_tensor,
     find_actuated_joint_indices,
     make_actuated_dof_specs,
     make_leg_controllers,
     reset_robot_to_default,
 )
+from isaaclab.utils import configclass
 from isaaclab.utils.math import create_rotation_matrix_from_view, quat_apply, quat_from_matrix
 
 CONTACT_GROUP_PATTERNS = {
@@ -363,6 +380,102 @@ def apply_foot_material(robot_prim_path: str) -> None:
             carb.log_info(f"Bound rubber foot physics material to {body_path}")
 
 
+def make_env_time_offsets(*, controller: str, num_envs: int, device) -> torch.Tensor:
+    if num_envs <= 1:
+        return torch.zeros(1, device=device, dtype=torch.float32)
+
+    if controller == "cpg":
+        frequency_hz = float(FORREST_PARAMS.run.cpg.f_hz)
+    elif controller == "cpg_oscillator":
+        frequency_hz = float(FORREST_PARAMS.run.cpg_oscillator.f_hz)
+    else:
+        frequency_hz = float(FORREST_PARAMS.run.sinusoidal.f_hz)
+
+    cycle_period = 1.0 / max(frequency_hz, 1.0e-6)
+    return torch.arange(num_envs, device=device, dtype=torch.float32) * (cycle_period / float(num_envs))
+
+
+def batched_controller_command_tensor(
+    *,
+    t: float,
+    env_time_offsets: torch.Tensor,
+    left_controller,
+    right_controller,
+    actuated_dof_specs,
+    initial_joint_positions: torch.Tensor,
+    device,
+) -> torch.Tensor:
+    commanded_positions = torch.empty_like(initial_joint_positions)
+    for env_id in range(initial_joint_positions.shape[0]):
+        env_command = controller_command_tensor(
+            t=t + float(env_time_offsets[env_id].item()),
+            left_controller=left_controller,
+            right_controller=right_controller,
+            actuated_dof_specs=actuated_dof_specs,
+            initial_joint_positions=initial_joint_positions[env_id : env_id + 1],
+            device=device,
+        )
+        commanded_positions[env_id] = env_command[0]
+    return commanded_positions
+
+
+def batched_runtime_controller_command_tensor(
+    *,
+    t: float,
+    env_time_offsets: torch.Tensor,
+    state,
+    actuated_dof_specs,
+    initial_joint_positions: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    commanded_positions = torch.empty_like(initial_joint_positions)
+    controller_delta = torch.empty_like(initial_joint_positions)
+    for env_id in range(initial_joint_positions.shape[0]):
+        env_command, env_delta = runtime_controller_command_tensor(
+            t=t + float(env_time_offsets[env_id].item()),
+            state=state,
+            actuated_dof_specs=actuated_dof_specs,
+            initial_joint_positions=initial_joint_positions[env_id : env_id + 1],
+        )
+        commanded_positions[env_id] = env_command[0]
+        controller_delta[env_id] = env_delta[0]
+    return commanded_positions, controller_delta
+
+
+def make_forrest_recording_scene_cfg(*, num_envs: int, env_spacing: float):
+    ground_cfg = sim_utils.GroundPlaneCfg(physics_material=make_ground_material_cfg())
+    contact_body_names = FORREST_PARAMS.training.contacts.contact_sensor_body_names
+    contact_filter_paths = ["/World/defaultGroundPlane/GroundPlane/CollisionPlane"]
+    contact_filter_paths.extend(f"{FORREST_PARAMS.robot.prim_path}/{body_name}" for body_name in contact_body_names)
+
+    @configclass
+    class ForrestRecordingSceneCfg(InteractiveSceneCfg):
+        ground = AssetBaseCfg(prim_path="/World/defaultGroundPlane", spawn=ground_cfg)
+        light = AssetBaseCfg(
+            prim_path="/World/Light",
+            spawn=sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)),
+        )
+        robot = get_forrest_cfg(FORREST_PARAMS).replace(prim_path=FORREST_PARAMS.robot.prim_path)
+        contact_forces = ContactSensorCfg(
+            prim_path=f"{FORREST_PARAMS.robot.prim_path}/{body_name_regex(contact_body_names)}",
+            update_period=SIM_DT,
+            history_length=1,
+            track_air_time=False,
+            track_contact_points=True,
+            track_friction_forces=True,
+            max_contact_data_count_per_prim=256,
+            filter_prim_paths_expr=contact_filter_paths,
+        )
+
+    replicate_physics = num_envs <= 1 or args_cli.constraint_mode == "freefall"
+    if num_envs > 1 and not replicate_physics:
+        print("[ForrestRun] Disabling replicated physics for constrained parallel environments.")
+    return ForrestRecordingSceneCfg(
+        num_envs=num_envs,
+        env_spacing=env_spacing,
+        replicate_physics=replicate_physics,
+    )
+
+
 def require_cv2():
     """Import OpenCV only when video recording is requested."""
     global _CV2
@@ -429,7 +542,7 @@ def setup_video_writer(args, sim_cfg):
     return camera, video_writer
 
 
-def print_startup_summary(args, sim_cfg, num_steps: int):
+def print_startup_summary(args, sim_cfg, num_steps: int, *, num_envs: int, env_spacing: float):
     mode = "JIT / TorchScript" if args.jit else "DEBUG / eager"
     startup_hold_duration = args.startup_hold_duration if args.startup_hold else 0.0
     ground_material = FORREST_PARAMS.physics.ground
@@ -443,6 +556,8 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
     print(f"Torch CUDA:        {torch.cuda.is_available()}")
     print(f"Physics dt:        {sim_cfg.dt:.6f} s")
     print(f"Duration:          {args.duration:.3f} s ({num_steps} steps)")
+    print(f"Parallel envs:     {num_envs}")
+    print(f"Env spacing:       {env_spacing:.3f} m")
     virtual_ground_str = "disabled" if VIRTUAL_GROUND_HEIGHT is None else f"{VIRTUAL_GROUND_HEIGHT:.3f} m"
 
     print(f"Virtual ground:    {virtual_ground_str}")
@@ -462,8 +577,8 @@ def print_startup_summary(args, sim_cfg, num_steps: int):
     if args.record_identix:
         print(f"Recording output:  {args.record_output_dir}")
         print(f"Recording side:    {args.record_side}")
-        recording_base = FORREST_PARAMS.recording.record_base_state or args.record_side == "full"
         print(f"Recording base:    {'on' if recording_base else 'off'}")
+        print(f"Stab as contact:   {'on' if record_stabilization_contact else 'off'}")
         print(f"Recording stride:  {args.record_stride}")
         print(f"Recording tau:     {args.record_tau_source}")
         print(f"Recording ddq:     {FORREST_PARAMS.recording.ddq_source}")
@@ -607,12 +722,23 @@ def projected_contact_sensor_torque(robot, contact_sensor: ContactSensor, contac
     return tau_force + tau_moment
 
 
+def base_constraint_contact_tensor(robot, constraint_mode: str):
+    if constraint_mode not in CONSTRAINED_BASE_MODES:
+        return shared_joint_to_full_generalized(robot, robot.data.joint_pos * 0.0)
+
+    base_contact = shared_joint_to_full_generalized(robot, robot.data.joint_pos * 0.0)
+    wrench_width = robot.data.body_incoming_joint_wrench_b.shape[-1]
+    base_contact[:, :wrench_width] = robot.data.body_incoming_joint_wrench_b[:, 0, :]
+    return base_contact
+
+
 def recording_tau_tensor(
     robot,
     contact_sensor: ContactSensor,
     contact_body_names: tuple[str, ...],
     actuated_joint_indices: list[int],
     tau_source: str,
+    constraint_mode: str,
 ):
     if tau_source == "actuation_command":
         return actuation_command_tensor(robot)
@@ -621,6 +747,7 @@ def recording_tau_tensor(
     if tau_source == "controller_plus_ground":
         tau = shared_joint_to_full_generalized(robot, motor_torque_tensor(robot))
         tau += shared_projected_contact_sensor_torque(robot, contact_sensor, contact_body_names)
+        tau += base_constraint_contact_tensor(robot, constraint_mode)
         return tau
     if tau_source == "applied_torque":
         return robot.data.applied_torque
@@ -640,10 +767,11 @@ def recording_dynamics_terms(
     root_acc_for_inertia=None,
     ddq_source: str = "physx_raw",
     include_debug: bool = False,
+    constraint_mode: str = "rl_play",
 ):
     """Compute full-joint inverse-dynamics terms exposed by PhysX for recording."""
 
-    return shared_recording_dynamics_terms(
+    terms = shared_recording_dynamics_terms(
         robot,
         contact_sensor=contact_sensor,
         contact_body_names=contact_body_names,
@@ -653,6 +781,11 @@ def recording_dynamics_terms(
         ddq_source=ddq_source,
         include_debug=include_debug,
     )
+    base_contact = base_constraint_contact_tensor(robot, constraint_mode)
+    if torch.any(base_contact).item():
+        terms["contact_identification"] = terms["contact_identification"] + base_contact
+        terms["base_constraint_contact"] = base_contact
+    return terms
 
 
 def estimated_hip_actuation(robot, actuation_command: torch.Tensor) -> torch.Tensor:
@@ -841,6 +974,8 @@ def record_side_policy(record_side: str) -> str:
 def main():  # noqa: C901
     output_dir = Path(args_cli.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    num_envs = max(1, int(args_cli.num_envs if args_cli.num_envs is not None else 1))
+    env_spacing = float(args_cli.env_spacing if args_cli.env_spacing is not None else 2.5)
 
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device, gravity=tuple(FORREST_PARAMS.physics.gravity))
     sim_cfg.dt = SIM_DT
@@ -854,33 +989,18 @@ def main():  # noqa: C901
         FORREST_PARAMS.physics.physx_gpu_total_aggregate_pairs_capacity
     )
     num_steps = max(1, int(args_cli.duration / sim_cfg.dt))
-    print_startup_summary(args_cli, sim_cfg, num_steps)
+    print_startup_summary(args_cli, sim_cfg, num_steps, num_envs=num_envs, env_spacing=env_spacing)
 
     sim = SimulationContext(sim_cfg)
     sim.set_camera_view(CAMERA_EYE, CAMERA_TARGET)
 
-    robot_cfg = get_forrest_cfg(FORREST_PARAMS).replace(prim_path="/World/Bot")
-    robot = Articulation(robot_cfg)
+    scene_cfg = make_forrest_recording_scene_cfg(num_envs=num_envs, env_spacing=env_spacing)
+    scene = InteractiveScene(scene_cfg)
+    robot = scene["robot"]
+    contact_sensor = scene["contact_forces"]
     contact_body_names = FORREST_PARAMS.training.contacts.contact_sensor_body_names
-    contact_filter_paths = ["/World/defaultGroundPlane/GroundPlane/CollisionPlane"]
-    contact_filter_paths.extend(f"{robot_cfg.prim_path}/{body_name}" for body_name in contact_body_names)
-    contact_sensor = ContactSensor(
-        ContactSensorCfg(
-            prim_path=f"{robot_cfg.prim_path}/{body_name_regex(contact_body_names)}",
-            update_period=sim_cfg.dt,
-            history_length=1,
-            track_air_time=False,
-            track_contact_points=True,
-            track_friction_forces=True,
-            max_contact_data_count_per_prim=256,
-            filter_prim_paths_expr=contact_filter_paths,
-        )
-    )
-
-    ground_cfg = sim_utils.GroundPlaneCfg(physics_material=make_ground_material_cfg())
-    ground_cfg.func("/World/defaultGroundPlane", ground_cfg)
-    apply_foot_material("/World/Bot")
-    sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75)).func("/World/Light", sim_utils.DomeLightCfg())
+    for env_id in range(num_envs):
+        apply_foot_material(f"/World/envs/env_{env_id}/forrest_isaac")
 
     debug_left_path = None
     debug_right_path = None
@@ -890,26 +1010,30 @@ def main():  # noqa: C901
 
     camera, video_writer = setup_video_writer(args_cli, sim_cfg)
 
-    configure_base_constraint(sim, FORREST_PARAMS, args_cli.constraint_mode)
+    configure_scene_base_constraints(sim, FORREST_PARAMS, args_cli.constraint_mode, num_envs)
     sim.reset()
-    reset_robot_to_default(robot)
-    robot.update(0.0)
+    reset_robot_to_default(robot, env_origins=scene.env_origins)
+    scene.reset()
+    scene.update(0.0)
 
     joint_indices_right, _ = robot.find_joints(joint_names_right, preserve_order=True)
     joint_indices_left, _ = robot.find_joints(joint_names_left, preserve_order=True)
 
     sim.step()
-    robot.update(sim.get_physics_dt())
+    scene.update(sim.get_physics_dt())
     time.sleep(0.1)
     previous_record_joint_vel = robot.data.joint_vel.clone()
     previous_record_root_vel = robot.data.root_com_vel_w.clone()
     previous_record_time = 0.0
 
-    actuated_dof_specs = make_actuated_dof_specs(robot_cfg)
+    actuated_dof_specs = make_actuated_dof_specs(scene_cfg.robot)
     actuated_joint_indices = find_actuated_joint_indices(robot, actuated_dof_specs)
     FORREST_PARAMS.run.controller = args_cli.controller
     left_controller, right_controller = make_leg_controllers(FORREST_PARAMS.run)
     initial_joint_positions = robot.data.joint_pos[:, actuated_joint_indices].clone()
+    env_time_offsets = make_env_time_offsets(
+        controller=args_cli.controller, num_envs=robot.num_instances, device=robot.device
+    )
     startup_hold_duration = max(0.0, float(args_cli.startup_hold_duration)) if args_cli.startup_hold else 0.0
 
     tendon_data = TendonData(
@@ -957,6 +1081,7 @@ def main():  # noqa: C901
                 record_tendons=bool(args_cli.record_tendons and not args_cli.jit),
                 record_dynamics=bool(args_cli.record_dynamics),
                 record_debug_dynamics=bool(FORREST_PARAMS.recording.record_debug_dynamics),
+                record_stabilization_contact=record_stabilization_contact,
                 residual_filter_threshold=FORREST_PARAMS.recording.residual_filter_threshold,
                 sqlite_filename=FORREST_PARAMS.recording.kinematics_db_filename,
                 tendon_sqlite_filename=FORREST_PARAMS.recording.tendons_db_filename,
@@ -975,10 +1100,19 @@ def main():  # noqa: C901
                 "mode": mode_label,
                 "duration": float(args_cli.duration),
                 "num_steps": int(num_steps),
+                "num_envs": int(num_envs),
+                "env_spacing": float(env_spacing),
                 "startup_hold_enabled": bool(args_cli.startup_hold),
                 "startup_hold_duration": float(startup_hold_duration),
                 "device": args_cli.device,
                 "gravity": list(FORREST_PARAMS.physics.gravity),
+                "env_time_offsets_s": [float(value) for value in env_time_offsets.detach().cpu().tolist()],
+                "base_constraint_contact_policy": (
+                    "root body incoming joint wrench folded into contact_identification and controller_plus_ground "
+                    "tau for constrained full-base recordings"
+                    if record_stabilization_contact
+                    else "root body incoming joint wrench not folded into exported contact channel"
+                ),
             },
         )
         print(f"Identix recorder initialized: {data_recorder.sqlite_path}")
@@ -995,8 +1129,9 @@ def main():  # noqa: C901
                 calibration_windows.update()
 
             if calibration_state is not None and calibration_state.consume_reset_request():
-                reset_robot_to_default(robot)
-                robot.update(0.0)
+                reset_robot_to_default(robot, env_origins=scene.env_origins)
+                scene.reset()
+                scene.update(0.0)
                 tendon_manager.reset_damping_state()
                 initial_joint_positions = robot.data.joint_pos[:, actuated_joint_indices].clone()
                 previous_record_joint_vel = robot.data.joint_vel.clone()
@@ -1043,15 +1178,17 @@ def main():  # noqa: C901
                 commanded_positions = initial_joint_positions
                 controller_delta = torch.zeros_like(initial_joint_positions)
             elif calibration_state is not None:
-                commanded_positions, controller_delta = runtime_controller_command_tensor(
+                commanded_positions, controller_delta = batched_runtime_controller_command_tensor(
                     t=controller_t,
+                    env_time_offsets=env_time_offsets,
                     state=calibration_state,
                     actuated_dof_specs=actuated_dof_specs,
                     initial_joint_positions=initial_joint_positions,
                 )
             else:
-                commanded_positions = controller_command_tensor(
+                commanded_positions = batched_controller_command_tensor(
                     t=controller_t,
+                    env_time_offsets=env_time_offsets,
                     left_controller=left_controller,
                     right_controller=right_controller,
                     actuated_dof_specs=actuated_dof_specs,
@@ -1084,6 +1221,7 @@ def main():  # noqa: C901
                     contact_body_names,
                     actuated_joint_indices,
                     args_cli.record_tau_source,
+                    args_cli.constraint_mode,
                 )
                 dynamics_terms = None
                 if (
@@ -1103,6 +1241,7 @@ def main():  # noqa: C901
                             data_recorder.cfg.record_debug_dynamics
                             or data_recorder.cfg.residual_filter_threshold is not None
                         ),
+                        constraint_mode=args_cli.constraint_mode,
                     )
                 data_recorder.record_step(
                     step_index=iteration + 1,

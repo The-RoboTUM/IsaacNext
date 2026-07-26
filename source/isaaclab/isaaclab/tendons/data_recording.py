@@ -233,6 +233,7 @@ class DataRecordingConfig:
     record_tendons: bool = True
     record_dynamics: bool = True
     record_debug_dynamics: bool = False
+    record_stabilization_contact: bool = False
     residual_filter_threshold: float | None = None
     overwrite: bool = False
     batch_size: int = 512
@@ -1511,13 +1512,21 @@ class DataRecording:
         )
         boom_detected = "boom" in mode_lower or "boom" in task_lower
         static_detected = "static" in mode_lower
-        unmodeled_base_constraint = full_base_recorded and (boom_detected or static_detected)
+        stabilization_contact_recorded = bool(self.cfg.record_stabilization_contact)
+        unmodeled_base_constraint = (
+            full_base_recorded and (boom_detected or static_detected) and not stabilization_contact_recorded
+        )
         if unmodeled_base_constraint:
             guidance = (
                 "Do not use these full-base samples as free-floating robot sysid data unless the boom/static "
                 "reaction wrench is measured separately. Use a non-Boom RL task or run.py --constraint_mode freefall "
                 "for full-base sysid; leg-only recordings can still be useful if the base motion is treated as "
                 "prescribed rather than identified."
+            )
+        elif full_base_recorded and (boom_detected or static_detected) and stabilization_contact_recorded:
+            guidance = (
+                "The boom/static base reaction wrench is folded into the contact channel by the caller when "
+                "full base coordinates are recorded, so the exported balance remains closed."
             )
         else:
             guidance = (
@@ -1531,9 +1540,10 @@ class DataRecording:
             "static_base_constraint_detected": bool(static_detected),
             "unmodeled_external_base_constraint": bool(unmodeled_base_constraint),
             "measured_reaction_wrench": (
-                "not recorded; the current recorder covers actuation, measured contact, friction, gravity, Coriolis, "
-                "tendon/permanent body wrenches, and PhysX articulation projected joint forces, but not external "
-                "world-to-base D6/fixed-joint reactions"
+                "recorded as contact when record_stabilization_contact is enabled; otherwise the current recorder "
+                "covers actuation, measured contact, friction, gravity, Coriolis, tendon/permanent body wrenches, "
+                "and PhysX articulation projected joint forces, but not external world-to-base D6/fixed-joint "
+                "reactions"
             ),
             "sysid_guidance": guidance,
         }
@@ -1576,6 +1586,12 @@ class DataRecording:
             "contact_policy": (
                 "use measured contact_identification, currently equal to contact_validated: normal and friction "
                 "contact plus accepted contact-point moment projected with J^T in world-frame wrench convention"
+                + (
+                    " When record_stabilization_contact is enabled, the caller folds the boom/static base "
+                    "reaction wrench into contact_identification before export."
+                    if self.cfg.record_stabilization_contact
+                    else ""
+                )
             ),
             "actuation_policy": (
                 "sim_data tau and tau_actuation are actuation_command only; contact, gravity, Coriolis, tendon, "
