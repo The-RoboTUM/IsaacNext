@@ -33,42 +33,46 @@ run:
     right_phase_offset_rad: 0.9110506772994995  # Right leg phase offset before common offset.
     include_knee: true  # Include knee flexion command in the CPG controller.
   cpg_oscillator:
-    f_hz: 0.0  # Oscillator cycle frequency in Hz.
-    duty_factor: 0.0  # Fraction of gait cycle spent in stance before phase warping.
-    left_phase_rad: 0.0  # Left leg oscillator phase offset.
-    right_phase_rad: 3.141592653589793  # Right leg oscillator phase offset.
-    hip_flexion_amplitude_deg: 0.0
-    hip_flexion_offset_deg: 0.0
-    hip_flexion_phase_rad: 0.0
-    knee_flexion_amplitude_deg: 0.0
+    f_hz: 0.8878628015518188  # Oscillator cycle frequency in Hz.
+    duty_factor: 0.6988030672073364  # Fraction of gait cycle spent in stance before phase warping.
+    left_phase_rad: -0.7128421068191528  # Left leg oscillator phase offset.
+    right_phase_rad: 2.4195783138275146  # Right leg oscillator phase offset.
+    hip_flexion_amplitude_deg: 36.0
+    hip_flexion_offset_deg: 12.0
+    hip_flexion_phase_rad: 1.5707963267948966
+    knee_flexion_amplitude_deg: 170.0
     knee_flexion_offset_deg: 0.0
-    knee_flexion_phase_rad: 0.0
-    knee_swing_power: 0.0  # Higher values concentrate knee flexion into mid-swing.
-    hip_roll_amplitude_deg: 0.0
+    knee_flexion_phase_rad: 3.141592653589793
+    knee_swing_power: 1.5  # Higher values concentrate knee flexion into mid-swing.
+    hip_roll_amplitude_deg: 3.0
     hip_roll_offset_deg: 0.0
-    hip_roll_phase_rad: 0.0
-    hip_yaw_amplitude_deg: 0.0
+    hip_roll_phase_rad: 1.5707963267948966
+    hip_yaw_amplitude_deg: 2.0
     hip_yaw_offset_deg: 0.0
     hip_yaw_phase_rad: 0.0
   sinusoidal:
-    f_hz: 0.0  # Sinusoidal controller frequency in Hz.
-    left_phi0_rad: 0.0  # Left leg base phase offset.
-    right_phi0_rad: 3.141592653589793  # Right leg base phase offset.
+    f_hz: 0.8878628015518188  # Sinusoidal controller frequency in Hz.
+    left_phi0_rad: -0.7128421068191528  # Left leg base phase offset.
+    right_phi0_rad: 2.4195783138275146  # Right leg base phase offset.
     amplitude_deg:
-      hip_roll: 0.0
-      hip_yaw: 0.0
-      hip_flexion: 0.0
-      knee_flexion: 0.0
+      hip_roll: 3.0
+      hip_yaw: 2.0
+      hip_flexion: 42.0
+      knee_flexion: 80.0
     offset_deg:
       hip_roll: 0.0
       hip_yaw: 0.0
-      hip_flexion: 8.0
-      knee_flexion: 0.0
+      hip_flexion: 4.0
+      knee_flexion: 80.0
     left_phase_rad:
-      hip_flexion: 0.0
-      knee_flexion: 0.0
+      hip_roll: 1.5707963267948966
+      hip_yaw: 0.0
+      hip_flexion: 1.5707963267948966
+      knee_flexion: 3.141592653589793
     right_phase_rad:
-      hip_flexion: 0.0
-      knee_flexion: 0.0
+      hip_roll: 1.5707963267948966
+      hip_yaw: 0.0
+      hip_flexion: 1.5707963267948966
+      knee_flexion: 3.141592653589793
   output_dir: "outputs"  # Directory for debug JSONL logs and generated artifacts.
   video_output: "outputs/simulation.mp4"  # Default MP4 path when video recording is enabled.
