@@ -23,6 +23,14 @@ training:
       ".*flexor": 203.0  # Max commanded knee flexor joint offset in degrees.
     use_default_offset: true  # Add action commands around the robot's default joint pose.
     tendon_update_interval: 4  # Passive tendon recompute interval in physics substeps; 1 keeps current behavior.
+    tendon_model_type: "identix_elastic"  # Passive tendon model: analytic or identix_elastic.
+    tendon_identix_bundle_dir: "../Identix/deploy/forrest_full_robot/20260806_140556"  # Deployed Identix Forrest elastic model.
+    tendon_identix_repo_path: "../Identix"  # Identix checkout used for lazy deployment-runtime imports.
+    tendon_identix_compile: true  # JIT compile Identix/JAX model calls on first use.
+    tendon_identix_transfer: "auto"  # Prefer DLPack Torch/JAX transfer, fall back to NumPy if needed.
+    tendon_identix_force_scale: 1.0  # Multiplier applied to Identix elastic generalized force output.
+    tendon_identix_force_sign: 1.0  # Sign applied before applying Identix forces to Isaac.
+    tendon_identix_apply_mode: "joint_effort"  # Apply Identix generalized forces directly; link_wrench keeps old mapper.
   contacts:
     foot_body_names: [ "s45_digit_assy_1", "s45_digit_assy_2" ]  # Bodies treated as feet for foot rewards.
     foot_connector_body_names: [ "s34_foot_connector_assy_1", "s34_foot_connector_assy_2" ]  # Connector bodies penalized on contact.

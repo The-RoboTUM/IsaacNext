@@ -572,6 +572,14 @@ class ActionParameters:
     )
     use_default_offset: bool = True
     tendon_update_interval: int = 1
+    tendon_model_type: str = "analytic"
+    tendon_identix_bundle_dir: str | None = None
+    tendon_identix_repo_path: str | None = None
+    tendon_identix_compile: bool = True
+    tendon_identix_transfer: str = "auto"
+    tendon_identix_force_scale: float = 1.0
+    tendon_identix_force_sign: float = 1.0
+    tendon_identix_apply_mode: str = "joint_effort"
 
 
 @dataclass

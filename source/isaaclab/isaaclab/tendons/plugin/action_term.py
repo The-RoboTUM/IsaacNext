@@ -35,6 +35,7 @@ from isaaclab.tendons.models.analytic.constants import (
     tids,
 )
 from isaaclab.tendons.models.analytic.tendon_data import TendonData
+from isaaclab.tendons.models.identix import IdentixForrestElasticTendonModel
 from isaaclab.tendons.parameter_loader import load_forrest_parameter_config
 
 if TYPE_CHECKING:
@@ -81,6 +82,35 @@ class TendonActionTermHybrid(ActionTerm):
         self._env = env
         forrest_params = load_forrest_parameter_config(cfg.parameters_file)
         tendon_constants = forrest_params.to_tendon_constants(device=env.device)
+        action_params = forrest_params.training.actions
+        model_type = str(cfg.model_type or action_params.tendon_model_type)
+        model = None
+        apply_mode = "link_wrench"
+        if model_type == "identix_elastic":
+            apply_mode = (
+                action_params.tendon_identix_apply_mode
+                if cfg.identix_apply_mode is None
+                else str(cfg.identix_apply_mode)
+            )
+            model = IdentixForrestElasticTendonModel(
+                self.robot,
+                bundle_dir=cfg.identix_bundle_dir or action_params.tendon_identix_bundle_dir,
+                identix_repo_path=cfg.identix_repo_path or action_params.tendon_identix_repo_path,
+                compile=action_params.tendon_identix_compile
+                if cfg.identix_compile is None
+                else bool(cfg.identix_compile),
+                transfer=action_params.tendon_identix_transfer
+                if cfg.identix_transfer is None
+                else cfg.identix_transfer,
+                force_scale=action_params.tendon_identix_force_scale
+                if cfg.identix_force_scale is None
+                else float(cfg.identix_force_scale),
+                force_sign=action_params.tendon_identix_force_sign
+                if cfg.identix_force_sign is None
+                else float(cfg.identix_force_sign),
+            )
+        elif model_type != "analytic":
+            raise ValueError(f"Unsupported Forrest tendon model_type: {model_type!r}")
 
         self.tendon_manager = TendonManager(
             robot=self.robot,
@@ -90,7 +120,9 @@ class TendonActionTermHybrid(ActionTerm):
                 tc=tendon_constants,
                 device=env.device,
             ),
+            model=model,
             tendon_damping=forrest_params.tendon_damping(),
+            apply_mode=apply_mode,
         )
         self._update_interval = max(1, int(cfg.update_interval))
         self._apply_count = 0

@@ -1404,15 +1404,14 @@ class DataRecording:
             ),
             "tau_coriolis": (
                 "Coriolis/centrifugal term on the left-hand side of the training equation. In RL recordings "
-                "this is the joint-coordinate balance term from PhysX direct generalized-force output when "
-                "available, because that source matched the complete simulator force balance best. The "
-                "compensation-derived term is retained as a debug/fallback convention check."
+                "this is -coriolis_compensation_actual, because the compensation-derived full-coordinate term "
+                "closed the floating-base balance better than the direct PhysX generalized-force output. The "
+                "direct API value remains in debug fields as coriolis_force_api."
             ),
             "tau_gravity": (
-                "sysid gravity term on the left-hand side of the training equation: PhysX direct generalized "
-                "joint gravity when available, corrected with the floating-base gravity wrench inferred from "
-                "gravity_compensation_actual. Compensation-derived gravity is retained as a debug/fallback "
-                "convention check."
+                "gravity term on the left-hand side of the training equation. In RL recordings this is "
+                "-gravity_compensation_actual for convention consistency with tau_coriolis. Direct PhysX gravity "
+                "API values remain in debug fields as gravity/gravity_force_api."
             ),
             "tau_tendon": "analytic tendon term on the left-hand side of the training equation",
             "tau_actuation": (
@@ -1497,8 +1496,9 @@ class DataRecording:
                 "world frame, projected with J^T, and stored with the sign convention used by tau_tendon."
             ),
             "gravity": (
-                "gravity_identification is the exported gravity term. external_base_gravity and compensation "
-                "variants are debug terms for checking floating-base convention only."
+                "gravity_identification is the exported gravity term and currently equals "
+                "-gravity_compensation_actual. Direct gravity API values and positive-sign compensation variants "
+                "are debug terms for checking floating-base convention."
             ),
         }
 
@@ -1572,16 +1572,13 @@ class DataRecording:
                 "angular_x, angular_y, angular_z]"
             ),
             "gravity_policy": (
-                "use the recorded gravity_identification term: PhysX direct generalized joint gravity when "
-                "available, with the floating-base gravity wrench corrected from gravity_compensation_actual. "
-                "The full external compensation-gravity candidate is retained as a debug comparison, but is not "
-                "the export convention because it can cancel/move joint gravity terms across sides."
+                "use the recorded gravity_identification term, currently -gravity_compensation_actual. This "
+                "matched the best physically coherent residual audit when paired with the compensated Coriolis "
+                "term."
             ),
             "coriolis_policy": (
-                "use the recorded coriolis term: PhysX direct generalized Coriolis/centrifugal force when "
-                "available. This source is retained because the residual audits showed it is the physical "
-                "simulator-consistent convention; compensation-derived Coriolis remains recorded only as a "
-                "debug/fallback convention check."
+                "use the recorded coriolis term, currently -coriolis_compensation_actual. The direct PhysX "
+                "Coriolis/generalized-force API remains recorded as coriolis_force_api for debug comparison."
             ),
             "contact_policy": (
                 "use measured contact_identification, currently equal to contact_validated: normal and friction "
@@ -1957,11 +1954,14 @@ class DataRecording:
         print("\n[ForrestDynamics] Debug residual experiments")
         print("  residual form: conservative_terms - non_conservative_terms")
         print(f"  ddq/inertia source: {self.cfg.ddq_source}")
-        print("  current conservative: inertia + gravity_identification + coriolis + tendon")
+        print(
+            "  current conservative: inertia + gravity_identification + coriolis + tendon "
+            "(gravity_identification=-gravity_compensation_actual, coriolis=-coriolis_compensation_actual)"
+        )
         print("  current non-conservative: actuation_command + contact_identification + friction")
         print(
-            "  gravity/Coriolis source: PhysX direct generalized-force APIs when available; "
-            "compensation APIs as debug/fallback"
+            "  gravity/Coriolis source: compensation APIs with training-equation sign; "
+            "direct PhysX generalized-force APIs retained as debug comparisons"
         )
         print("  contact_identification uses measured contact_validated/contact_force/contact_moment")
         print("  contact debug split: contact_normal + contact_friction = contact when detail sensors are available")
@@ -1981,10 +1981,10 @@ class DataRecording:
                 print(f"    skipped non-adjacent quality pairs: {skipped_pairs}")
 
         print("  ranked full-coordinate physics candidates by mean residual, lower is better:")
-        self._print_debug_candidate_ranking(model_candidate_summaries, limit=12, include_groups=True)
+        self._print_debug_candidate_ranking(model_candidate_summaries, limit=20, include_groups=True)
 
         print("  ranked diagnostic controls by mean residual (not model candidates; lower is explanatory only):")
-        self._print_debug_candidate_ranking(diagnostic_control_summaries, limit=12, include_groups=True)
+        self._print_debug_candidate_ranking(diagnostic_control_summaries, limit=24, include_groups=True)
 
         print("  best full-coordinate physics candidate by family:")
         for family, summary in best_model_by_family.items():
@@ -2004,22 +2004,22 @@ class DataRecording:
         self._print_debug_candidate_subset(
             "cleanest kinematic samples / physics candidates",
             clean_model_candidate_summaries,
-            limit=8,
+            limit=12,
         )
         self._print_debug_candidate_subset(
             "cleanest kinematic samples / diagnostic controls",
             clean_diagnostic_control_summaries,
-            limit=8,
+            limit=12,
         )
         self._print_debug_candidate_subset(
             "dirtiest kinematic samples / physics candidates",
             dirty_model_candidate_summaries,
-            limit=8,
+            limit=12,
         )
         self._print_debug_candidate_subset(
             "dirtiest kinematic samples / diagnostic controls",
             dirty_diagnostic_control_summaries,
-            limit=8,
+            limit=12,
         )
 
         print("  diagnostic deltas and term magnitudes:")
@@ -2096,7 +2096,26 @@ class DataRecording:
             common_conservative,
             common_external,
             role="model_candidate",
-            note="exported full-coordinate sysid equation with corrected base gravity and measured contact",
+            note=(
+                "exported full-coordinate sysid equation using compensation-derived gravity/Coriolis with the "
+                "training-equation sign, measured contact, and no solver reactions"
+            ),
+        )
+        add(
+            "legacy_direct_api_current",
+            "legacy_baseline",
+            (
+                ("inertia", 1.0),
+                ("gravity", 1.0),
+                ("gravity_compensation_actual", -1.0, "base"),
+                ("coriolis_force_api", 1.0),
+                ("tendon", 1.0),
+            ),
+            common_external,
+            note=(
+                "previous exported equation: direct PhysX joint gravity/Coriolis with base gravity correction. "
+                "Kept as a debug comparison after compensation-derived terms became the selected convention."
+            ),
         )
         add("no_contact", "contact", common_conservative, no_contact_external)
         add(
@@ -2220,8 +2239,7 @@ class DataRecording:
                 ("tendon", 1.0),
             ),
             common_external,
-            role="model_candidate",
-            note="uses compensation APIs converted to actual generalized forces",
+            note="positive-sign compensation API convention check; the selected equation uses the opposite sign",
         )
         add(
             "coriolis_compensation_actual_current_gravity",
@@ -2233,11 +2251,128 @@ class DataRecording:
                 ("tendon", 1.0),
             ),
             common_external,
-            role="model_candidate",
             note=(
-                "isolates the Coriolis source choice while keeping the current base-gravity identification "
-                "convention unchanged"
+                "positive-sign compensation API convention check for Coriolis while keeping the exported gravity term"
             ),
+        )
+        add(
+            "external_base_coriolis_compensation",
+            "coriolis_source",
+            common_conservative,
+            (*common_external, ("coriolis_compensation_actual", 1.0, "base")),
+            note=(
+                "legacy diagnostic from the direct-API equation; with compensated Coriolis selected, this is a "
+                "sign/masking check rather than a physical external-force model"
+            ),
+        )
+        add(
+            "external_full_coriolis_compensation",
+            "coriolis_source",
+            common_conservative,
+            (*common_external, ("coriolis_compensation_actual", 1.0)),
+            note=(
+                "legacy diagnostic from the direct-API equation; with compensated Coriolis selected, this tests "
+                "double application/sign errors"
+            ),
+        )
+        add(
+            "external_base_coriolis_opposite_sign",
+            "coriolis_source",
+            common_conservative,
+            (*common_external, ("coriolis_compensation_actual", -1.0, "base")),
+            note="sign check for the floating-base component of the compensation-derived Coriolis term",
+        )
+        add(
+            "external_full_coriolis_opposite_sign",
+            "coriolis_source",
+            common_conservative,
+            (*common_external, ("coriolis_compensation_actual", -1.0)),
+            note="sign check for the full compensation-derived Coriolis term",
+        )
+        add(
+            "negative_coriolis_compensation_actual",
+            "coriolis_source",
+            (
+                ("inertia", 1.0),
+                ("gravity_identification", 1.0),
+                ("coriolis_compensation_actual", -1.0),
+                ("tendon", 1.0),
+            ),
+            common_external,
+            note=(
+                "replacement sign check: uses the compensation API as the Coriolis source with the opposite "
+                "actual-force convention"
+            ),
+        )
+        add(
+            "negative_gravity_compensation_actual",
+            "gravity_source",
+            (
+                ("inertia", 1.0),
+                ("gravity_compensation_actual", -1.0),
+                ("coriolis", 1.0),
+                ("tendon", 1.0),
+            ),
+            common_external,
+            note=(
+                "replacement sign check: removes the current gravity_identification term and uses the "
+                "compensation API as the gravity source with opposite sign"
+            ),
+        )
+        add(
+            "negative_gravity_compensation_negative_coriolis_compensation",
+            "gravity_coriolis_compensation_source",
+            (
+                ("inertia", 1.0),
+                ("gravity_compensation_actual", -1.0),
+                ("coriolis_compensation_actual", -1.0),
+                ("tendon", 1.0),
+            ),
+            common_external,
+            note=(
+                "replacement sign check: uses compensation-derived gravity and Coriolis/bias as the only "
+                "gravity/Coriolis sources, both with opposite sign"
+            ),
+        )
+        add(
+            "negative_base_gravity_compensation_current_coriolis",
+            "gravity_source",
+            (
+                ("inertia", 1.0),
+                ("gravity", 1.0),
+                ("gravity_compensation_actual", -1.0, "base"),
+                ("coriolis", 1.0),
+                ("tendon", 1.0),
+            ),
+            common_external,
+            note=(
+                "base-only sign check for the gravity compensation term while keeping the direct joint gravity "
+                "source on the left-hand side"
+            ),
+        )
+        add(
+            "negative_gravity_force_api_current_coriolis",
+            "gravity_source",
+            (
+                ("inertia", 1.0),
+                ("gravity_force_api", -1.0),
+                ("coriolis", 1.0),
+                ("tendon", 1.0),
+            ),
+            common_external,
+            note="direct gravity-force API sign check, independent of compensation-derived gravity",
+        )
+        add(
+            "negative_gravity_force_api_negative_coriolis_force_api",
+            "gravity_coriolis_api",
+            (
+                ("inertia", 1.0),
+                ("gravity_force_api", -1.0),
+                ("coriolis_force_api", -1.0),
+                ("tendon", 1.0),
+            ),
+            common_external,
+            note="direct PhysX gravity and Coriolis generalized-force API sign check",
         )
         add(
             "external_comp_gravity_contact",
@@ -2270,6 +2405,32 @@ class DataRecording:
                 "applies compensation-derived gravity only to base coordinates while keeping full measured "
                 "contact projection"
             ),
+        )
+        add(
+            "external_base_gravity_base_coriolis",
+            "base_force_convention",
+            raw_conservative,
+            (
+                ("actuation_command", 1.0),
+                ("gravity_compensation_actual", 1.0, "base"),
+                ("coriolis_compensation_actual", 1.0, "base"),
+                ("contact_validated", 1.0),
+                ("friction", 1.0),
+            ),
+            note=("legacy floating-base convention diagnostic retained to detect double application/sign errors"),
+        )
+        add(
+            "external_base_gravity_full_coriolis",
+            "base_force_convention",
+            raw_conservative,
+            (
+                ("actuation_command", 1.0),
+                ("gravity_compensation_actual", 1.0, "base"),
+                ("coriolis_compensation_actual", 1.0),
+                ("contact_validated", 1.0),
+                ("friction", 1.0),
+            ),
+            note=("legacy broad convention diagnostic retained to detect double application/sign errors"),
         )
         add(
             "external_base_gravity_base_contact",
@@ -2362,6 +2523,22 @@ class DataRecording:
             common_external,
             role="model_candidate",
             note="uses analytic joint-space tendon model instead of projected link-wrench tendon term",
+        )
+        add(
+            "permanent_wrench_total_model",
+            "tendon",
+            (
+                ("inertia", 1.0),
+                ("gravity_identification", 1.0),
+                ("coriolis", 1.0),
+                ("permanent_wrench_total", 1.0),
+            ),
+            common_external,
+            role="model_candidate",
+            note=(
+                "uses the total permanent external wrench projection as the elastic/tendon-like source; expected "
+                "to match tendon when no other permanent wrenches are active"
+            ),
         )
         add(
             "no_tendon",
@@ -2483,6 +2660,130 @@ class DataRecording:
             ),
         )
         add(
+            "command_plus_implicit_drive_modeled_tendon",
+            "passive_drive",
+            common_conservative,
+            (*common_external, ("implicit_drive_estimate", 1.0, "modeled_tendon")),
+            note=(
+                "diagnostic: adds implicit-drive estimates only on joints used by the analytical tendon model "
+                "to detect hidden drive/constraint contributions in the tendon label coordinates"
+            ),
+        )
+        add(
+            "command_minus_implicit_drive_modeled_tendon",
+            "passive_drive",
+            common_conservative,
+            (*common_external, ("implicit_drive_estimate", -1.0, "modeled_tendon")),
+            note="sign check for implicit-drive estimates on analytical tendon-model coordinates",
+        )
+        add(
+            "command_plus_implicit_drive_passive_chain",
+            "passive_drive",
+            common_conservative,
+            (*common_external, ("implicit_drive_estimate", 1.0, "passive_chain")),
+            note=(
+                "diagnostic: adds implicit-drive estimates over the four-bar/passive distal chain, including "
+                "front/back linkage coordinates and distal tendon coordinates"
+            ),
+        )
+        add(
+            "command_minus_implicit_drive_passive_chain",
+            "passive_drive",
+            common_conservative,
+            (*common_external, ("implicit_drive_estimate", -1.0, "passive_chain")),
+            note="sign check for implicit-drive estimates over the passive distal chain",
+        )
+        add(
+            "command_without_passive_chain_actuation",
+            "passive_actuation",
+            common_conservative,
+            (*common_external, ("actuation_command", -1.0, "passive_chain")),
+            note=(
+                "diagnostic: removes the passive-chain slice from the current actuation command to test whether "
+                "passive four-bar/distal actuation is double-counted on the external side"
+            ),
+        )
+        add(
+            "command_plus_passive_chain_actuation",
+            "passive_actuation",
+            common_conservative,
+            (*common_external, ("actuation_command", 1.0, "passive_chain")),
+            note="sign check: adds the passive-chain actuation slice a second time on the external side",
+        )
+        add(
+            "passive_chain_actuation_lhs",
+            "passive_actuation",
+            (*common_conservative, ("actuation_command", 1.0, "passive_chain")),
+            common_external,
+            note=(
+                "LNN-label hypothesis: treats passive-chain commanded actuation as part of the effective "
+                "elastic/tendon left-hand-side term"
+            ),
+        )
+        add(
+            "passive_chain_actuation_lhs_opposite",
+            "passive_actuation",
+            (*common_conservative, ("actuation_command", -1.0, "passive_chain")),
+            common_external,
+            note="LNN-label hypothesis sign check for passive-chain commanded actuation",
+        )
+        add(
+            "command_plus_implicit_drive_pantograph",
+            "passive_drive",
+            common_conservative,
+            (*common_external, ("implicit_drive_estimate", 1.0, "pantograph")),
+            note="diagnostic: adds implicit-drive estimates only on pantograph coordinates",
+        )
+        add(
+            "command_minus_implicit_drive_pantograph",
+            "passive_drive",
+            common_conservative,
+            (*common_external, ("implicit_drive_estimate", -1.0, "pantograph")),
+            note="sign check for implicit-drive estimates only on pantograph coordinates",
+        )
+        add(
+            "command_plus_pantograph_reconstructed",
+            "passive_drive",
+            common_conservative,
+            (
+                ("actuation_command", 1.0),
+                ("pantograph_reconstructed_actuation", 1.0),
+                ("contact_identification", 1.0),
+                ("friction", 1.0),
+            ),
+            note=(
+                "diagnostic: adds reconstructed pantograph spring/damping actuation instead of the applied "
+                "pantograph actuation channel"
+            ),
+        )
+        add(
+            "command_plus_pantograph_spring_force",
+            "passive_drive",
+            common_conservative,
+            (*common_external, ("pantograph_spring", -1.0, "pantograph")),
+            note="diagnostic: adds the pantograph spring force using the drive-force sign convention",
+        )
+        add(
+            "command_plus_pantograph_damping_force",
+            "passive_drive",
+            common_conservative,
+            (*common_external, ("pantograph_damping", 1.0, "pantograph")),
+            note="diagnostic: adds the pantograph damping force using the drive-force sign convention",
+        )
+        add(
+            "command_plus_pantograph_spring_damping",
+            "passive_drive",
+            common_conservative,
+            (
+                ("actuation_command", 1.0),
+                ("pantograph_spring", -1.0, "pantograph"),
+                ("pantograph_damping", 1.0, "pantograph"),
+                ("contact_identification", 1.0),
+                ("friction", 1.0),
+            ),
+            note="diagnostic: explicit pantograph spring plus damping decomposition on the external side",
+        )
+        add(
             "command_plus_knee_flexor",
             "actuation",
             common_conservative,
@@ -2526,6 +2827,391 @@ class DataRecording:
             (*common_external, ("solver_constraint_internal", -1.0)),
         )
         add(
+            "command_plus_solver_all_dofs",
+            "solver",
+            common_conservative,
+            (*common_external, ("solver_joint", 1.0)),
+            note=(
+                "diagnostic only: adds every PhysX projected solver force to the external side to detect whether "
+                "the passive-joint mask is hiding useful or harmful solver components"
+            ),
+        )
+        add(
+            "command_minus_solver_all_dofs",
+            "solver",
+            common_conservative,
+            (*common_external, ("solver_joint", -1.0)),
+            note="diagnostic sign check for the full PhysX projected solver force vector",
+        )
+        add(
+            "command_plus_solver_joint_modeled_tendon",
+            "solver_joint_split",
+            common_conservative,
+            (*common_external, ("solver_joint", 1.0, "modeled_tendon")),
+            note=(
+                "diagnostic only: adds raw PhysX projected solver forces on all analytical tendon-model "
+                "coordinates, including joints omitted by the passive solver mask"
+            ),
+        )
+        add(
+            "command_minus_solver_joint_modeled_tendon",
+            "solver_joint_split",
+            common_conservative,
+            (*common_external, ("solver_joint", -1.0, "modeled_tendon")),
+            note="sign check for raw PhysX projected solver forces on analytical tendon-model coordinates",
+        )
+        add(
+            "command_plus_solver_joint_passive_chain",
+            "solver_joint_split",
+            common_conservative,
+            (*common_external, ("solver_joint", 1.0, "passive_chain")),
+            note=(
+                "diagnostic only: adds raw PhysX projected solver forces over the whole four-bar/passive distal "
+                "chain, including front/back linkage and distal tendon coordinates"
+            ),
+        )
+        add(
+            "command_minus_solver_joint_passive_chain",
+            "solver_joint_split",
+            common_conservative,
+            (*common_external, ("solver_joint", -1.0, "passive_chain")),
+            note="sign check for raw PhysX projected solver forces over the passive distal chain",
+        )
+        add(
+            "command_plus_solver_joint_fourbar_front",
+            "solver_joint_split",
+            common_conservative,
+            (*common_external, ("solver_joint", 1.0, "fourbar_front")),
+            note="diagnostic only: adds raw PhysX projected solver forces only on four-bar front joints",
+        )
+        add(
+            "command_minus_solver_joint_fourbar_front",
+            "solver_joint_split",
+            common_conservative,
+            (*common_external, ("solver_joint", -1.0, "fourbar_front")),
+            note="sign check for raw PhysX projected solver forces only on four-bar front joints",
+        )
+        add(
+            "command_plus_solver_joint_fourbar_back",
+            "solver_joint_split",
+            common_conservative,
+            (*common_external, ("solver_joint", 1.0, "fourbar_back")),
+            note="diagnostic only: adds raw PhysX projected solver forces only on four-bar back joints",
+        )
+        add(
+            "command_minus_solver_joint_fourbar_back",
+            "solver_joint_split",
+            common_conservative,
+            (*common_external, ("solver_joint", -1.0, "fourbar_back")),
+            note="sign check for raw PhysX projected solver forces only on four-bar back joints",
+        )
+        add(
+            "command_plus_solver_joint_upper_hip",
+            "solver_joint_split",
+            common_conservative,
+            (*common_external, ("solver_joint", 1.0, "upper_hip")),
+            note="diagnostic only: checks whether projected solver forces explain the unexpected hip/roll residuals",
+        )
+        add(
+            "command_minus_solver_joint_upper_hip",
+            "solver_joint_split",
+            common_conservative,
+            (*common_external, ("solver_joint", -1.0, "upper_hip")),
+            note="sign check for raw PhysX projected solver forces on hip/roll/lateral coordinates",
+        )
+        add(
+            "command_plus_solver_modeled_tendon_joints",
+            "solver_split",
+            common_conservative,
+            (*common_external, ("solver_constraint_internal", 1.0, "modeled_tendon")),
+            note=(
+                "diagnostic only: adds solver reactions on the intersection of analytical tendon-model "
+                "coordinates and the current passive/limit solver mask. Compare against solver_joint_split rows "
+                "to catch joints omitted by this mask."
+            ),
+        )
+        add(
+            "command_minus_solver_modeled_tendon_joints",
+            "solver_split",
+            common_conservative,
+            (*common_external, ("solver_constraint_internal", -1.0, "modeled_tendon")),
+            note=(
+                "diagnostic sign check for solver reactions on the analytical-tendon/current-passive-mask intersection"
+            ),
+        )
+        add(
+            "command_plus_solver_fourbar_back",
+            "solver_split",
+            common_conservative,
+            (*common_external, ("solver_constraint_internal", 1.0, "fourbar_back")),
+            note=(
+                "diagnostic only: adds solver reactions only on four-bar back joints. If this improves the "
+                "fourbar_back group, those reactions may be part of the missing constrained-mechanism balance."
+            ),
+        )
+        add(
+            "command_minus_solver_fourbar_back",
+            "solver_split",
+            common_conservative,
+            (*common_external, ("solver_constraint_internal", -1.0, "fourbar_back")),
+            note="diagnostic sign check for four-bar back-joint solver reactions",
+        )
+        add(
+            "tendon_plus_solver_fourbar_back_lhs",
+            "effective_tendon",
+            (*common_conservative, ("solver_constraint_internal", 1.0, "fourbar_back")),
+            common_external,
+            note=(
+                "LNN-label hypothesis: treats four-bar back-joint solver reactions as part of the tendon/elastic "
+                "left-hand-side term with the recorded solver sign"
+            ),
+        )
+        add(
+            "tendon_minus_solver_fourbar_back_lhs",
+            "effective_tendon",
+            (*common_conservative, ("solver_constraint_internal", -1.0, "fourbar_back")),
+            common_external,
+            note=(
+                "LNN-label hypothesis: treats four-bar back-joint solver reactions as part of the tendon/elastic "
+                "left-hand-side term with opposite sign"
+            ),
+        )
+        add(
+            "tendon_plus_solver_joint_modeled_lhs",
+            "effective_tendon",
+            (*common_conservative, ("solver_joint", 1.0, "modeled_tendon")),
+            common_external,
+            note=(
+                "LNN-label hypothesis: treats raw projected solver forces on analytical tendon-model coordinates "
+                "as part of the effective elastic/tendon left-hand-side term"
+            ),
+        )
+        add(
+            "tendon_minus_solver_joint_modeled_lhs",
+            "effective_tendon",
+            (*common_conservative, ("solver_joint", -1.0, "modeled_tendon")),
+            common_external,
+            note=(
+                "LNN-label hypothesis sign check for raw projected solver forces on analytical tendon-model coordinates"
+            ),
+        )
+        add(
+            "tendon_plus_solver_joint_passive_chain_lhs",
+            "effective_tendon",
+            (*common_conservative, ("solver_joint", 1.0, "passive_chain")),
+            common_external,
+            note=(
+                "LNN-label hypothesis: treats raw projected solver forces over the passive four-bar/distal chain "
+                "as part of the effective elastic/tendon left-hand-side term"
+            ),
+        )
+        add(
+            "tendon_minus_solver_joint_passive_chain_lhs",
+            "effective_tendon",
+            (*common_conservative, ("solver_joint", -1.0, "passive_chain")),
+            common_external,
+            note="LNN-label hypothesis sign check for raw projected solver forces over the passive chain",
+        )
+        add(
+            "tendon_plus_solver_joint_fourbar_front_lhs",
+            "effective_tendon",
+            (*common_conservative, ("solver_joint", 1.0, "fourbar_front")),
+            common_external,
+            note="LNN-label hypothesis: adds four-bar front-joint raw solver forces to the elastic/tendon label",
+        )
+        add(
+            "tendon_minus_solver_joint_fourbar_front_lhs",
+            "effective_tendon",
+            (*common_conservative, ("solver_joint", -1.0, "fourbar_front")),
+            common_external,
+            note="LNN-label hypothesis sign check for four-bar front-joint raw solver forces",
+        )
+        add(
+            "tendon_plus_solver_joint_fourbar_back_lhs",
+            "effective_tendon",
+            (*common_conservative, ("solver_joint", 1.0, "fourbar_back")),
+            common_external,
+            note="LNN-label hypothesis: adds four-bar back-joint raw solver forces to the elastic/tendon label",
+        )
+        add(
+            "tendon_minus_solver_joint_fourbar_back_lhs",
+            "effective_tendon",
+            (*common_conservative, ("solver_joint", -1.0, "fourbar_back")),
+            common_external,
+            note="LNN-label hypothesis sign check for four-bar back-joint raw solver forces",
+        )
+        add(
+            "external_base_coriolis_plus_solver_internal",
+            "combined_missing_force",
+            common_conservative,
+            (
+                *common_external,
+                ("coriolis_compensation_actual", 1.0, "base"),
+                ("solver_constraint_internal", 1.0),
+            ),
+            note=(
+                "combined diagnostic: adds the base compensation-derived Coriolis/bias wrench and the current "
+                "passive solver-force mask on the external side"
+            ),
+        )
+        add(
+            "external_full_coriolis_plus_solver_internal",
+            "combined_missing_force",
+            common_conservative,
+            (
+                *common_external,
+                ("coriolis_compensation_actual", 1.0),
+                ("solver_constraint_internal", 1.0),
+            ),
+            note=(
+                "combined diagnostic: adds full compensation-derived Coriolis/bias and the current passive "
+                "solver-force mask on the external side"
+            ),
+        )
+        add(
+            "external_base_coriolis_plus_solver_joint_modeled",
+            "combined_missing_force",
+            common_conservative,
+            (
+                *common_external,
+                ("coriolis_compensation_actual", 1.0, "base"),
+                ("solver_joint", 1.0, "modeled_tendon"),
+            ),
+            note=(
+                "combined diagnostic: tests the two strongest current hypotheses together, base bias wrench plus "
+                "raw solver forces on analytical tendon-model coordinates"
+            ),
+        )
+        add(
+            "external_base_coriolis_plus_solver_joint_passive_chain",
+            "combined_missing_force",
+            common_conservative,
+            (
+                *common_external,
+                ("coriolis_compensation_actual", 1.0, "base"),
+                ("solver_joint", 1.0, "passive_chain"),
+            ),
+            note=(
+                "combined diagnostic: base bias wrench plus raw solver forces over the passive four-bar/distal chain"
+            ),
+        )
+        add(
+            "external_base_coriolis_plus_solver_all_dofs",
+            "combined_missing_force",
+            common_conservative,
+            (
+                *common_external,
+                ("coriolis_compensation_actual", 1.0, "base"),
+                ("solver_joint", 1.0),
+            ),
+            note=(
+                "combined diagnostic: adds base compensation-derived Coriolis/bias and all raw PhysX projected "
+                "joint solver forces on the external side"
+            ),
+        )
+        add(
+            "external_base_coriolis_minus_solver_all_dofs",
+            "combined_missing_force",
+            common_conservative,
+            (
+                *common_external,
+                ("coriolis_compensation_actual", 1.0, "base"),
+                ("solver_joint", -1.0),
+            ),
+            note=(
+                "combined diagnostic sign check: base compensation-derived Coriolis/bias plus opposite-sign raw "
+                "PhysX projected solver forces for all joints"
+            ),
+        )
+        add(
+            "external_full_coriolis_plus_solver_all_dofs",
+            "combined_missing_force",
+            common_conservative,
+            (
+                *common_external,
+                ("coriolis_compensation_actual", 1.0),
+                ("solver_joint", 1.0),
+            ),
+            note=(
+                "combined diagnostic: adds full compensation-derived Coriolis/bias and all raw PhysX projected "
+                "joint solver forces on the external side"
+            ),
+        )
+        add(
+            "external_full_coriolis_minus_solver_all_dofs",
+            "combined_missing_force",
+            common_conservative,
+            (
+                *common_external,
+                ("coriolis_compensation_actual", 1.0),
+                ("solver_joint", -1.0),
+            ),
+            note=(
+                "combined diagnostic sign check: full compensation-derived Coriolis/bias plus opposite-sign raw "
+                "PhysX projected solver forces for all joints"
+            ),
+        )
+        add(
+            "negative_coriolis_compensation_plus_solver_all_dofs",
+            "combined_missing_force",
+            (
+                ("inertia", 1.0),
+                ("gravity_identification", 1.0),
+                ("coriolis_compensation_actual", -1.0),
+                ("tendon", 1.0),
+            ),
+            (*common_external, ("solver_joint", 1.0)),
+            note=(
+                "combined diagnostic: replaces direct Coriolis with negative compensation-derived Coriolis/bias "
+                "and adds all raw PhysX projected joint solver forces on the external side"
+            ),
+        )
+        add(
+            "negative_coriolis_compensation_minus_solver_all_dofs",
+            "combined_missing_force",
+            (
+                ("inertia", 1.0),
+                ("gravity_identification", 1.0),
+                ("coriolis_compensation_actual", -1.0),
+                ("tendon", 1.0),
+            ),
+            (*common_external, ("solver_joint", -1.0)),
+            note=(
+                "combined diagnostic sign check: negative compensation-derived Coriolis/bias with opposite-sign "
+                "raw PhysX projected solver forces for all joints"
+            ),
+        )
+        add(
+            "negative_gravity_coriolis_comp_plus_solver_all_dofs",
+            "combined_missing_force",
+            (
+                ("inertia", 1.0),
+                ("gravity_compensation_actual", -1.0),
+                ("coriolis_compensation_actual", -1.0),
+                ("tendon", 1.0),
+            ),
+            (*common_external, ("solver_joint", 1.0)),
+            note=(
+                "combined diagnostic: replaces both gravity and Coriolis with negative compensation-derived "
+                "forces and adds all raw PhysX projected joint solver forces"
+            ),
+        )
+        add(
+            "negative_gravity_coriolis_comp_minus_solver_all_dofs",
+            "combined_missing_force",
+            (
+                ("inertia", 1.0),
+                ("gravity_compensation_actual", -1.0),
+                ("coriolis_compensation_actual", -1.0),
+                ("tendon", 1.0),
+            ),
+            (*common_external, ("solver_joint", -1.0)),
+            note=(
+                "combined diagnostic sign check: negative compensation-derived gravity/Coriolis with "
+                "opposite-sign raw PhysX projected solver forces for all joints"
+            ),
+        )
+        add(
             "physx_plus_solver_internal",
             "solver",
             common_conservative,
@@ -2562,6 +3248,81 @@ class DataRecording:
                 side_groups["right_leg"] = right
             if joints:
                 side_groups["all_joints"] = joints
+            fourbar_back = [
+                index
+                for index, name in enumerate(names)
+                if "3b_femorotibial_back" in name or "4b_intertarsal_back" in name
+            ]
+            fourbar_front = [
+                index
+                for index, name in enumerate(names)
+                if "3f_femorotibial_front" in name or "4f_intertarsal_front" in name
+            ]
+            modeled_tendon = [
+                index
+                for index, name in enumerate(names)
+                if (
+                    "3f_femorotibial_front" in name
+                    or "4f_intertarsal_front" in name
+                    or "5_metatarsophalangeal" in name
+                    or "6_interphalangeal" in name
+                    or "8_knee_flexor" in name
+                )
+            ]
+            passive_chain_no_pulley = [
+                index
+                for index, name in enumerate(names)
+                if (
+                    "3b_femorotibial_back" in name
+                    or "4b_intertarsal_back" in name
+                    or "3f_femorotibial_front" in name
+                    or "4f_intertarsal_front" in name
+                    or "5_metatarsophalangeal" in name
+                    or "6_interphalangeal" in name
+                )
+            ]
+            passive_chain = [
+                index
+                for index, name in enumerate(names)
+                if (
+                    "3b_femorotibial_back" in name
+                    or "4b_intertarsal_back" in name
+                    or "3f_femorotibial_front" in name
+                    or "4f_intertarsal_front" in name
+                    or "5_metatarsophalangeal" in name
+                    or "6_interphalangeal" in name
+                    or "8_knee_flexor" in name
+                )
+            ]
+            pantograph = [index for index, name in enumerate(names) if "p1_pantograph" in name]
+            knee_flexor = [index for index, name in enumerate(names) if "8_knee_flexor" in name]
+            lower_tendon_chain = [
+                index
+                for index, name in enumerate(names)
+                if "5_metatarsophalangeal" in name or "6_interphalangeal" in name
+            ]
+            hip_roll_lateral = [
+                index
+                for index, name in enumerate(names)
+                if "_acetabulofemoral_roll" in name or "_acetabulofemoral_lateral" in name
+            ]
+            hip_flexion = [index for index, name in enumerate(names) if "_pseudo_acetabulofemoral_flexion" in name]
+            upper_hip = [
+                index
+                for index, name in enumerate(names)
+                if "_acetabulofemoral_" in name or "_pseudo_acetabulofemoral_flexion" in name
+            ]
+            side_groups["fourbar_back"] = fourbar_back
+            side_groups["fourbar_front"] = fourbar_front
+            side_groups["modeled_tendon"] = modeled_tendon
+            side_groups["passive_chain"] = passive_chain
+            side_groups["passive_chain_no_pulley"] = passive_chain_no_pulley
+            side_groups["pantograph"] = pantograph
+            side_groups["knee_flexor"] = knee_flexor
+            side_groups["lower_tendon_chain"] = lower_tendon_chain
+            side_groups["hip_roll_lateral"] = hip_roll_lateral
+            side_groups["hip_flexion"] = hip_flexion
+            side_groups["upper_hip"] = upper_hip
             side_groups["all"] = list(range(self.num_dofs))
             groups[side] = side_groups
         return groups
@@ -2572,7 +3333,17 @@ class DataRecording:
 
     def _format_group_suffix(self, group_mean_norms: dict[str, float]) -> str:
         selected = []
-        for group_name in ("base_linear", "base_angular", "left_leg", "right_leg"):
+        for group_name in (
+            "base_linear",
+            "base_angular",
+            "left_leg",
+            "right_leg",
+            "fourbar_back",
+            "fourbar_front",
+            "modeled_tendon",
+            "passive_chain",
+            "upper_hip",
+        ):
             if group_name in group_mean_norms:
                 selected.append(f"{group_name}={group_mean_norms[group_name]:.2f}")
         if not selected:

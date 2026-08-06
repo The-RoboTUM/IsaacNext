@@ -41,6 +41,7 @@ class TendonManager:
         robot_io: TendonRobotIO | None = None,
         torque_mapper: TendonTorqueMapper | None = None,
         tendon_damping: dict[str, float] | None = None,
+        apply_mode: str = "link_wrench",
     ):
         self.robot = robot
         self.device = robot.device
@@ -52,6 +53,9 @@ class TendonManager:
         self.model = model if model is not None else AnalyticTendonEnergyModel(self.tendon_data)
         self.robot_io = robot_io if robot_io is not None else TendonRobotIO(robot)
         self.torque_mapper = torque_mapper if torque_mapper is not None else TendonTorqueMapper(self.device)
+        self.apply_mode = str(apply_mode)
+        if self.apply_mode not in ("link_wrench", "joint_effort"):
+            raise ValueError("TendonManager apply_mode must be one of 'link_wrench' or 'joint_effort'.")
 
         # Compatibility attributes for older code that accessed these on TendonManager.
         self.link_indices_left_right = self.robot_io.link_indices_left_right
@@ -103,11 +107,24 @@ class TendonManager:
         batch_size = self.robot.num_instances
         return tendon_torques[:batch_size], tendon_torques[batch_size:]
 
+    def _compute_direct_model_torques(self):
+        joint_torques = getattr(self.model, "joint_torques", None)
+        if not callable(joint_torques):
+            return None
+        return joint_torques(self.robot)
+
     def compute_torques(self, *, debug: bool = False, dt: float = 0.0):
         """Differentiable eager torque computation.
 
         This path must stay eager because torques are computed as dE/dq using autograd.
         """
+        direct_torques = self._compute_direct_model_torques()
+        if direct_torques is not None:
+            left, right = direct_torques
+            if debug:
+                return left, right, {"model_type": type(self.model).__name__}
+            return left, right
+
         with torch.inference_mode(False), torch.enable_grad():
             joint_angles = self.robot_io.get_leg_joint_angles(requires_grad=True)
             joint_angles = joint_angles.detach().clone().requires_grad_(True)
@@ -135,6 +152,10 @@ class TendonManager:
         """TorchScript-backed torque computation with tendon damping."""
         profiler = self._external_profiler()
         profile_active = bool(getattr(profiler, "enabled", False))
+        direct_torques = self._compute_direct_model_torques()
+        if direct_torques is not None:
+            return direct_torques
+
         with torch.inference_mode(False), torch.enable_grad():
             t0 = self._profile_time() if profile_active else 0.0
             joint_angles = self.robot_io.get_leg_joint_angles(requires_grad=True)
@@ -224,6 +245,14 @@ class TendonManager:
         t0 = self._profile_time()
         left, right = self.compute_torques_jit(dt=dt)
         t1 = self._profile_time()
+        if self.apply_mode == "joint_effort":
+            self._apply_joint_effort_targets(left, right)
+            t2 = self._profile_time()
+            if profile_active:
+                profiler.record_elapsed("tendon/apply_jit_total", t2 - t0)
+                profiler.record_elapsed("tendon/set_joint_effort_targets", t2 - t1)
+            return left, right
+
         link_torques = self.torque_mapper.joint_to_link_torques_jit(left, right, batch_size=batch_size)
         t2 = self._profile_time()
         forces = self.robot_io.empty_external_forces()
@@ -250,6 +279,14 @@ class TendonManager:
         Returns:
             True when cached values were available and reapplied.
         """
+        if self.apply_mode == "joint_effort":
+            if self._cached_joint_torques is None:
+                return False
+            left = self._cached_joint_torques[:, self.joint_indices_left]
+            right = self._cached_joint_torques[:, self.joint_indices_right]
+            self._apply_joint_effort_targets(left, right)
+            return True
+
         if self._cached_link_torques is None or self._cached_forces is None or self._cached_body_ids is None:
             return False
         profiler = self._external_profiler()
@@ -293,6 +330,24 @@ class TendonManager:
         self._cached_link_torques = link_torques
         self._cached_forces = forces
         self._cached_body_ids = self.link_indices_left_right
+
+    def _apply_joint_effort_targets(self, left: torch.Tensor, right: torch.Tensor) -> None:
+        self.robot.set_joint_effort_target(left, joint_ids=self.joint_indices_left)
+        self.robot.set_joint_effort_target(right, joint_ids=self.joint_indices_right)
+        forces = self.robot_io.empty_external_forces()
+        link_torques = torch.zeros_like(forces)
+        self.robot.permanent_wrench_composer.set_forces_and_torques(
+            forces=forces,
+            torques=link_torques,
+            body_ids=self.link_indices_left_right,
+        )
+        joint_torques = torch.zeros_like(self.robot.data.joint_pos)
+        joint_torques[:, self.joint_indices_left] = left
+        joint_torques[:, self.joint_indices_right] = right
+        self._cached_joint_torques = joint_torques
+        self._cached_link_torques = None
+        self._cached_forces = None
+        self._cached_body_ids = None
 
     @property
     def cached_tendon_link_torques(self) -> torch.Tensor | None:

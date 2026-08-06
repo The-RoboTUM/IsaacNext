@@ -783,7 +783,12 @@ def _dynamics_terms(
     coriolis_api_delta = coriolis_force_api - coriolis_compensation_actual
     gravity_api_delta = gravity_force_api - gravity_compensation_actual
     external_base_gravity = _base_only_generalized(gravity_compensation_actual)
-    gravity_identification = gravity - external_base_gravity
+    # The compensation APIs return the force convention that best closes the
+    # full-coordinate balance with the opposite sign in the identification
+    # equation. Keep the direct API terms for debug, but export the compensated
+    # full-coordinate terms for training.
+    coriolis = -coriolis_compensation_actual
+    gravity_identification = -gravity_compensation_actual
 
     dynamic = robot.data.joint_dynamic_friction_coeff
     viscous = robot.data.joint_viscous_friction_coeff

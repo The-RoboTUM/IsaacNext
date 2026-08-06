@@ -38,6 +38,30 @@ class TendonActionTermHybridCfg(ActionTermCfg):
     update_interval: int = 1
     """Passive tendon recompute interval in physics substeps. One preserves the current behavior."""
 
+    model_type: str | None = None
+    """Passive tendon model implementation. Supported values are ``analytic`` and ``identix_elastic``."""
+
+    identix_bundle_dir: str | None = None
+    """Path to a deployed Identix Forrest full-robot bundle when ``model_type`` is ``identix_elastic``."""
+
+    identix_repo_path: str | None = None
+    """Optional Identix checkout path used to import the deployment runtime lazily."""
+
+    identix_compile: bool | None = None
+    """Compile Identix/JAX deployment functions on first use."""
+
+    identix_transfer: str | None = None
+    """Torch/JAX tensor transfer mode for Identix inference: ``auto``, ``dlpack``, or ``numpy``."""
+
+    identix_force_scale: float | None = None
+    """Multiplier applied to Identix elastic force output before Isaac wrench mapping."""
+
+    identix_force_sign: float | None = None
+    """Sign applied to Identix elastic force output before Isaac wrench mapping."""
+
+    identix_apply_mode: str | None = None
+    """How to apply Identix generalized forces: ``joint_effort`` or ``link_wrench``."""
+
 
 @configclass
 class TendonActionTermCfg(ActionTermCfg):

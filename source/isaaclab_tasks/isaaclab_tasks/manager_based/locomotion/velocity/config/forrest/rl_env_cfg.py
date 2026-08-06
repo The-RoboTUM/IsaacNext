@@ -680,4 +680,12 @@ class ForrestActionsCfg:
         randomization_ranges=FORREST_TENDON_RANDOMIZATION,
         parameters_file=None,
         update_interval=TRAINING_PARAMS.actions.tendon_update_interval,
+        model_type=TRAINING_PARAMS.actions.tendon_model_type,
+        identix_bundle_dir=TRAINING_PARAMS.actions.tendon_identix_bundle_dir,
+        identix_repo_path=TRAINING_PARAMS.actions.tendon_identix_repo_path,
+        identix_compile=TRAINING_PARAMS.actions.tendon_identix_compile,
+        identix_transfer=TRAINING_PARAMS.actions.tendon_identix_transfer,
+        identix_force_scale=TRAINING_PARAMS.actions.tendon_identix_force_scale,
+        identix_force_sign=TRAINING_PARAMS.actions.tendon_identix_force_sign,
+        identix_apply_mode=TRAINING_PARAMS.actions.tendon_identix_apply_mode,
     )
