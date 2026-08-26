@@ -44,6 +44,11 @@ parser.add_argument("--seed", type=int, default=7)
 parser.add_argument("--actuate_all_joints", action="store_true", help="Apply commands to every joint.")
 parser.add_argument("--no_mass_matrix", action="store_true", help="Do not store mass matrix columns.")
 parser.add_argument("--include_base", action="store_true", help="Keep floating-base generalized slots when present.")
+parser.add_argument(
+    "--asset_drive_gains",
+    action="store_true",
+    help="Keep the asset's original implicit stiffness/damping instead of zeroing them for a pure effort audit.",
+)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -112,6 +117,9 @@ def main() -> None:
             "joint_names": list(robot.joint_names),
             "actuated_joint_names": _actuated_joint_names(args_cli.asset, list(robot.joint_names)),
             "include_base": bool(args_cli.include_base),
+            "zeroed_implicit_drive_gains": not bool(args_cli.asset_drive_gains),
+            "joint_stiffness": robot.data.joint_stiffness.detach().cpu().tolist(),
+            "joint_damping": robot.data.joint_damping.detach().cpu().tolist(),
         },
     )
 
@@ -148,10 +156,20 @@ def main() -> None:
 
 def _asset_cfg(asset_name: str):
     if asset_name == "cartpole":
-        return CARTPOLE_CFG.copy()
-    if asset_name == "cart_double_pendulum":
-        return CART_DOUBLE_PENDULUM_CFG.copy()
-    raise ValueError(f"Unsupported asset: {asset_name}")
+        cfg = CARTPOLE_CFG.copy()
+    elif asset_name == "cart_double_pendulum":
+        cfg = CART_DOUBLE_PENDULUM_CFG.copy()
+    else:
+        raise ValueError(f"Unsupported asset: {asset_name}")
+    if not bool(args_cli.asset_drive_gains):
+        _zero_implicit_drive_gains(cfg)
+    return cfg
+
+
+def _zero_implicit_drive_gains(cfg) -> None:
+    for actuator_cfg in cfg.actuators.values():
+        actuator_cfg.stiffness = 0.0
+        actuator_cfg.damping = 0.0
 
 
 def _reset_scene(scene: InteractiveScene, robot) -> None:
